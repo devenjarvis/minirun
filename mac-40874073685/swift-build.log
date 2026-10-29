@@ -1,0 +1,51 @@
+Building for debugging...
+[0/13] Write sources
+[0/13] Write minirun-entitlement.plist
+[0/13] Write sources
+[5/13] Copying XCTestBootstrap.framework
+[6/13] Copying FBSimulatorControl.framework
+[7/13] Copying FBDeviceControl.framework
+[7/13] Copying FBControlCore.framework
+[9/13] Write swift-version-7974D3F7F03D5E95.txt
+[11/37] Compiling MiniRunSim AccessibilityTargetResolver.swift
+[12/37] Compiling MiniRunSim AxeLogger.swift
+[13/37] Compiling MiniRunSim CoordinateHelpers.swift
+[14/40] Emitting module MiniRunKit
+[15/40] Compiling MiniRunSim AccessibilityElement.swift
+[16/40] Compiling MiniRunSim AccessibilityFetcher.swift
+[17/40] Compiling MiniRunSim AccessibilityPoller.swift
+[18/40] Compiling MiniRunKit Tools.swift
+[19/40] Compiling MiniRunKit Workspaces.swift
+[20/40] Compiling MiniRunKit XcodeParsing.swift
+[21/40] Emitting module MiniRunSim
+[31/47] Compiling MiniRunSim HIDBroker+Connection.swift
+[32/47] Compiling MiniRunSim HIDBroker.swift
+[33/47] Compiling MiniRunSim HIDBrokerReadiness.swift
+[34/47] Compiling MiniRunSim HIDInteractor.swift
+[35/47] Compiling MiniRunSim KeyCode.swift
+[36/47] Compiling MiniRunSim OrientationAwareCoordinates.swift
+[37/47] Compiling MiniRunSim Setup.swift
+[38/47] Compiling MiniRunSim SimulatorOrientationReader.swift
+[39/47] Compiling MiniRunSim SimulatorUtilities.swift
+[40/47] Compiling MiniRunSim StandardError.swift
+[41/47] Compiling MiniRunSim TapStyle.swift
+[42/47] Compiling MiniRunSim TextToHIDEvents.swift
+[43/47] Compiling MiniRunSim OrientationCoordinateMath.swift
+[44/47] Compiling MiniRunSim SimulatorDriver.swift
+[45/55] Compiling MiniRunCore AppTools.swift
+[46/55] Compiling MiniRunCore CodeTools.swift
+[47/55] Compiling MiniRunCore FrameStreamer.swift
+[48/55] Compiling MiniRunCore RelayClient.swift
+[49/55] Compiling MiniRunCore Server.swift
+[50/55] Compiling MiniRunCore Simctl.swift
+[51/55] Compiling MiniRunCore SimulatorTools.swift
+[52/55] Emitting module MiniRunCore
+[53/58] Compiling MiniRunCore ToolRegistry.swift
+[54/58] Compiling MiniRunCore Workspace.swift
+[55/58] Compiling MiniRunCore XcodeBuild.swift
+[56/60] Emitting module minirun
+[57/60] Compiling minirun main.swift
+[57/60] Write Objects.LinkFileList
+[58/60] Linking minirun
+[59/60] Applying minirun
+Build complete! (24.97s)
