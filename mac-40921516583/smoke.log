@@ -1,0 +1,18 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created 689641F1-8DE4-429F-96B1-05EF8332B2C4 (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"689641F1-8DE4-429F-96B1-05EF8332B2C4"} &
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} &
+CoreSimulator settled after 2s
++ minirun call screenshot {"device":"689641F1-8DE4-429F-96B1-05EF8332B2C4"}
++ minirun call build_and_run {"device":"689641F1-8DE4-429F-96B1-05EF8332B2C4","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600}
+FAILED: expected output to contain: Installed and launched
+--- output was:
+[job_3c6e6e55] build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp: failed in 6m 6s
+Installing HelloApp.app timed out after 300s:
