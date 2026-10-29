@@ -18,7 +18,14 @@ expect() {
 RUNTIME=$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["platform"]=="iOS" and x["isAvailable"]]; print(r[-1]["identifier"])')
 TYPE=$(xcrun simctl list devicetypes --json | python3 -c 'import json,sys; t=[x["identifier"] for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone") and "Pro" in x["name"] and "Max" not in x["name"]]; print(t[-1])')
 UDID=$(xcrun simctl create "minirun-smoke" "$TYPE" "$RUNTIME")
-trap 'xcrun simctl delete "$UDID" >/dev/null 2>&1 || true' EXIT
+# Deletes the smoke simulators: this one (unless MINIRUN_SMOKE_KEEP is set, so a later CI step can
+# reuse it instead of paying for another first boot) and the second session's copy.
+cleanup() {
+  local sims; sims=$(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke (minirun ")))')
+  [[ -n "${MINIRUN_SMOKE_KEEP:-}" ]] || sims="$UDID $sims"
+  for sim in $sims; do xcrun simctl shutdown "$sim" >/dev/null 2>&1 || true; xcrun simctl delete "$sim" >/dev/null 2>&1 || true; done
+}
+trap cleanup EXIT
 echo "Created $UDID ($TYPE, $RUNTIME)"
 
 run boot_simulator "{\"device\":\"$UDID\"}" | expect "Booted"
@@ -52,7 +59,6 @@ run terminate_app "{\"device\":\"$UDID\",\"bundle_id\":\"dev.minirun.HelloApp\"}
 run boot_simulator '{"device":"minirun-smoke","label":"smoke/second"}' | tee /tmp/minirun-boot2.txt | expect "Created minirun-smoke (minirun 2)"
 UDID2=$(sed -n 's/^Simulator: .*, UDID \([0-9A-Fa-f-]*\)\..*/\1/p' /tmp/minirun-boot2.txt | head -1)
 [[ -n "$UDID2" && "$UDID2" != "$UDID" ]] || { echo "FAILED: no second simulator UDID" >&2; exit 1; }
-trap 'xcrun simctl delete "$UDID" "$UDID2" >/dev/null 2>&1 || true' EXIT
 run boot_simulator '{"label":"smoke/second"}' | expect "$UDID2"
 if out=$("$BIN" call tap '{"x":10,"y":10}'); then echo "FAILED: tap without device should refuse to guess" >&2; exit 1; fi
 echo "$out" | expect "simulators are booted"
