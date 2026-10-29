@@ -36,9 +36,9 @@ extension ToolRegistry {
             let repos = (try? FileManager.default.contentsOfDirectory(atPath: config.workspaceRoot))?.flatMap { owner in
                 ((try? FileManager.default.contentsOfDirectory(atPath: config.workspaceRoot + "/" + owner)) ?? []).map { "\(owner)/\($0)" }
             } ?? []
-            let devices = (try? await Simctl.devices()) ?? []
+            let snapshot = try? await simulators()
+            let devices = snapshot?.devices ?? [], claims = snapshot?.claims ?? [:]
             let booted = devices.filter(\.isBooted)
-            let claims = await claimSnapshot(devices)
             let text = """
             macOS: \(os)
             Xcode: \((try? await xcode)?.stdout.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces) ?? "not found")
@@ -95,7 +95,9 @@ extension ToolRegistry {
             let log = newLogURL("build")
             return await runAsJob(args, title: "build \(workspace)", log: log) { [self] in
                 let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
-                let output = try await self.withCheckout(args, log: log) { try await self.buildApp(args, udid: sim.udid, log: log) }
+                let output = try await self.whileUsing(sim.udid) {
+                    try await self.withCheckout(args, log: log) { try await self.buildApp(args, udid: sim.udid, log: log) }
+                }
                 return .text([self.describe(output, log: log), note, self.deviceFooter(sim)].compactMap { $0 }.joined(separator: "\n"))
             }
         }
@@ -118,13 +120,15 @@ extension ToolRegistry {
                 // Picking (and maybe booting) the simulator happens in the job: a first boot can take minutes.
                 let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
                 // Hold the checkout through install so another build can't replace the .app first.
-                let (output, bundle) = try await self.withCheckout(args, log: log) { () async throws -> (XcodeBuild.BuildOutput, String) in
-                    let output = try await self.buildApp(args, udid: sim.udid, log: log)
-                    guard let product = output.product, let bundle = product.bundleIdentifier else {
-                        throw ToolError("Built \(output.scheme), but it doesn't produce an iOS app to launch. Use build or run_tests for this scheme.")
+                let (output, bundle) = try await self.whileUsing(sim.udid) {
+                    try await self.withCheckout(args, log: log) { () async throws -> (XcodeBuild.BuildOutput, String) in
+                        let output = try await self.buildApp(args, udid: sim.udid, log: log)
+                        guard let product = output.product, let bundle = product.bundleIdentifier else {
+                            throw ToolError("Built \(output.scheme), but it doesn't produce an iOS app to launch. Use build or run_tests for this scheme.")
+                        }
+                        try await Simctl.install(sim.udid, appPath: product.appPath)
+                        return (output, bundle)
                     }
-                    try await Simctl.install(sim.udid, appPath: product.appPath)
-                    return (output, bundle)
                 }
                 await self.claims.noteApp(sim.udid, bundleID: bundle)
                 let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
@@ -151,12 +155,14 @@ extension ToolRegistry {
             let log = newLogURL("test")
             return await runAsJob(args, title: "tests \(workspace)", log: log) { [self] in
                 let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
-                let output = try await self.withCheckout(args, log: log) { () async throws -> XcodeBuild.TestOutput in
-                    let dir = try await self.sourceDirectory(args, log: log)
-                    var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, log: log)
-                    options.configuration = args.string("configuration") ?? "Debug"
-                    options.extraArgs = args.strings("extra_args")
-                    return try await XcodeBuild.test(options, onlyTesting: args.strings("only_testing"), skipTesting: args.strings("skip_testing"))
+                let output = try await self.whileUsing(sim.udid) {
+                    try await self.withCheckout(args, log: log) { () async throws -> XcodeBuild.TestOutput in
+                        let dir = try await self.sourceDirectory(args, log: log)
+                        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, log: log)
+                        options.configuration = args.string("configuration") ?? "Debug"
+                        options.extraArgs = args.strings("extra_args")
+                        return try await XcodeBuild.test(options, onlyTesting: args.strings("only_testing"), skipTesting: args.strings("skip_testing"))
+                    }
                 }
                 var text = "Scheme \(output.scheme): \(output.passed ? "passed" : "FAILED") on \(sim.name) (\(sim.udid))\n\(output.summary)\nResult bundle: \(output.resultBundle)\nLog: \(log.path)"
                 if let note { text += "\n" + note }

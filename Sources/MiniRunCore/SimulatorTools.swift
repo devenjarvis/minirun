@@ -19,8 +19,8 @@ extension ToolRegistry {
             description: "List the iOS simulators installed on the Mac, booted ones first. Booted ones show what they're reserved for (the repo@branch being built there) so you can find yours.",
             properties: ["include_shutdown": Schema.boolean("Include simulators that aren't booted (default true).")]
         )) { [self] args in
-            let all = try await Simctl.devices().filter(\.isAvailable)
-            let claims = await claimSnapshot(all)
+            let (devices, claims) = try await simulators()
+            let all = devices.filter(\.isAvailable)
             let shown = args.bool("include_shutdown") == false ? all.filter(\.isBooted) : all
             return .json(.array(shown.prefix(60).map { device -> JSONValue in
                 var json = device.json.objectValue ?? [:]
@@ -37,6 +37,7 @@ extension ToolRegistry {
             description: "Get a simulator of your own: boots one that no one else is using (creating a copy if every simulator of that model is busy) " +
                 "and reserves it for `label`. Returns its UDID — pass it as `device` on every later call — plus the live view link for the user. " +
                 "Calling again with the same label returns the same simulator. build_and_run does this for you if you don't pass device. " +
+                "A simulator nobody uses for a while (30 minutes by default) is shut down and its reservation released; call this or build_and_run again to get one back. " +
                 "A new simulator's first boot can take a few minutes: if it's still going after wait_seconds you get a job_id for get_job.",
             properties: Self.waitProperty.merging([
                 "device": Schema.string("Optional model name (e.g. \"iPhone 17 Pro\", or \"iPad Air 11-inch (M3)\"), or a specific UDID. Defaults to the Mac's default iPhone."),
@@ -45,18 +46,23 @@ extension ToolRegistry {
         )) { [self] args in
             let label = args.string("label")
             return await runAsJob(args, title: "boot simulator" + (label.map { " for \($0)" } ?? ""), log: nil) { [self] in
-                let (sim, note, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (XcodeParsing.SimDevice, String?, Bool) in
-                    let all = try await Simctl.devices()
+                let (allocated, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (Allocation, Bool) in
+                    let (all, current) = try await simulators()
                     let choice = SimulatorPicker.fresh(
                         query: args.string("device"), label: label, devices: all,
-                        claims: await claimSnapshot(all), preferredName: config.defaultDevice
+                        claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators
                     )
                     var wasBooted = false
-                    if case .use(let device, _) = choice { wasBooted = device.isBooted }
-                    let (sim, note) = try await realize(choice, boot: true)
-                    if let label { await claims.reserve(sim.udid, for: label) } else { await claims.touch(sim.udid) }
-                    return (sim, note, wasBooted)
+                    if case .use(let device, _) = choice, device.isBooted {
+                        wasBooted = !(await boots.isBooting(device.udid))
+                    }
+                    let allocated = try await realize(choice, boot: true)
+                    if let label { await claims.reserve(allocated.device.udid, for: label) } else { await claims.touch(allocated.device.udid) }
+                    return (allocated, wasBooted)
                 }
+                // Wait for the boot after letting go of the lock, so other sessions can pick meanwhile.
+                let sim = try await allocated.ready()
+                let note = allocated.note
                 await geometry.invalidate(udid: sim.udid)
                 var lines = [wasBooted ? "\(sim.name) (\(sim.runtimeName)) is already running." : "Booted \(sim.name) (\(sim.runtimeName))."]
                 if let note { lines.append(note) }

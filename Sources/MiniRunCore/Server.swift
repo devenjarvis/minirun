@@ -28,6 +28,8 @@ public enum Server {
 
         let registry = ToolRegistry(config: config)
         log("\(registry.definitions.count) tools ready; workspaces at \(config.workspaceRoot)")
+        let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
+        defer { idleShutdown.cancel() }
         let client = RelayClient(url: url, token: token, registry: registry, log: { Server.log($0) })
         await client.run()
     }

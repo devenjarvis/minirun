@@ -86,8 +86,18 @@ actor FrameStreamer {
             await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription))
             return
         }
-        if settings.codec == .h264, await runVideo(stream, device: device) { return }
+        // Someone is watching, so idle shutdown leaves this simulator alone until they stop.
+        await registry.activity.begin(device.udid)
+        var streamedVideo = false
+        if settings.codec == .h264 { streamedVideo = await runVideo(stream, device: device) }
+        if !streamedVideo { await runJPEG(stream, device: device) }
+        await registry.activity.end(device.udid)
+        await registry.claims.touch(device.udid)
+    }
 
+    private func runJPEG(_ stream: Stream, device: XcodeParsing.SimDevice) async {
+        let settings = stream.request
+        let key = settings.key
         var announced = false
         var failures = 0
         let interval = 1.0 / Double(settings.fps)
@@ -205,24 +215,25 @@ extension ToolRegistry {
     /// The simulator a viewer stream shows: `udid`, or else the most recently used booted
     /// simulator (booting the default one if none is running).
     func streamDevice(_ udid: String?) async throws -> XcodeParsing.SimDevice {
-        let all = try await Simctl.devices()
+        let (devices, claims) = try await simulators()
         if let udid {
-            guard let device = all.first(where: { $0.udid == udid }) else { throw ToolError("No simulator with UDID \(udid).") }
+            guard let device = devices.first(where: { $0.udid == udid }) else { throw ToolError("No simulator with UDID \(udid).") }
             guard device.isBooted else { throw ToolError("\(device.name) isn't running. Pick a booted simulator.") }
-            return device
+            // It may still be booting.
+            return try await realize(.use(device), boot: false).ready()
         }
-        let claims = await claimSnapshot(all)
-        let booted = all.filter(\.isBooted).sorted {
+        let booted = devices.filter(\.isBooted).sorted {
             (claims[$0.udid]?.updatedAt ?? .distantPast) > (claims[$1.udid]?.updatedAt ?? .distantPast)
         }
-        if let device = booted.first { return device }
-        return try await realize(SimulatorPicker.target(query: nil, workspace: nil, devices: all, claims: claims, preferredName: config.defaultDevice), boot: true).device
+        if let device = booted.first { return try await realize(.use(device), boot: false).ready() }
+        let choice = SimulatorPicker.target(query: nil, workspace: nil, devices: devices, claims: claims, preferredName: config.defaultDevice)
+        return try await realize(choice, boot: true).ready()
     }
 
     /// The booted simulators and what each is reserved for.
     func simulatorsMessage() async -> JSONValue? {
-        guard let all = try? await Simctl.devices() else { return nil }
-        let claims = await claimSnapshot(all)
+        guard let snapshot = try? await simulators() else { return nil }
+        let (all, claims) = snapshot
         return RelayProtocol.simulators(all.filter(\.isBooted).map { device -> JSONValue in
             var json = device.json.objectValue ?? [:]
             if let label = claims[device.udid]?.label { json["reserved_for"] = .string(label) }
