@@ -104,9 +104,13 @@ const h264 = await new Promise((resolve, reject) => {
     assert(payload[0] === 0 && payload[1] === 0 && payload[2] === 0 && payload[3] === 1, "Annex B start code");
     if (frames === 0) {
       assert(keyframe, "first H.264 frame is a keyframe");
-      const sps = payload.indexOf(Buffer.from([0, 0, 0, 1, 0x67]));
+      // NAL type 7 is the SPS (its header's top bits vary by encoder: 0x67, 0x27, ...).
+      let sps = -1;
+      for (let i = 0; i + 7 < payload.length && sps < 0; i++) {
+        if (payload[i] === 0 && payload[i + 1] === 0 && payload[i + 2] === 1 && (payload[i + 3] & 0x1f) === 7) sps = i + 3;
+      }
       assert(sps >= 0, "keyframe carries an SPS");
-      codec = "avc1." + payload.subarray(sps + 5, sps + 8).toString("hex").toUpperCase();
+      codec = "avc1." + payload.subarray(sps + 1, sps + 4).toString("hex").toUpperCase();
     }
     frames++;
     bytes += payload.length;
