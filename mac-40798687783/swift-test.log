@@ -1,0 +1,69 @@
+[0/1] Planning build
+Building for debugging...
+[0/10] /Users/runner/work/minirun/minirun/.build/arm64-apple-macosx/debug/minirunPackageTests.derived/runner.swift
+[0/10] Write sources
+[3/9] Write swift-version-7974D3F7F03D5E95.txt
+[4/10] Linking minirun
+[5/10] Applying minirun
+[7/10] Compiling MiniRunKitTests MiniRunKitTests.swift
+[8/10] Emitting module MiniRunKitTests
+[9/12] Emitting module minirunPackageTests
+[10/12] Compiling minirunPackageTests runner.swift
+[10/12] Write Objects.LinkFileList
+[11/12] Linking minirunPackageTests
+Build complete! (9.32s)
+Test Suite 'All tests' started at 2026-10-29 01:10:36.398.
+Test Suite 'minirunPackageTests.xctest' started at 2026-10-29 01:10:36.406.
+Test Suite 'ConfigTests' started at 2026-10-29 01:10:36.406.
+Test Case '-[MiniRunKitTests.ConfigTests testDecodesPartialConfig]' started.
+Test Case '-[MiniRunKitTests.ConfigTests testDecodesPartialConfig]' passed (0.003 seconds).
+Test Case '-[MiniRunKitTests.ConfigTests testResolveRepo]' started.
+Test Case '-[MiniRunKitTests.ConfigTests testResolveRepo]' passed (0.001 seconds).
+Test Suite 'ConfigTests' passed at 2026-10-29 01:10:36.410.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'JSONValueTests' started at 2026-10-29 01:10:36.410.
+Test Case '-[MiniRunKitTests.JSONValueTests testArguments]' started.
+Test Case '-[MiniRunKitTests.JSONValueTests testArguments]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.JSONValueTests testRoundTrip]' started.
+Test Case '-[MiniRunKitTests.JSONValueTests testRoundTrip]' passed (0.001 seconds).
+Test Suite 'JSONValueTests' passed at 2026-10-29 01:10:36.411.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RelayProtocolTests' started at 2026-10-29 01:10:36.411.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testDecodeMessages]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testDecodeMessages]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testFrameEncoding]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testFrameEncoding]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testResultShape]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testResultShape]' passed (0.000 seconds).
+Test Suite 'RelayProtocolTests' passed at 2026-10-29 01:10:36.414.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'ShellAndJobTests' started at 2026-10-29 01:10:36.414.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testJobWaitsAndTimesOut]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testJobWaitsAndTimesOut]' passed (2.054 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellCapturesOutput]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellCapturesOutput]' passed (0.075 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellStdin]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellStdin]' passed (0.121 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellTimeout]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellTimeout]' passed (0.607 seconds).
+Test Suite 'ShellAndJobTests' passed at 2026-10-29 01:10:39.272.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.857 (2.858) seconds
+Test Suite 'XcodeParsingTests' started at 2026-10-29 01:10:39.272.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testAccessibilitySummary]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testAccessibilitySummary]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseAndPickDevices]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseAndPickDevices]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseIssues]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseIssues]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testSchemesAndProduct]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testSchemesAndProduct]' passed (0.000 seconds).
+Test Suite 'XcodeParsingTests' passed at 2026-10-29 01:10:39.275.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'minirunPackageTests.xctest' passed at 2026-10-29 01:10:39.275.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 2.867 (2.870) seconds
+Test Suite 'All tests' passed at 2026-10-29 01:10:39.275.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 2.867 (2.877) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.

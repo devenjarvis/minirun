@@ -1,0 +1,24 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created 89B6014A-5C3F-49E9-9D9B-25D00BD2E29D (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call screenshot {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call build_and_run {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600}
++ minirun call describe_ui {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call tap {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","id":"tapButton"}
++ minirun call describe_ui {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call tap {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","id":"nameField"}
++ minirun call type_text {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","text":"Claude"}
++ minirun call describe_ui {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call screenshot {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D"}
++ minirun call swipe {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","direction":"up"}
++ minirun call press_button {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","button":"home"}
++ minirun call app_logs {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","bundle_id":"dev.minirun.HelloApp","seconds":120}
++ minirun call terminate_app {"device":"89B6014A-5C3F-49E9-9D9B-25D00BD2E29D","bundle_id":"dev.minirun.HelloApp"}
+Smoke test passed.

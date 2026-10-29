@@ -1,0 +1,19 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.UP2js45CtZ/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  31 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, run_command, get_job, job_log, list_jobs
+• mac_status
+  The Mac is online (sat12-dp148-c74d4051-de2d-4e3e-a15f-a5348c8d03e1-620F49E0E747).
+• screenshot through the relay
+  Screenshot 482x1049px.
+• describe_ui through the relay
+  Application " " (0,0 402x874) |   Group (0,0 402x874) |     Group (0,0 402x874)
+• viewer login + live frames + input
+  5 frames; screen iPhone 17 402x874 pt
+E2E relay test passed.
+--- minirun serve log
+2026-10-29T01:18:48Z minirun 0.1.0 starting
+2026-10-29T01:18:49Z Simulator support loaded
+2026-10-29T01:18:49Z Preventing idle sleep while running
+2026-10-29T01:18:49Z 30 tools ready; workspaces at /Users/runner/minirun/workspaces
+2026-10-29T01:18:49Z Connected to relay 127.0.0.1
