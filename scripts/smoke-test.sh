@@ -6,7 +6,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${MINIRUN_BIN:-$ROOT/.build/debug/minirun}"
 export MINIRUN_CONFIG="${MINIRUN_CONFIG:-$(mktemp -d)/config.json}"
 run() { echo "+ minirun call $*" >&2; "$BIN" call "$@"; }
-expect() { grep -q -- "$1" || { echo "FAILED: expected output to contain: $1" >&2; exit 1; }; }
+expect() {
+  local output; output=$(cat)
+  grep -q -- "$1" <<< "$output" || { echo "FAILED: expected output to contain: $1" >&2; echo "--- output was:" >&2; echo "$output" >&2; exit 1; }
+}
 
 "$BIN" doctor
 "$BIN" tools > /dev/null
