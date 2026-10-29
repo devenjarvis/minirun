@@ -1,5 +1,5 @@
 import { relayStub, type Env } from "./env";
-import type { ToolDefinition, ToolResult } from "./relay";
+import { streamKey, type ToolDefinition, type ToolResult } from "./relay";
 
 /**
  * A minimal MCP server over Streamable HTTP (JSON responses, no SSE). Every tool except
@@ -13,12 +13,22 @@ const INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
 Then exercise the app: describe_ui to find elements, tap by id/label (or x,y in points), type_text, swipe, screenshot to look.
 Long builds return a job_id; call get_job to wait for it.
-The user can watch and touch the simulator live in their browser — call mac_status for the link.`;
+
+Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
+- Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
+- build_and_run picks the simulator reserved for your repo + ref (or reserves one) and its result gives that simulator's UDID. You can also get one up front with boot_simulator {label: "owner/repo@branch"}.
+- Pass that UDID as device on every simulator call (tap, screenshot, describe_ui, launch_app, …). Without it, a call fails when several simulators are booted rather than guessing.
+- Never shut down or reuse a simulator reserved for something else; list_simulators shows who each one is reserved for.
+The user can watch and touch your simulator live in their browser: share the live view link from build_and_run or boot_simulator, or call mac_status with your device.`;
 
 const MAC_STATUS_TOOL: ToolDefinition = {
   name: "mac_status",
-  description: "Check whether the Mac is online, and get the link where the user can watch and control the simulator live in a browser.",
-  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  description: "Check whether the Mac is online, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it.",
+  inputSchema: {
+    type: "object",
+    properties: { device: { type: "string", description: "UDID of your simulator. The link opens straight to it." } },
+    additionalProperties: false,
+  },
 };
 
 interface RpcRequest {
@@ -85,7 +95,7 @@ async function handleMessage(message: RpcRequest, env: Env, origin: string): Pro
         const name = String(message.params?.name ?? "");
         const args = (message.params?.arguments as Record<string, unknown> | undefined) ?? {};
         if (!name) return rpcError(id, -32602, "Missing tool name");
-        if (name === MAC_STATUS_TOOL.name) return rpcResult(id, await macStatus(env, origin));
+        if (name === MAC_STATUS_TOOL.name) return rpcResult(id, await macStatus(env, origin, args.device));
         const result: ToolResult = await relayStub(env).call(name, args);
         return rpcResult(id, result);
       }
@@ -101,11 +111,16 @@ async function handleMessage(message: RpcRequest, env: Env, origin: string): Pro
   }
 }
 
-async function macStatus(env: Env, origin: string): Promise<ToolResult> {
+async function macStatus(env: Env, origin: string, device: unknown): Promise<ToolResult> {
   const status = await relayStub(env).status();
+  const key = streamKey(device);
+  if (key === null) return { content: [{ type: "text", text: "device must be a simulator UDID (from build_and_run, boot_simulator or list_simulators)." }], isError: true };
+  const link = key ? `${origin}/?device=${encodeURIComponent(key)}` : `${origin}/`;
   const lines = [
     status.online ? `The Mac is online${status.host?.name ? ` (${status.host.name})` : ""}.` : "The Mac is offline.",
-    `Live view: ${origin}/ — the user can watch and tap the simulator there (they'll be asked for the minirun password).`,
+    key
+      ? `Live view of simulator ${key}: ${link} — the user can watch and tap it there (they'll be asked for the minirun password).`
+      : `Live view: ${link} — the user can watch and tap a simulator there and switch between booted ones (they'll be asked for the minirun password). Pass device to get a link that opens on your simulator.`,
     `Viewers connected: ${status.viewers}. Tools available: ${status.toolCount}.`,
   ];
   if (!status.online) {

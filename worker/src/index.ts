@@ -24,7 +24,8 @@ async function handleDefault(request: Request, env: Env): Promise<Response> {
 
     case "/viewer/ws": {
       if (!(await isLoggedIn(request, env.OWNER_PASSWORD))) return new Response("Log in first", { status: 401 });
-      return relayStub(env).fetch(new Request("https://relay/viewer", request));
+      // Keeps ?device=UDID so the viewer opens on that simulator.
+      return relayStub(env).fetch(new Request("https://relay/viewer" + url.search, request));
     }
 
     case "/status": {
@@ -33,7 +34,7 @@ async function handleDefault(request: Request, env: Env): Promise<Response> {
     }
 
     case "/": {
-      if (!(await isLoggedIn(request, env.OWNER_PASSWORD))) return redirect("/login");
+      if (!(await isLoggedIn(request, env.OWNER_PASSWORD))) return redirect(url.search ? `/login?next=${encodeURIComponent("/" + url.search)}` : "/login");
       return html(viewerPage());
     }
 

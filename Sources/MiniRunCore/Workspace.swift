@@ -1,24 +1,28 @@
 import Foundation
 import MiniRunKit
 
-/// Git checkouts that builds run in: `<workspaceRoot>/<owner>/<name>`.
+/// Git checkouts that builds run in: `<workspaceRoot>/<owner>/<name>` for the default branch and
+/// `<workspaceRoot>/<owner>/<name>@<ref>` for each ref, so different branches never share a folder.
 enum Workspace {
     struct Checkout {
         let path: String
         let slug: String
+        let ref: String?
         let commit: String
         let subject: String
+
+        var label: String { WorkspaceNaming.label(slug: slug, ref: ref) }
     }
 
-    static func path(for slug: String, config: MiniRunConfig) -> String {
-        config.workspaceRoot + "/" + slug
+    static func path(for slug: String, ref: String?, config: MiniRunConfig) -> String {
+        config.workspaceRoot + "/" + WorkspaceNaming.directory(slug: slug, ref: ref)
     }
 
     /// Clones or updates `repo` and checks out `ref` (branch, tag or commit; default branch if nil).
     /// Local changes in the checkout are discarded; build output under `.minirun/` is kept.
     static func sync(repo: String, ref: String?, config: MiniRunConfig, log: URL?) async throws -> Checkout {
         let (url, slug) = try config.resolveRepo(repo)
-        let dir = path(for: slug, config: config)
+        let dir = path(for: slug, ref: ref, config: config)
         let fm = FileManager.default
 
         if !fm.fileExists(atPath: dir + "/.git") {
@@ -40,7 +44,7 @@ enum Workspace {
 
         let info = try await Shell.check("/usr/bin/git", ["log", "-1", "--format=%H%n%s"], cwd: dir, timeout: 30)
         let lines = info.stdout.split(separator: "\n", maxSplits: 1).map(String.init)
-        return Checkout(path: dir, slug: slug, commit: lines.first ?? "", subject: lines.count > 1 ? lines[1] : "")
+        return Checkout(path: dir, slug: slug, ref: ref, commit: lines.first ?? "", subject: lines.count > 1 ? lines[1] : "")
     }
 
     @discardableResult
@@ -60,8 +64,8 @@ enum Workspace {
         return result
     }
 
-    /// Resolves the directory for a tool call: an existing workspace by `repo`, or an explicit `path`.
-    static func directory(repo: String?, path: String?, config: MiniRunConfig) throws -> String {
+    /// Resolves the directory for a tool call: an existing checkout of `repo` at `ref`, or an explicit `path`.
+    static func directory(repo: String?, ref: String?, path: String?, config: MiniRunConfig) throws -> String {
         if let path {
             let expanded = (path as NSString).expandingTildeInPath
             let resolved = expanded.hasPrefix("/") ? expanded : config.workspaceRoot + "/" + expanded
@@ -71,9 +75,10 @@ enum Workspace {
         }
         if let repo {
             let (_, slug) = try config.resolveRepo(repo)
-            let dir = self.path(for: slug, config: config)
+            let dir = self.path(for: slug, ref: ref, config: config)
             guard FileManager.default.fileExists(atPath: dir + "/.git") else {
-                throw ToolError("\(slug) isn't checked out yet. Call sync_repo first, or pass `ref` to build so it syncs automatically.")
+                let what = WorkspaceNaming.label(slug: slug, ref: ref)
+                throw ToolError("\(what) isn't checked out yet. Call sync_repo with this repo and ref first, or pass `ref` to build so it syncs automatically.")
             }
             return dir
         }

@@ -70,6 +70,16 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
+    /// The browser link for watching a simulator live, derived from the relay URL
+    /// (wss://minirun.you.workers.dev/agent -> https://minirun.you.workers.dev/?device=UDID).
+    public func viewerURL(device: String?) -> String? {
+        guard let relayURL, var components = URLComponents(string: relayURL), let host = components.host, !host.isEmpty else { return nil }
+        components.scheme = components.scheme == "ws" ? "http" : "https"
+        components.path = "/"
+        components.queryItems = device.map { [URLQueryItem(name: "device", value: $0)] }
+        return components.string
+    }
+
     /// Turns "owner/name", a full URL, or an ssh remote into (cloneURL, "owner/name").
     public func resolveRepo(_ repo: String) throws -> (url: String, slug: String) {
         let trimmed = repo.trimmingCharacters(in: .whitespacesAndNewlines)

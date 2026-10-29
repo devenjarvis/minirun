@@ -249,7 +249,7 @@ struct HIDInteractor {
         return hid
     }
 
-    static func clearHIDConnections() {
-        hidConnections.removeAll()
+    static func clearHIDConnections(for simulatorUDID: String? = nil) {
+        if let simulatorUDID { hidConnections[simulatorUDID] = nil } else { hidConnections.removeAll() }
     }
 }
