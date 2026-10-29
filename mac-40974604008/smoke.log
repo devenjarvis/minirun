@@ -1,0 +1,29 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created 1CDF9A7D-D7AA-4247-A84D-95644E9C315B (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call screenshot {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call build_and_run {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600}
++ minirun call describe_ui {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call tap {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","id":"tapButton"}
++ minirun call describe_ui {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call tap {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","id":"nameField"}
++ minirun call type_text {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","text":"Claude"}
++ minirun call describe_ui {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call screenshot {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B"}
++ minirun call swipe {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","direction":"up"}
++ minirun call press_button {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","button":"home"}
++ minirun call app_logs {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","bundle_id":"dev.minirun.HelloApp","seconds":120}
++ minirun call terminate_app {"device":"1CDF9A7D-D7AA-4247-A84D-95644E9C315B","bundle_id":"dev.minirun.HelloApp"}
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"}
++ minirun call boot_simulator {"label":"smoke/second"}
++ minirun call list_simulators {"include_shutdown":false}
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600}
++ minirun call shutdown_simulator {"device":"8FFA0842-E4E0-4F65-AECF-B3D14E1318E6"}
+Smoke test passed.
