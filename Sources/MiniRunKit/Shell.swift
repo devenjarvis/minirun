@@ -89,6 +89,11 @@ public enum Shell {
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                     guard process.isRunning else { return }
                     exit.markTimedOut()
+                    // Stop direct children too (e.g. the command a shell is running).
+                    let pkill = Process()
+                    pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+                    pkill.arguments = ["-TERM", "-P", String(pid)]
+                    try? pkill.run()
                     process.terminate()
                     DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
                         if process.isRunning { kill(pid, SIGKILL) }
@@ -99,13 +104,17 @@ public enum Shell {
             if process.isRunning { process.terminate() }
         }
 
-        // Drain whatever is left in the pipes.
+        // Let the readability handlers drain what's buffered. Don't block on EOF: a child the
+        // command left running (or a daemon it spawned) can hold the pipe open indefinitely.
+        var lastCount = -1
+        for _ in 0..<20 {
+            let count = collector.byteCount
+            if count == lastCount { break }
+            lastCount = count
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
         stdoutPipe.fileHandleForReading.readabilityHandler = nil
         stderrPipe.fileHandleForReading.readabilityHandler = nil
-        let restOut = (try? stdoutPipe.fileHandleForReading.readToEnd()) ?? nil
-        let restErr = (try? stderrPipe.fileHandleForReading.readToEnd()) ?? nil
-        if let restOut, !restOut.isEmpty { collector.append(restOut, isError: false) }
-        if let restErr, !restErr.isEmpty { collector.append(restErr, isError: true) }
         collector.close()
 
         let (out, err) = collector.snapshot()
@@ -178,6 +187,12 @@ final class OutputCollector: @unchecked Sendable {
         if stdout.count > cap { stdout = stdout.suffix(cap / 2) }
         if stderr.count > cap { stderr = stderr.suffix(cap / 2) }
         logHandle?.write(data)
+    }
+
+    var byteCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return stdout.count + stderr.count
     }
 
     func snapshot() -> (String, String) {

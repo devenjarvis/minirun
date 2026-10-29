@@ -12,6 +12,14 @@ public enum XcodeParsing {
         public let runtime: String
         public let isAvailable: Bool
 
+        public init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool) {
+            self.udid = udid
+            self.name = name
+            self.state = state
+            self.runtime = runtime
+            self.isAvailable = isAvailable
+        }
+
         public var isBooted: Bool { state == "Booted" }
 
         /// "com.apple.CoreSimulator.SimRuntime.iOS-26-0" -> "iOS 26.0"

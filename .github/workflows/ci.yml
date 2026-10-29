@@ -50,13 +50,21 @@ jobs:
           echo "version=$(xcodebuild -version | tr -d '\n ' )" >> "$GITHUB_OUTPUT"
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Cache frameworks
-        uses: actions/cache@v4
+      - name: Restore frameworks
+        id: frameworks
+        uses: actions/cache/restore@v4
         with:
           path: Vendor
           key: frameworks-${{ runner.os }}-${{ hashFiles('scripts/build-frameworks.sh') }}-${{ steps.xcode.outputs.version }}
       - name: Build FBSimulatorControl frameworks
+        if: steps.frameworks.outputs.cache-hit != 'true'
         run: scripts/ci-step.sh frameworks ./scripts/build-frameworks.sh
+      - name: Save frameworks
+        if: steps.frameworks.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: Vendor
+          key: frameworks-${{ runner.os }}-${{ hashFiles('scripts/build-frameworks.sh') }}-${{ steps.xcode.outputs.version }}
       - name: Build minirun
         run: scripts/ci-step.sh swift-build swift build
       - name: Unit tests

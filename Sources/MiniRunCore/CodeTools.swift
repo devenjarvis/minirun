@@ -205,7 +205,9 @@ extension ToolRegistry {
 
     /// Syncs if `ref` was given, then returns the directory to build in.
     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
-        if let repo = args.string("repo"), args.string("ref") != nil || !FileManager.default.fileExists(atPath: Workspace.path(for: try config.resolveRepo(repo).slug, config: config) + "/.git") {
+        if let repo = args.string("repo") {
+            let existing = Workspace.path(for: try config.resolveRepo(repo).slug, config: config)
+            guard args.string("ref") != nil || !FileManager.default.fileExists(atPath: existing + "/.git") else { return existing }
             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
             return checkout.path
