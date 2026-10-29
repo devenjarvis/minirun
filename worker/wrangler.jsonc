@@ -1,0 +1,18 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "minirun",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "MAC_RELAY", "class_name": "MacRelay" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MacRelay"] }],
+  // Holds OAuth clients, grants and tokens. `./setup.sh` creates it and fills in the id.
+  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" }]
+  // Secrets (set with `wrangler secret put`, or by ./setup.sh):
+  //   OWNER_PASSWORD — you type this to log in to the viewer and to approve Claude's connector
+  //   AGENT_TOKEN    — the Mac uses this to connect; also saved in the Mac's minirun config
+}

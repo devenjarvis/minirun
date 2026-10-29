@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
@@ -12,8 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.1-noble
     steps:
-      - uses: actions/checkout@v4
-      - run: swift test
+      - uses: actions/checkout@v5
+      - run: scripts/ci-step.sh linux-swift-test swift test
+      - if: failure()
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE" && scripts/publish-ci-logs.sh "linux-${{ github.run_id }}"
 
   worker:
     name: Worker
@@ -22,22 +27,22 @@ jobs:
       run:
         working-directory: worker
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+      - run: ../scripts/ci-step.sh worker-typecheck npm run typecheck
+      - run: ../scripts/ci-step.sh worker-test npm test
 
   mac:
     name: macOS build + simulator smoke test
     runs-on: macos-26
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Xcode version
         id: xcode
         run: |
@@ -51,20 +56,17 @@ jobs:
           path: Vendor
           key: frameworks-${{ runner.os }}-${{ hashFiles('scripts/build-frameworks.sh') }}-${{ steps.xcode.outputs.version }}
       - name: Build FBSimulatorControl frameworks
-        run: ./scripts/build-frameworks.sh
+        run: scripts/ci-step.sh frameworks ./scripts/build-frameworks.sh
       - name: Build minirun
-        run: swift build
+        run: scripts/ci-step.sh swift-build swift build
       - name: Unit tests
-        run: swift test
+        run: scripts/ci-step.sh swift-test swift test
       - name: Simulator smoke test
-        run: ./scripts/smoke-test.sh
-      - name: Upload logs on failure
+        run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
+      - name: Publish logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: logs
-          path: |
-            ~/Library/Logs/minirun
-            /tmp/minirun-*.txt
-            /tmp/minirun-*.jpg
-          if-no-files-found: ignore
+        run: |
+          mkdir -p ci-logs/minirun ci-logs/tmp
+          cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
+          cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
+          scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
