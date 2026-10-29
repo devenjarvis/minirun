@@ -5,6 +5,9 @@
 #   ./scripts/install.sh            build, deploy Worker, install and start
 #   ./scripts/install.sh --no-worker   skip the Worker (already deployed; run `minirun setup` yourself)
 #   ./scripts/install.sh --uninstall
+#
+# Optionally also registers this Mac as a self-hosted GitHub Actions runner (see scripts/github-runner.sh):
+#   ./scripts/install.sh --github-runner owner/repo [--github-runner owner/other] [--allow-public]
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFIX="$HOME/.minirun"
@@ -12,13 +15,37 @@ LABEL="dev.minirun.agent"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/minirun/minirun.log"
 
-if [[ "${1:-}" == "--uninstall" ]]; then
+UNINSTALL=false NO_WORKER=false ALLOW_PUBLIC=false
+GITHUB_RUNNERS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --uninstall) UNINSTALL=true ;;
+    --no-worker) NO_WORKER=true ;;
+    --github-runner)
+      [[ -n "${2:-}" ]] || { echo "--github-runner needs a repository: --github-runner owner/repo"; exit 1; }
+      GITHUB_RUNNERS+=("$2"); shift ;;
+    --allow-public) ALLOW_PUBLIC=true ;;
+    *) echo "Unknown option: $1 (see the top of $0)"; exit 1 ;;
+  esac
+  shift
+done
+
+if $UNINSTALL; then
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   rm -f "$PLIST"
   rm -rf "$PREFIX/bin"
   echo "minirun removed (config in ~/.config/minirun and workspaces in ~/minirun were kept)."
+  if compgen -G "$PREFIX/github-runner/*/" >/dev/null; then
+    echo "GitHub runners are still installed; remove each with: $ROOT/scripts/github-runner.sh uninstall owner/repo"
+    "$ROOT/scripts/github-runner.sh" status || true
+  fi
   exit 0
 fi
+
+# Fail on a bad repository name now, not after a long build.
+for repo in ${GITHUB_RUNNERS[@]+"${GITHUB_RUNNERS[@]}"}; do
+  [[ "$repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "--github-runner expects owner/repo, got '$repo'"; exit 1; }
+done
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
@@ -46,7 +73,7 @@ done
 codesign --force --sign - --deep "$PREFIX/bin/minirun" >/dev/null 2>&1 || true
 echo "Installed to $PREFIX/bin/minirun"
 
-if [[ "${1:-}" != "--no-worker" ]] && ! grep -q '"relayURL"' "$HOME/.config/minirun/config.json" 2>/dev/null; then
+if ! $NO_WORKER && ! grep -q '"relayURL"' "$HOME/.config/minirun/config.json" 2>/dev/null; then
   step "Deploying the Cloudflare Worker"
   "$ROOT/worker/setup.sh"
   source "$HOME/.config/minirun/worker.env"
@@ -81,6 +108,16 @@ sleep 3
 step "Checking"
 "$PREFIX/bin/minirun" doctor || true
 tail -n 5 "$LOG" || true
+
+for repo in ${GITHUB_RUNNERS[@]+"${GITHUB_RUNNERS[@]}"}; do
+  step "Setting up a GitHub Actions runner for $repo"
+  args=(install "$repo")
+  $ALLOW_PUBLIC && args+=(--allow-public)
+  "$ROOT/scripts/github-runner.sh" "${args[@]}" || {
+    echo "The GitHub runner for $repo wasn't set up. minirun itself is installed; fix the above and run:"
+    echo "  $ROOT/scripts/github-runner.sh ${args[*]}"
+    exit 1; }
+done
 
 if [[ -f "$HOME/.config/minirun/worker.env" ]]; then
   source "$HOME/.config/minirun/worker.env"
