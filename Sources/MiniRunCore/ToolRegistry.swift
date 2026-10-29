@@ -16,8 +16,12 @@ public final class ToolRegistry: @unchecked Sendable {
     let geometry = ScreenGeometryCache()
     /// Which booted simulator is reserved for which repo and branch.
     let claims = SimulatorClaimStore(url: SimulatorClaimStore.defaultURL)
-    /// One simulator pick (and boot) at a time, so two sessions can't both take the same one.
+    /// One simulator pick at a time, so two sessions can't both take the same one. Boots run
+    /// outside it (see `SimulatorBoots`).
     let allocation = KeyedLock()
+    let boots = SimulatorBoots()
+    /// Simulators with a job running or a viewer watching, which idle shutdown leaves alone.
+    let activity = SimulatorActivity()
     /// One sync/build at a time per checkout.
     let checkouts = KeyedLock()
     private(set) var tools: [String: Tool] = [:]
@@ -52,54 +56,145 @@ public final class ToolRegistry: @unchecked Sendable {
     /// The simulator a tool call acts on: `device` if given, else the only booted one.
     /// Fails with a list of booted simulators rather than guessing when several are running.
     func device(_ args: ToolArguments, boot: Bool = true) async throws -> XcodeParsing.SimDevice {
-        let all = try await Simctl.devices()
+        let (all, current) = try await simulators()
         let choice = SimulatorPicker.target(
             query: args.string("device"), workspace: nil, devices: all,
-            claims: await claimSnapshot(all), preferredName: config.defaultDevice
+            claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators
         )
-        let device = try await realize(choice, boot: boot).device
+        let device = try await realize(choice, boot: boot).ready()
         await claims.touch(device.udid)
         return device
     }
 
     /// The simulator for a build of `workspace` ("owner/app@ref"), reserved for it. Uses the one
     /// already reserved for this workspace, an unreserved booted one, or boots a separate one.
+    /// The pick and reservation happen under the allocation lock; waiting for a boot doesn't.
     func workspaceDevice(_ args: ToolArguments, workspace: String) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
-        try await allocation.withLock("simulators") { () async throws -> (device: XcodeParsing.SimDevice, note: String?) in
-            let all = try await Simctl.devices()
+        let allocated = try await allocation.withLock("simulators") { () async throws -> Allocation in
+            let (all, current) = try await simulators()
             let choice = SimulatorPicker.target(
                 query: args.string("device"), workspace: workspace, devices: all,
-                claims: await claimSnapshot(all), preferredName: config.defaultDevice
+                claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators
             )
-            let (device, realizedNote) = try await realize(choice, boot: true)
-            var note = realizedNote
-            if let previous = await claims.reserve(device.udid, for: workspace) {
-                note = [note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
+            var allocated = try await realize(choice, boot: true)
+            if let previous = await claims.reserve(allocated.device.udid, for: workspace) {
+                allocated.note = [allocated.note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
             }
-            return (device, note)
+            return allocated
+        }
+        let device = try await allocated.ready()
+        return (device, allocated.note)
+    }
+
+    /// The available simulators and their reservations. A simulator that's still booting shows as
+    /// booted, so picks count it as running and its reservation isn't dropped mid-boot.
+    func simulators() async throws -> (devices: [XcodeParsing.SimDevice], claims: [String: SimulatorClaim]) {
+        // Read the boots first: one that finishes in between then shows as booted either way.
+        let booting = await boots.booting
+        let all = try await Simctl.devices().map { booting.contains($0.udid) ? $0.booted : $0 }
+        let current = await claims.snapshot(booted: Set(all.filter(\.isBooted).map(\.udid)))
+        return (all, current)
+    }
+
+    /// A simulator handed out by a pick, possibly still booting.
+    struct Allocation {
+        let device: XcodeParsing.SimDevice
+        var note: String?
+        let boot: Task<Void, Error>?
+
+        /// Waits for the boot, if there is one, and returns the simulator.
+        func ready() async throws -> XcodeParsing.SimDevice {
+            try await boot?.value
+            return device
         }
     }
 
-    func claimSnapshot(_ devices: [XcodeParsing.SimDevice]) async -> [String: SimulatorClaim] {
-        await claims.snapshot(booted: Set(devices.filter(\.isBooted).map(\.udid)))
-    }
-
-    /// Carries out a picker decision: boots the simulator, or creates a new one first.
-    func realize(_ choice: SimulatorPicker.Choice, boot: Bool) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
+    /// Carries out a picker decision: creates the simulator if needed and starts booting it. It
+    /// doesn't wait for the boot, so callers can let go of the allocation lock first; call `ready()`
+    /// on the result before using the simulator.
+    func realize(_ choice: SimulatorPicker.Choice, boot: Bool) async throws -> Allocation {
         switch choice {
         case .failure(let message):
             throw ToolError(message)
         case .use(let device, let note):
-            guard boot, !device.isBooted else { return (device, note) }
-            try await Simctl.boot(device.udid)
-            await SimulatorDriver.shared.reset(udid: device.udid)
-            await geometry.invalidate(udid: device.udid)
-            return (device.booted, note)
+            if let running = await boots.task(device.udid) { return Allocation(device: device, note: note, boot: running) }
+            guard boot, !device.isBooted else { return Allocation(device: device, note: note, boot: nil) }
+            let started = await startBoot(device.udid)
+            return Allocation(device: device.booted, note: note, boot: started)
         case .create(let name, let like, let note):
             let udid = try await Simctl.create(name: name, like: like)
-            try await Simctl.boot(udid)
             let device = XcodeParsing.SimDevice(udid: udid, name: name, state: "Booted", runtime: like.runtime, isAvailable: true, deviceType: like.deviceType)
-            return (device, [note, "Created \(name) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " "))
+            let fullNote = [note, "Created \(name) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " ")
+            let started = await startBoot(udid)
+            return Allocation(device: device, note: fullNote, boot: started)
+        }
+    }
+
+    private func startBoot(_ udid: String) async -> Task<Void, Error> {
+        await boots.start(udid) { [self] in
+            try await Simctl.boot(udid)
+            await SimulatorDriver.shared.reset(udid: udid)
+            await geometry.invalidate(udid: udid)
+        }
+    }
+
+    /// Runs `body` with the simulator marked busy, so idle shutdown leaves it alone however long a
+    /// build or test takes, then counts it as just used.
+    func whileUsing<T>(_ udid: String, _ body: () async throws -> T) async throws -> T {
+        await activity.begin(udid)
+        do {
+            let value = try await body()
+            await activity.end(udid)
+            await claims.touch(udid)
+            return value
+        } catch {
+            await activity.end(udid)
+            await claims.touch(udid)
+            throw error
+        }
+    }
+
+    /// Checks every minute for simulators nobody has used in `idleShutdownMinutes` and shuts them
+    /// down (see `IdleSimulators.plan`). Runs until cancelled; returns at once if turned off.
+    public func shutDownIdleSimulators(log: @escaping @Sendable (String) -> Void) async {
+        guard config.idleShutdownMinutes > 0 else { return }
+        log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes")
+        while !Task.isCancelled {
+            try? await Task.sleep(nanoseconds: 60_000_000_000)
+            do {
+                try await shutDownIdleSimulatorsOnce(log: log)
+            } catch {
+                log("Idle simulator check failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func shutDownIdleSimulatorsOnce(log: @Sendable (String) -> Void) async throws {
+        let minutes = config.idleShutdownMinutes
+        // Under the allocation lock so a pick can't hand out a simulator while it's shutting down.
+        try await allocation.withLock("simulators") { () async throws -> Void in
+            let busy = (await activity.busy).union(await boots.booting)
+            let (all, current) = try await simulators()
+            let booted = all.filter(\.isBooted)
+            let names = Dictionary(booted.map { ($0.udid, $0.name) }, uniquingKeysWith: { a, _ in a })
+            for action in IdleSimulators.plan(booted: booted, claims: current, busy: busy, idleAfter: Double(minutes) * 60) {
+                switch action {
+                case .unreserve(let udid):
+                    await claims.unreserve(udid)
+                    log("Released \(names[udid] ?? udid) (\(udid)): not used for \(minutes) min. Keeping it booted as a spare.")
+                case .shutdown(let udid):
+                    do {
+                        try await Simctl.shutdown(udid)
+                    } catch {
+                        log("Couldn't shut down idle simulator \(udid): \(error.localizedDescription)")
+                        continue
+                    }
+                    await claims.release(udid)
+                    await SimulatorDriver.shared.reset(udid: udid)
+                    await geometry.invalidate(udid: udid)
+                    log("Shut down \(names[udid] ?? udid) (\(udid)): not used for \(minutes) min.")
+                }
+            }
         }
     }
 

@@ -198,6 +198,8 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.relayURL, "wss://x/agent")
         XCTAssertFalse(config.allowShell)
         XCTAssertTrue(config.preventSleep)
+        XCTAssertEqual(config.idleShutdownMinutes, 30)
+        XCTAssertEqual(config.maxBootedSimulators, 4)
     }
 }
 
@@ -334,6 +336,104 @@ final class SimulatorPickerTests: XCTestCase {
             .create(name: "iPhone 17 Pro (minirun 4)", like: devices[0])
         )
         XCTAssertEqual(udid(SimulatorPicker.fresh(query: "A", label: nil, devices: devices, claims: claims, preferredName: nil)), "A", "UDID wins")
+    }
+
+    func testBootRespectsTheLimit() {
+        let devices = [device("A", "iPhone 17 Pro", booted: true), device("B", "iPhone 17 Pro", booted: true), device("C", "iPhone 17 Pro")]
+        let claims = ["A": claim("you/app@a"), "B": claim("you/app@b")]
+        let full = SimulatorPicker.fresh(query: nil, label: "you/app@c", devices: devices, claims: claims, preferredName: nil, maxBooted: 2, now: now)
+        XCTAssertTrue(message(full).contains("2 simulators are already running"))
+        XCTAssertTrue(message(full).contains("shutdown_simulator"))
+        XCTAssertEqual(udid(SimulatorPicker.fresh(query: nil, label: "you/app@a", devices: devices, claims: claims, preferredName: nil, maxBooted: 2)), "A", "your own is still yours")
+        XCTAssertEqual(udid(SimulatorPicker.fresh(query: nil, label: "you/app@c", devices: devices, claims: claims, preferredName: nil, maxBooted: 3)), "C")
+    }
+
+    func testIdleSimulatorsShutDownButOneStaysWarm() {
+        let a = device("A", "iPhone 17 Pro", booted: true), b = device("B", "iPhone 17", booted: true), c = device("C", "iPhone 17 Pro Max", booted: true)
+        let hour: TimeInterval = 3600
+
+        // Both idle: the more recent one stays up, freed for other work.
+        var claims = ["A": claim("you/app@a", minutesAgo: 90), "B": claim("you/app@b", minutesAgo: 70)]
+        XCTAssertEqual(IdleSimulators.plan(booted: [a, b], claims: claims, busy: [], idleAfter: hour, now: now), [.unreserve("B"), .shutdown("A")])
+
+        // A spare that's already free is left as it is.
+        claims["B"] = claim(nil, minutesAgo: 70)
+        XCTAssertEqual(IdleSimulators.plan(booted: [b], claims: claims, busy: [], idleAfter: hour, now: now), [])
+
+        // Something else is still running, so every idle one goes.
+        claims["C"] = claim("you/app@c", minutesAgo: 5)
+        XCTAssertEqual(IdleSimulators.plan(booted: [a, b, c], claims: claims, busy: [], idleAfter: hour, now: now), [.shutdown("B"), .shutdown("A")])
+
+        // A job or a viewer keeps a simulator up however long ago a tool touched it.
+        XCTAssertEqual(IdleSimulators.plan(booted: [a, b], claims: claims, busy: ["A"], idleAfter: hour, now: now), [.shutdown("B")])
+
+        // Simulators minirun never used are left alone, and so is everything when turned off.
+        XCTAssertEqual(IdleSimulators.plan(booted: [a, c], claims: ["C": claim(nil, minutesAgo: 5)], busy: [], idleAfter: hour, now: now), [])
+        XCTAssertEqual(IdleSimulators.plan(booted: [a, b], claims: claims, busy: [], idleAfter: 0, now: now), [])
+    }
+
+    func testBootsRunOnceAndReportFailures() async throws {
+        let boots = SimulatorBoots()
+        let log = EventLog()
+        let first = await boots.start("A") {
+            await log.add("boot A")
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        let second = await boots.start("A") { await log.add("boot A again") }
+        let booting = await boots.booting
+        XCTAssertEqual(booting, ["A"])
+        let joined = await boots.task("A")
+        XCTAssertNotNil(joined)
+        try await first.value
+        try await second.value
+        let events = await log.events
+        XCTAssertEqual(events, ["boot A"], "a second start joins the running boot")
+        var stillBooting = true
+        for _ in 0..<50 {
+            stillBooting = await boots.isBooting("A")
+            if !stillBooting { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertFalse(stillBooting, "a finished boot is no longer listed")
+
+        let failing = await boots.start("B") { throw ToolError("no runtime") }
+        do {
+            try await failing.value
+            XCTFail("expected the boot to fail")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("no runtime"))
+        }
+    }
+
+    func testActivityCountsOverlappingWork() async {
+        let activity = SimulatorActivity()
+        await activity.begin("A")
+        await activity.begin("A")
+        await activity.end("A")
+        var busy = await activity.busy
+        XCTAssertEqual(busy, ["A"], "a viewer and a job overlap")
+        await activity.end("A")
+        await activity.end("A")
+        busy = await activity.busy
+        XCTAssertEqual(busy, [])
+    }
+
+    func testClaimStoreSavesUseTimesAndUnreserves() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("minirun-claims-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = SimulatorClaimStore(url: url)
+        await store.reserve("A", for: "you/app@a", now: now)
+        await store.touch("A", now: now.addingTimeInterval(30))
+        var reloaded = await SimulatorClaimStore(url: url).snapshot(booted: ["A"])
+        XCTAssertEqual(reloaded["A"]?.updatedAt, now, "touches within a minute aren't written")
+        await store.touch("A", now: now.addingTimeInterval(120))
+        reloaded = await SimulatorClaimStore(url: url).snapshot(booted: ["A"])
+        XCTAssertEqual(reloaded["A"]?.updatedAt, now.addingTimeInterval(120))
+
+        await store.unreserve("A")
+        reloaded = await SimulatorClaimStore(url: url).snapshot(booted: ["A"])
+        XCTAssertNil(reloaded["A"]?.label)
+        XCTAssertEqual(reloaded["A"]?.updatedAt, now.addingTimeInterval(120), "freeing it doesn't count as using it")
     }
 
     func testClaimStorePersistsAndPrunes() async throws {

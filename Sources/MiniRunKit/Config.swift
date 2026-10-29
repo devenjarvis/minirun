@@ -16,6 +16,11 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     public var preventSleep: Bool
     /// Clone URL template; `{repo}` becomes "owner/name".
     public var gitURLTemplate: String
+    /// Shuts down a simulator nobody has used for this many minutes (0 keeps them running).
+    /// The most recently used one stays booted as a spare, with its reservation released.
+    public var idleShutdownMinutes: Int
+    /// How many simulators minirun keeps booted at once before it asks for one to be freed.
+    public var maxBootedSimulators: Int
 
     public init(
         relayURL: String? = nil,
@@ -24,7 +29,9 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         defaultDevice: String? = nil,
         allowShell: Bool = false,
         preventSleep: Bool = true,
-        gitURLTemplate: String = "https://github.com/{repo}.git"
+        gitURLTemplate: String = "https://github.com/{repo}.git",
+        idleShutdownMinutes: Int = 30,
+        maxBootedSimulators: Int = 4
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -33,6 +40,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.allowShell = allowShell
         self.preventSleep = preventSleep
         self.gitURLTemplate = gitURLTemplate
+        self.idleShutdownMinutes = idleShutdownMinutes
+        self.maxBootedSimulators = maxBootedSimulators
     }
 
     public init(from decoder: Decoder) throws {
@@ -44,6 +53,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         allowShell = try c.decodeIfPresent(Bool.self, forKey: .allowShell) ?? false
         preventSleep = try c.decodeIfPresent(Bool.self, forKey: .preventSleep) ?? true
         gitURLTemplate = try c.decodeIfPresent(String.self, forKey: .gitURLTemplate) ?? "https://github.com/{repo}.git"
+        idleShutdownMinutes = try c.decodeIfPresent(Int.self, forKey: .idleShutdownMinutes) ?? 30
+        maxBootedSimulators = try c.decodeIfPresent(Int.self, forKey: .maxBootedSimulators) ?? 4
     }
 
     public static var home: String { FileManager.default.homeDirectoryForCurrentUser.path }

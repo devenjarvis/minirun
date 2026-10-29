@@ -101,6 +101,12 @@ different branches of the same app (for example, two worktrees). minirun keeps t
   boots a separate one, creating a copy such as "iPhone 17 Pro (minirun 2)" if every simulator of
   that model is busy. `boot_simulator {label: "you/app@feature-a"}` does the same up front.
   Reservations are saved in `~/.config/minirun/simulators.json` and end when the simulator shuts down.
+- **Idle simulators shut down.** A simulator nobody has used for `idleShutdownMinutes` (30 by
+  default) is shut down and its reservation released. Running builds and tests, and an open live
+  view, count as use. The most recently used simulator stays booted as a free spare, so the next
+  session doesn't wait for a boot. Simulators you booted yourself, outside minirun, are left alone.
+- **Boots don't block each other.** A new simulator's first boot can take minutes. Other sessions
+  can pick, and use, their own simulators while it runs.
 - **No guessing.** Results name the simulator's UDID, and Claude passes it as `device` on later calls.
   If a call leaves out `device` while several simulators are booted, it fails with a list of
   them and who each is reserved for, rather than tapping on someone else's simulator.
@@ -135,6 +141,8 @@ Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
 | `defaultDevice` | newest iPhone | Simulator model to boot when a session needs one, e.g. `"iPhone 17 Pro"` |
 | `allowShell` | `false` | Enables `run_command`: arbitrary shell commands on your Mac |
 | `preventSleep` | `true` | Blocks idle sleep while serving |
+| `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
+| `maxBootedSimulators` | `4` | How many simulators minirun runs at once. Past this, a call that needs another one fails and lists the running ones |
 
 After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
 
