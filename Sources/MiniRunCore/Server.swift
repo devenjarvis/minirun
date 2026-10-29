@@ -31,6 +31,28 @@ public enum Server {
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }
         let client = RelayClient(url: url, token: token, registry: registry, log: { Server.log($0) })
+
+        let startedAt = Date()
+        let control = ControlServer(path: MiniRunConfig.controlSocketURL.path) { line in
+            await ControlProtocol.respond(to: line) {
+                let local = await registry.status()
+                var relay = client.relayStatus
+                relay.viewerURL = config.viewerURL(device: nil)
+                return ServeStatus(
+                    version: MiniRun.version, pid: ProcessInfo.processInfo.processIdentifier, startedAt: startedAt,
+                    relay: relay, simulators: local.simulators, simulatorError: local.simulatorError, jobs: local.jobs
+                )
+            }
+        }
+        do {
+            try control.start()
+            log("Answering status requests on \(control.path)")
+        } catch {
+            // Not fatal: Claude can still reach the Mac; only `minirun status` and the menu bar app can't.
+            log("Warning: no control socket: \(error.localizedDescription)")
+        }
+        defer { control.stop() }
+
         await client.run()
     }
 

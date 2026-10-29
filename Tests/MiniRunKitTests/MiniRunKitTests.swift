@@ -501,3 +501,129 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertLessThan(events.firstIndex(of: "other")!, events.firstIndex(of: "first end")!, "other keys don't wait")
     }
 }
+
+final class ControlSocketTests: XCTestCase {
+    let now = Date(timeIntervalSince1970: 2_000_000_000)
+    var directory: String!
+
+    override func setUp() {
+        // Short: socket paths are limited to ~104 bytes, and macOS temp folders are long.
+        directory = "/tmp/mr-" + UUID().uuidString.prefix(8)
+        try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(atPath: directory)
+    }
+
+    func sample() -> ServeStatus {
+        ServeStatus(
+            version: "0.1.0", pid: 42, startedAt: now.addingTimeInterval(-7200),
+            relay: .init(state: .connected, host: "minirun.you.workers.dev", since: now.addingTimeInterval(-600), viewerURL: "https://minirun.you.workers.dev/"),
+            simulators: [
+                .init(udid: "SIM-A", name: "iPhone 17 Pro", runtime: "iOS 26.0", reservedFor: "you/app@main", bundleID: "com.you.app",
+                      lastUsed: now.addingTimeInterval(-120), busy: true, viewerURL: "https://minirun.you.workers.dev/?device=SIM-A"),
+                .init(udid: "SIM-B", name: "iPhone 17 Pro (minirun 2)", runtime: "iOS 26.0", booting: true, reservedFor: "you/app@feature"),
+            ],
+            jobs: [
+                .init(id: "job_2", title: "build_and_run you/app@feature", status: "running", startedAt: now.addingTimeInterval(-30)),
+                .init(id: "job_1", title: "run_tests you/app@main", status: "failed", startedAt: now.addingTimeInterval(-400), finishedAt: now.addingTimeInterval(-300)),
+            ]
+        )
+    }
+
+    func testStatusRoundTripsOverTheSocket() async throws {
+        let path = directory + "/control.sock"
+        let status = sample()
+        let server = ControlServer(path: path) { line in
+            await ControlProtocol.respond(to: line) { status }
+        }
+        try server.start()
+        defer { server.stop() }
+
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600, "only this user may ask")
+
+        let line = try await Task.detached {
+            try ControlSocket.request(path, ControlProtocol.encode(ControlProtocol.Request(command: "status")))
+        }.value
+        let response = try ControlProtocol.decode(ControlProtocol.Response.self, from: line)
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.status, status)
+
+        let unknown = try await Task.detached { try ControlSocket.request(path, #"{"command":"dance"}"#) }.value
+        XCTAssertEqual(try ControlProtocol.decode(ControlProtocol.Response.self, from: unknown).error, "Unknown command dance.")
+        let garbage = try await Task.detached { try ControlSocket.request(path, "hello") }.value
+        XCTAssertFalse(try ControlProtocol.decode(ControlProtocol.Response.self, from: garbage).ok)
+    }
+
+    func testOneServerPerPathAndLeftoverSocketsAreReplaced() async throws {
+        let path = directory + "/control.sock"
+        // A regular file where the socket goes, as if a crashed daemon left something behind.
+        FileManager.default.createFile(atPath: path, contents: Data())
+        let first = ControlServer(path: path) { _ in "first" }
+        try first.start()
+
+        let second = ControlServer(path: path) { _ in "second" }
+        XCTAssertThrowsError(try second.start(), "a running server keeps its socket")
+        let answer = try await Task.detached { try ControlSocket.request(path, "hi") }.value
+        XCTAssertEqual(answer, "first")
+
+        first.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path), "stop removes the socket")
+        XCTAssertThrowsError(try ControlSocket.request(path, "hi"))
+        try second.start()
+        defer { second.stop() }
+        let after = try await Task.detached { try ControlSocket.request(path, "hi") }.value
+        XCTAssertEqual(after, "second")
+    }
+
+    func testConcurrentRequests() async throws {
+        let path = directory + "/control.sock"
+        let server = ControlServer(path: path) { line in
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            return "echo " + line
+        }
+        try server.start()
+        defer { server.stop() }
+        let answers = try await withThrowingTaskGroup(of: String.self) { group in
+            for i in 0..<8 { group.addTask { try ControlSocket.request(path, "\(i)") } }
+            return try await group.reduce(into: [String]()) { $0.append($1) }
+        }
+        XCTAssertEqual(Set(answers), Set((0..<8).map { "echo \($0)" }))
+    }
+
+    func testSocketPathLimit() {
+        XCTAssertThrowsError(try ControlServer(path: "/tmp/" + String(repeating: "x", count: 200)) { _ in "" }.start())
+    }
+
+    func testSummary() {
+        XCTAssertEqual(sample().summary(now: now), """
+        minirun 0.1.0 serving (pid 42, up 2h 0m)
+        Relay: connected to minirun.you.workers.dev for 10m
+        Live view: https://minirun.you.workers.dev/
+
+        Simulators:
+          iPhone 17 Pro (iOS 26.0) SIM-A — reserved for you/app@main, busy, last app com.you.app, used 2 min ago
+          iPhone 17 Pro (minirun 2) (iOS 26.0) SIM-B — booting, reserved for you/app@feature
+
+        Jobs (1 running):
+          job_2 build_and_run you/app@feature: running for 30s
+          job_1 run_tests you/app@main: failed in 1m
+        """)
+
+        var down = sample()
+        down.relay = .init(state: .disconnected, host: "minirun.you.workers.dev", since: now.addingTimeInterval(-45), problem: "The relay rejected the agent token.")
+        down.simulators = []
+        down.jobs = []
+        XCTAssertEqual(down.summary(now: now), """
+        minirun 0.1.0 serving (pid 42, up 2h 0m)
+        Relay: disconnected from minirun.you.workers.dev for 45s
+          The relay rejected the agent token.
+
+        Simulators: none booted
+
+        Jobs: none yet
+        """)
+    }
+}

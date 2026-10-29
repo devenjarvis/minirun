@@ -129,6 +129,10 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
 `minirun call tap '{"label":"General"}'`.
 
+See what the running `minirun serve` is doing with `minirun status`: the relay connection, the booted
+simulators and who each is reserved for, and recent jobs. `minirun status --json` gives the same as
+JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that only your user can open.
+
 ## Configuration
 
 `~/.config/minirun/config.json` (written by `minirun setup`):

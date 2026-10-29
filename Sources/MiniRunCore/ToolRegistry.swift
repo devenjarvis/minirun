@@ -198,6 +198,30 @@ public final class ToolRegistry: @unchecked Sendable {
         }
     }
 
+    /// The booted simulators and recent jobs, for the status snapshot.
+    public func status() async -> (simulators: [ServeStatus.Simulator], simulatorError: String?, jobs: [ServeStatus.Job]) {
+        let recent = await self.jobs.list().prefix(20).map { ServeStatus.Job($0) }
+        let busy = await activity.busy
+        let booting = await boots.booting
+        do {
+            let (all, current) = try await simulators()
+            let booted = all.filter(\.isBooted).map { device in
+                ServeStatus.Simulator(
+                    udid: device.udid, name: device.name, runtime: device.runtimeName,
+                    booting: booting.contains(device.udid),
+                    reservedFor: current[device.udid]?.label,
+                    bundleID: current[device.udid]?.bundleID,
+                    lastUsed: current[device.udid]?.updatedAt,
+                    busy: busy.contains(device.udid),
+                    viewerURL: config.viewerURL(device: device.udid)
+                )
+            }
+            return (booted, nil, recent)
+        } catch {
+            return ([], error.localizedDescription, recent)
+        }
+    }
+
     /// "UDID … — pass it as device" plus the live view link, for results that hand out a simulator.
     func deviceFooter(_ device: XcodeParsing.SimDevice) -> String {
         var text = "Simulator: \(device.name), UDID \(device.udid). Pass device: \"\(device.udid)\" on later calls so they reach this simulator."
