@@ -55,6 +55,9 @@ That script:
    namespace, and generates a password and an agent token, saved in `~/.config/minirun/worker.env`.
 5. Installs a LaunchAgent so `minirun serve` starts at login and restarts if it crashes.
 
+Add `--github-runner owner/repo` to also run that repository's GitHub Actions jobs on the Mac
+(see [Run CI on your Mac](#run-ci-on-your-mac-optional)).
+
 Then:
 
 1. **Connect Claude.** In claude.ai, go to Settings → Connectors → Add custom connector and enter
@@ -141,6 +144,64 @@ After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
   commands on your Mac, so keep the password private.
 - Rotate secrets with `worker/setup.sh --new-password` or `--new-token`. A new token also needs
   `minirun setup --token …` on the Mac.
+- The optional GitHub runner runs pull request code on the Mac as your user. Read
+  [Run CI on your Mac](#run-ci-on-your-mac-optional) before turning it on, especially for public
+  repositories.
+
+## Run CI on your Mac (optional)
+
+The Mac can also run your GitHub Actions jobs, using GitHub's own runner
+([actions/runner](https://github.com/actions/runner)). minirun doesn't run jobs itself; the install
+script only downloads, registers and starts the official runner next to it.
+
+```bash
+gh auth login --scopes repo        # once; you need admin access to the repository
+./scripts/install.sh --github-runner you/app                      # repeat the flag for more repos
+./scripts/github-runner.sh install you/app                        # or just the runner, no rebuild
+```
+
+For each repository, this:
+
+1. Checks that `gh` is logged in with enough access, and checks the repository's visibility.
+2. Downloads the latest macOS arm64 runner, verifies its SHA-256 against the release, and extracts
+   it to `~/.minirun/github-runner/<owner>-<repo>/`.
+3. Registers it as `<hostname>-minirun` with the labels `self-hosted`, `macOS`, `ARM64` and
+   `minirun`, using a short-lived token from `gh`. The token is never saved or printed. Re-running
+   is safe: an existing registration is kept, and a stale one of the same name is replaced.
+4. Installs it as a LaunchAgent, so it starts at login like `minirun serve`. Simulators need the
+   logged-in GUI session, so it's not a LaunchDaemon.
+
+Target it from a workflow with:
+
+```yaml
+runs-on: [self-hosted, macOS, minirun]
+```
+
+**Security.** A self-hosted runner runs workflow code from pull requests on your Mac as your user.
+Jobs can read your files, your `gh` login and minirun's secrets in `~/.config/minirun`. On a public
+repository anyone can open a pull request from a fork, so the script refuses public repositories
+unless you pass `--allow-public`. If you do, first set the repository's Settings → Actions →
+General → "Fork pull request workflows from outside collaborators" to "Require approval for all
+outside collaborators" (or stricter), and read fork PRs before approving their runs.
+
+**Sharing the Mac with Claude.** The runner takes one job at a time, but jobs run alongside
+Claude's sessions on the same simulators, Xcode and disk. Treat a CI job like any other session
+(see [Several sessions at once](#several-sessions-at-once)): get its own simulator with
+`boot_simulator {label: "ci/<run id>"}` or `xcrun simctl create`, pass that UDID as `device` on
+every minirun call or `-destination id=<UDID>` to `xcodebuild`, and shut it down or delete it at the
+end. Don't rely on "the booted simulator", and don't run `simctl shutdown all` or `erase all`:
+those reach the simulators Claude and your viewer are using.
+
+**Status and uninstall.**
+
+```bash
+./scripts/github-runner.sh status              # service state and GitHub's view of each runner
+./scripts/github-runner.sh uninstall you/app   # stops the service, deregisters, deletes the folder
+```
+
+When the Mac is asleep or offline, jobs for `[self-hosted, macOS, minirun]` wait in the queue.
+GitHub-hosted runners (`runs-on: macos-26`) remain the fallback; keep a hosted job, or switch
+`runs-on` back, for anything that can't wait.
 
 ## Costs (Cloudflare free plan)
 
