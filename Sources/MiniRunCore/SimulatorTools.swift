@@ -36,31 +36,34 @@ extension ToolRegistry {
             name: "boot_simulator",
             description: "Get a simulator of your own: boots one that no one else is using (creating a copy if every simulator of that model is busy) " +
                 "and reserves it for `label`. Returns its UDID — pass it as `device` on every later call — plus the live view link for the user. " +
-                "Calling again with the same label returns the same simulator. build_and_run does this for you if you don't pass device.",
-            properties: [
+                "Calling again with the same label returns the same simulator. build_and_run does this for you if you don't pass device. " +
+                "A new simulator's first boot can take a few minutes: if it's still going after wait_seconds you get a job_id for get_job.",
+            properties: Self.waitProperty.merging([
                 "device": Schema.string("Optional model name (e.g. \"iPhone 17 Pro\", or \"iPad Air 11-inch (M3)\"), or a specific UDID. Defaults to the Mac's default iPhone."),
                 "label": Schema.string("What you're working on, as owner/repo@branch (e.g. \"you/app@feature-x\") — the same name builds of that repo and ref use, so they find this simulator."),
-            ]
+            ]) { a, _ in a }
         )) { [self] args in
             let label = args.string("label")
-            let (sim, note, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (XcodeParsing.SimDevice, String?, Bool) in
-                let all = try await Simctl.devices()
-                let choice = SimulatorPicker.fresh(
-                    query: args.string("device"), label: label, devices: all,
-                    claims: await claimSnapshot(all), preferredName: config.defaultDevice
-                )
-                var wasBooted = false
-                if case .use(let device, _) = choice { wasBooted = device.isBooted }
-                let (sim, note) = try await realize(choice, boot: true)
-                if let label { await claims.reserve(sim.udid, for: label) } else { await claims.touch(sim.udid) }
-                return (sim, note, wasBooted)
+            return await runAsJob(args, title: "boot simulator" + (label.map { " for \($0)" } ?? ""), log: nil) { [self] in
+                let (sim, note, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (XcodeParsing.SimDevice, String?, Bool) in
+                    let all = try await Simctl.devices()
+                    let choice = SimulatorPicker.fresh(
+                        query: args.string("device"), label: label, devices: all,
+                        claims: await claimSnapshot(all), preferredName: config.defaultDevice
+                    )
+                    var wasBooted = false
+                    if case .use(let device, _) = choice { wasBooted = device.isBooted }
+                    let (sim, note) = try await realize(choice, boot: true)
+                    if let label { await claims.reserve(sim.udid, for: label) } else { await claims.touch(sim.udid) }
+                    return (sim, note, wasBooted)
+                }
+                await geometry.invalidate(udid: sim.udid)
+                var lines = [wasBooted ? "\(sim.name) (\(sim.runtimeName)) is already running." : "Booted \(sim.name) (\(sim.runtimeName))."]
+                if let note { lines.append(note) }
+                if let label { lines.append("Reserved for \(label).") }
+                lines.append(deviceFooter(sim))
+                return ToolResult([.text(lines.joined(separator: "\n"))] + ((try? await screenshotContent(udid: sim.udid)) ?? []))
             }
-            await geometry.invalidate(udid: sim.udid)
-            var lines = [wasBooted ? "\(sim.name) (\(sim.runtimeName)) is already running." : "Booted \(sim.name) (\(sim.runtimeName))."]
-            if let note { lines.append(note) }
-            if let label { lines.append("Reserved for \(label).") }
-            lines.append(deviceFooter(sim))
-            return ToolResult([.text(lines.joined(separator: "\n"))] + ((try? await screenshotContent(udid: sim.udid)) ?? []))
         }
 
         register(ToolDefinition(

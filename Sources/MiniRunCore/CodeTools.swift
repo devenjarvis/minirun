@@ -92,9 +92,9 @@ extension ToolRegistry {
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
-            let (sim, note) = try await workspaceDevice(args, workspace: workspace)
             let log = newLogURL("build")
-            return await runAsJob(args, title: "build \(workspace) for \(sim.name)", log: log) { [self] in
+            return await runAsJob(args, title: "build \(workspace)", log: log) { [self] in
+                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
                 let output = try await self.withCheckout(args, log: log) { try await self.buildApp(args, udid: sim.udid, log: log) }
                 return .text([self.describe(output, log: log), note, self.deviceFooter(sim)].compactMap { $0 }.joined(separator: "\n"))
             }
@@ -113,9 +113,10 @@ extension ToolRegistry {
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
-            let (sim, note) = try await workspaceDevice(args, workspace: workspace)
             let log = newLogURL("build-and-run")
-            return await runAsJob(args, title: "build and run \(workspace) on \(sim.name)", log: log) { [self] in
+            return await runAsJob(args, title: "build and run \(workspace)", log: log) { [self] in
+                // Picking (and maybe booting) the simulator happens in the job: a first boot can take minutes.
+                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
                 // Hold the checkout through install so another build can't replace the .app first.
                 let (output, bundle) = try await self.withCheckout(args, log: log) { () async throws -> (XcodeBuild.BuildOutput, String) in
                     let output = try await self.buildApp(args, udid: sim.udid, log: log)
@@ -147,9 +148,9 @@ extension ToolRegistry {
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
-            let (sim, note) = try await workspaceDevice(args, workspace: workspace)
             let log = newLogURL("test")
-            return await runAsJob(args, title: "tests \(workspace) on \(sim.name)", log: log) { [self] in
+            return await runAsJob(args, title: "tests \(workspace)", log: log) { [self] in
+                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
                 let output = try await self.withCheckout(args, log: log) { () async throws -> XcodeBuild.TestOutput in
                     let dir = try await self.sourceDirectory(args, log: log)
                     var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, log: log)

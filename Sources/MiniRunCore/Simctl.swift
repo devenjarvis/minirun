@@ -29,7 +29,8 @@ enum Simctl {
         if !result.succeeded && !result.stderr.contains("current state: Booted") {
             throw ToolError("Booting \(udid) failed:\n\(result.tail(2000))")
         }
-        _ = try await run(["bootstatus", udid, "-b"], timeout: 300, what: "Waiting for the simulator to finish booting")
+        // A new simulator's first boot runs a data migration that can take several minutes.
+        _ = try await run(["bootstatus", udid, "-b"], timeout: 900, what: "Waiting for the simulator to finish booting")
         // Simulator.app isn't required for automation, but opening it makes demos visible on the Mac.
         _ = try? await Shell.run("/usr/bin/open", ["-g", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], timeout: 20)
     }
