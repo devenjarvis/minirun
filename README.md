@@ -185,11 +185,12 @@ General → "Fork pull request workflows from outside collaborators" to "Require
 outside collaborators" (or stricter), and read fork PRs before approving their runs.
 
 **Sharing the Mac with Claude.** The runner takes one job at a time, but jobs run alongside
-Claude's sessions on the same simulators, Xcode and disk. Treat a CI job like any other session:
-create and boot its own simulator (`xcrun simctl create`), pass that UDID as `device` on every
-minirun call or `-destination id=<UDID>` to `xcodebuild`, and delete it at the end. Don't rely on
-"the booted simulator", and don't run `simctl shutdown all` or `erase all`, because that's the
-simulator Claude or your viewer may be using.
+Claude's sessions on the same simulators, Xcode and disk. Treat a CI job like any other session
+(see [Several sessions at once](#several-sessions-at-once)): get its own simulator with
+`boot_simulator {label: "ci/<run id>"}` or `xcrun simctl create`, pass that UDID as `device` on
+every minirun call or `-destination id=<UDID>` to `xcodebuild`, and shut it down or delete it at the
+end. Don't rely on "the booted simulator", and don't run `simctl shutdown all` or `erase all`:
+those reach the simulators Claude and your viewer are using.
 
 **Status and uninstall.**
 
