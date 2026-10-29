@@ -1,0 +1,122 @@
+Building for debugging...
+[0/13] Write sources
+[0/13] Write minirun-entitlement.plist
+[0/13] Write sources
+[5/13] Copying XCTestBootstrap.framework
+[6/13] Copying FBSimulatorControl.framework
+[7/13] Copying FBDeviceControl.framework
+[8/13] Copying FBControlCore.framework
+[9/13] Write swift-version-7974D3F7F03D5E95.txt
+[11/36] Compiling MiniRunSim AccessibilityElement.swift
+[12/36] Compiling MiniRunSim AccessibilityFetcher.swift
+[13/36] Emitting module MiniRunKit
+[14/36] Compiling MiniRunSim AccessibilityPoller.swift
+[15/36] Compiling MiniRunSim AccessibilityTargetResolver.swift
+[16/36] Compiling MiniRunSim AxeLogger.swift
+[17/38] Compiling MiniRunKit Tools.swift
+[18/38] Compiling MiniRunKit XcodeParsing.swift
+[19/38] Compiling MiniRunSim GlobalSetup.swift
+[20/38] Compiling MiniRunSim HIDBroker+Connection.swift
+[21/38] Compiling MiniRunSim HIDBroker.swift
+[22/38] Compiling MiniRunSim HIDBrokerReadiness.swift
+[23/38] Compiling MiniRunSim HIDInteractor.swift
+[24/38] Compiling MiniRunSim KeyCode.swift
+[25/38] Compiling MiniRunSim OrientationAwareCoordinates.swift
+[26/38] Compiling MiniRunSim Setup.swift
+[34/38] Compiling MiniRunSim EventReporter.swift
+[35/38] Emitting module MiniRunSim
+[36/45] Compiling MiniRunSim SimulatorOrientationReader.swift
+[37/45] Compiling MiniRunSim SimulatorUtilities.swift
+[38/45] Compiling MiniRunSim StandardError.swift
+[39/45] Compiling MiniRunSim TapStyle.swift
+[40/45] Compiling MiniRunSim TextToHIDEvents.swift
+[41/45] Compiling MiniRunSim OrientationCoordinateMath.swift
+[42/45] Compiling MiniRunSim SimulatorDriver.swift
+[43/53] Compiling MiniRunCore Server.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/Simctl.swift:26:20: error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 24 |         if !device.isBooted && boot {
+ 25 |             try await self.boot(device.udid)
+ 26 |             return Device(udid: device.udid, name: device.name, state: "Booted", runtime: device.runtime, isAvailable: true)
+    |                    `- error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 27 |         }
+ 28 |         return device
+
+MiniRunKit.XcodeParsing.SimDevice.init:3:10: note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+1 | enum XcodeParsing {
+2 |   struct SimDevice {
+3 | internal init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool)  }
+  |          `- note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+4 | }
+5 | 
+[44/53] Compiling MiniRunCore Simctl.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/Simctl.swift:26:20: error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 24 |         if !device.isBooted && boot {
+ 25 |             try await self.boot(device.udid)
+ 26 |             return Device(udid: device.udid, name: device.name, state: "Booted", runtime: device.runtime, isAvailable: true)
+    |                    `- error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 27 |         }
+ 28 |         return device
+
+MiniRunKit.XcodeParsing.SimDevice.init:3:10: note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+1 | enum XcodeParsing {
+2 |   struct SimDevice {
+3 | internal init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool)  }
+  |          `- note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+4 | }
+5 | 
+[45/53] Compiling MiniRunCore SimulatorTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/Simctl.swift:26:20: error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 24 |         if !device.isBooted && boot {
+ 25 |             try await self.boot(device.udid)
+ 26 |             return Device(udid: device.udid, name: device.name, state: "Booted", runtime: device.runtime, isAvailable: true)
+    |                    `- error: 'XcodeParsing.SimDevice' initializer is inaccessible due to 'internal' protection level
+ 27 |         }
+ 28 |         return device
+
+MiniRunKit.XcodeParsing.SimDevice.init:3:10: note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+1 | enum XcodeParsing {
+2 |   struct SimDevice {
+3 | internal init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool)  }
+  |          `- note: 'init(udid:name:state:runtime:isAvailable:)' declared here
+4 | }
+5 | 
+[46/56] Emitting module MiniRunCore
+[47/56] Compiling MiniRunCore AppTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/CodeTools.swift:208:70: error: operator can throw but expression is not marked with 'try'
+206 |     /// Syncs if `ref` was given, then returns the directory to build in.
+207 |     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
+208 |         if let repo = args.string("repo"), args.string("ref") != nil || !FileManager.default.fileExists(atPath: Workspace.path(for: try config.resolveRepo(repo).slug, config: config) + "/.git") {
+    |                                                                      |  `- note: call is to 'rethrows' function, but argument function can throw
+    |                                                                      `- error: operator can throw but expression is not marked with 'try'
+209 |             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
+210 |             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
+[48/56] Compiling MiniRunCore CodeTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/CodeTools.swift:208:70: error: operator can throw but expression is not marked with 'try'
+206 |     /// Syncs if `ref` was given, then returns the directory to build in.
+207 |     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
+208 |         if let repo = args.string("repo"), args.string("ref") != nil || !FileManager.default.fileExists(atPath: Workspace.path(for: try config.resolveRepo(repo).slug, config: config) + "/.git") {
+    |                                                                      |  `- note: call is to 'rethrows' function, but argument function can throw
+    |                                                                      `- error: operator can throw but expression is not marked with 'try'
+209 |             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
+210 |             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
+[49/56] Compiling MiniRunCore FrameStreamer.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/CodeTools.swift:208:70: error: operator can throw but expression is not marked with 'try'
+206 |     /// Syncs if `ref` was given, then returns the directory to build in.
+207 |     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
+208 |         if let repo = args.string("repo"), args.string("ref") != nil || !FileManager.default.fileExists(atPath: Workspace.path(for: try config.resolveRepo(repo).slug, config: config) + "/.git") {
+    |                                                                      |  `- note: call is to 'rethrows' function, but argument function can throw
+    |                                                                      `- error: operator can throw but expression is not marked with 'try'
+209 |             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
+210 |             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
+[50/56] Compiling MiniRunCore RelayClient.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/CodeTools.swift:208:70: error: operator can throw but expression is not marked with 'try'
+206 |     /// Syncs if `ref` was given, then returns the directory to build in.
+207 |     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
+208 |         if let repo = args.string("repo"), args.string("ref") != nil || !FileManager.default.fileExists(atPath: Workspace.path(for: try config.resolveRepo(repo).slug, config: config) + "/.git") {
+    |                                                                      |  `- note: call is to 'rethrows' function, but argument function can throw
+    |                                                                      `- error: operator can throw but expression is not marked with 'try'
+209 |             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
+210 |             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
+[51/56] Compiling MiniRunCore ToolRegistry.swift
+[52/56] Compiling MiniRunCore Workspace.swift
+[53/56] Compiling MiniRunCore XcodeBuild.swift
