@@ -11,16 +11,24 @@ public enum XcodeParsing {
         public let state: String
         public let runtime: String
         public let isAvailable: Bool
+        /// e.g. "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"; needed to create a copy.
+        public let deviceType: String?
 
-        public init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool) {
+        public init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool, deviceType: String? = nil) {
             self.udid = udid
             self.name = name
             self.state = state
             self.runtime = runtime
             self.isAvailable = isAvailable
+            self.deviceType = deviceType
         }
 
         public var isBooted: Bool { state == "Booted" }
+
+        /// The same simulator, marked booted (after booting it).
+        public var booted: SimDevice {
+            SimDevice(udid: udid, name: name, state: "Booted", runtime: runtime, isAvailable: isAvailable, deviceType: deviceType)
+        }
 
         /// "com.apple.CoreSimulator.SimRuntime.iOS-26-0" -> "iOS 26.0"
         public var runtimeName: String {
@@ -47,7 +55,8 @@ public enum XcodeParsing {
                     name: name,
                     state: entry["state"]?.stringValue ?? "Unknown",
                     runtime: runtime,
-                    isAvailable: entry["isAvailable"]?.boolValue ?? true
+                    isAvailable: entry["isAvailable"]?.boolValue ?? true,
+                    deviceType: entry["deviceTypeIdentifier"]?.stringValue
                 ))
             }
         }

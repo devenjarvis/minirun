@@ -11,6 +11,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var session: URLSession!
     private var socket: URLSessionWebSocketTask?
     private var streamer: FrameStreamer!
+    private var streamControl: Task<Void, Never>?
     private let log: @Sendable (String) -> Void
 
     public init(url: URL, token: String, registry: ToolRegistry, log: @escaping @Sendable (String) -> Void) {
@@ -36,6 +37,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         while true {
             let connectedAt = Date()
             await connectOnce()
+            await streamControl?.value
             await streamer.stop()
             // Reset the backoff after a connection that lasted a while.
             if Date().timeIntervalSince(connectedAt) > 60 { backoff = 1 }
@@ -104,12 +106,16 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
                     log("Viewer action \(tool) failed: \(result.content.first.map { "\($0)" } ?? "")")
                 }
             }
-        case .streamStart(let udid, let fps, let quality, let scale):
-            Task { await streamer.start(.init(udid: udid, fps: fps, quality: quality, scale: scale)) }
-        case .streamStop:
-            Task { await streamer.stop() }
-        case .ack(let sequence):
-            Task { await streamer.ack(sequence) }
+        case .streams(let requests):
+            // Apply stream changes in the order they arrived.
+            let previous = streamControl
+            let streamer = self.streamer!
+            streamControl = Task {
+                await previous?.value
+                await streamer.set(requests)
+            }
+        case .ack(let sequence, let key):
+            Task { await streamer.ack(sequence, key: key) }
         case .unknown:
             break
         }

@@ -4,7 +4,11 @@ import MiniRunSim
 
 extension ToolRegistry {
     static let deviceProperty: [String: JSONValue] = [
-        "device": Schema.string("Simulator UDID or name (e.g. \"iPhone 17 Pro\"). Defaults to the booted simulator, booting the default one if none is running."),
+        "device": Schema.string(
+            "UDID of the simulator to act on (a name like \"iPhone 17 Pro\" also works). Other Claude sessions may be using this Mac, " +
+            "so once you have a simulator, pass its UDID on every call. If omitted and several simulators are booted, the call fails " +
+            "and lists them instead of guessing."
+        ),
     ]
 
     func registerSimulatorTools() {
@@ -12,36 +16,63 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "list_simulators",
-            description: "List the iOS simulators installed on the Mac, booted ones first.",
+            description: "List the iOS simulators installed on the Mac, booted ones first. Booted ones show what they're reserved for (the repo@branch being built there) so you can find yours.",
             properties: ["include_shutdown": Schema.boolean("Include simulators that aren't booted (default true).")]
-        )) { args in
+        )) { [self] args in
             let all = try await Simctl.devices().filter(\.isAvailable)
+            let claims = await claimSnapshot(all)
             let shown = args.bool("include_shutdown") == false ? all.filter(\.isBooted) : all
-            return .json(.array(shown.prefix(60).map(\.json)))
+            return .json(.array(shown.prefix(60).map { device -> JSONValue in
+                var json = device.json.objectValue ?? [:]
+                if device.isBooted, let claim = claims[device.udid] {
+                    if let label = claim.label { json["reserved_for"] = .string(label) }
+                    if let bundle = claim.bundleID { json["last_app"] = .string(bundle) }
+                }
+                return .object(json)
+            }))
         }
 
         register(ToolDefinition(
             name: "boot_simulator",
-            description: "Boot a simulator (and open it in Simulator.app on the Mac). Returns its UDID and a screenshot.",
-            properties: device
+            description: "Get a simulator of your own: boots one that no one else is using (creating a copy if every simulator of that model is busy) " +
+                "and reserves it for `label`. Returns its UDID — pass it as `device` on every later call — plus the live view link for the user. " +
+                "Calling again with the same label returns the same simulator. build_and_run does this for you if you don't pass device.",
+            properties: [
+                "device": Schema.string("Optional model name (e.g. \"iPhone 17 Pro\", or \"iPad Air 11-inch (M3)\"), or a specific UDID. Defaults to the Mac's default iPhone."),
+                "label": Schema.string("What you're working on, as owner/repo@branch (e.g. \"you/app@feature-x\") — the same name builds of that repo and ref use, so they find this simulator."),
+            ]
         )) { [self] args in
-            let sim = try await self.device(args)
-            await SimulatorDriver.shared.reset()
+            let label = args.string("label")
+            let (sim, note, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (XcodeParsing.SimDevice, String?, Bool) in
+                let all = try await Simctl.devices()
+                let choice = SimulatorPicker.fresh(
+                    query: args.string("device"), label: label, devices: all,
+                    claims: await claimSnapshot(all), preferredName: config.defaultDevice
+                )
+                var wasBooted = false
+                if case .use(let device, _) = choice { wasBooted = device.isBooted }
+                let (sim, note) = try await realize(choice, boot: true)
+                if let label { await claims.reserve(sim.udid, for: label) } else { await claims.touch(sim.udid) }
+                return (sim, note, wasBooted)
+            }
             await geometry.invalidate(udid: sim.udid)
-            var content: [ToolContent] = [.text("Booted \(sim.name) (\(sim.runtimeName)), UDID \(sim.udid).")]
-            content += (try? await screenshotContent(udid: sim.udid)) ?? []
-            return ToolResult(content)
+            var lines = [wasBooted ? "\(sim.name) (\(sim.runtimeName)) is already running." : "Booted \(sim.name) (\(sim.runtimeName))."]
+            if let note { lines.append(note) }
+            if let label { lines.append("Reserved for \(label).") }
+            lines.append(deviceFooter(sim))
+            return ToolResult([.text(lines.joined(separator: "\n"))] + ((try? await screenshotContent(udid: sim.udid)) ?? []))
         }
 
         register(ToolDefinition(
             name: "shutdown_simulator",
-            description: "Shut down a simulator.",
+            description: "Shut down a simulator and release its reservation. Only shut down your own simulator: others may belong to another session.",
             properties: device,
             required: ["device"]
         )) { [self] args in
             let sim = try await self.device(args, boot: false)
             try await Simctl.shutdown(sim.udid)
-            await SimulatorDriver.shared.reset()
+            await claims.release(sim.udid)
+            await SimulatorDriver.shared.reset(udid: sim.udid)
             await geometry.invalidate(udid: sim.udid)
             return .text("Shut down \(sim.name).")
         }

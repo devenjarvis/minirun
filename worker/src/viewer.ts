@@ -19,6 +19,8 @@ header .mark { margin: 0; }
 .pill.live i { background: #4ade80; box-shadow: 0 0 0 3px rgba(74,222,128,.15); }
 .pill.offline i { background: var(--danger); }
 .device { margin-left: auto; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45vw; }
+.sim { margin-left: auto; max-width: 55vw; padding: 6px 8px; font-size: 13px; text-overflow: ellipsis; }
+.sim[hidden], .device[hidden] { display: none; }
 main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
 .screen { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ratio, 0.46); height: 100%; border-radius: 28px; overflow: hidden;
   background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -40,6 +42,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   <div class="mark"><i></i>minirun</div>
   <span id="status" class="pill"><i></i><span>Connecting…</span></span>
   <span id="device" class="device"></span>
+  <select id="sim" class="sim" title="Simulator" hidden></select>
 </header>
 <main>
   <div id="screen" class="screen">
@@ -64,9 +67,12 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 (() => {
   const presets = { saver: { fps: 6, quality: 45, scale: 0.33 }, smooth: { fps: 15, quality: 55, scale: 0.5 }, sharp: { fps: 10, quality: 80, scale: 0.8 } };
   const $ = (id) => document.getElementById(id);
-  const screenEl = $("screen"), img = $("frame"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device");
+  const screenEl = $("screen"), img = $("frame"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
   let ws = null, retry = 1000, online = false, live = false;
-  let screen = null; // { pointWidth, pointHeight, name }
+  let screen = null; // { udid, pointWidth, pointHeight, name }
+  let simulators = [];
+  // The simulator this page shows: ?device=UDID, or "" for whichever one is booted.
+  let wanted = new URLSearchParams(location.search).get("device") || "";
   let currentURL = null, decoding = false, pendingFrame = null;
 
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
@@ -79,7 +85,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function showOverlay(text) { overlay.textContent = text; overlay.hidden = !text; }
 
   function connect() {
-    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/viewer/ws";
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/viewer/ws" + (wanted ? "?device=" + encodeURIComponent(wanted) : "");
     ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     setStatus("", "Connecting…");
@@ -96,7 +102,33 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   }
 
   function send(message) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(message)); }
-  function sendStream() { send({ type: "stream", ...presets[$("quality").value] }); }
+  function sendStream() { send({ type: "stream", device: wanted, ...presets[$("quality").value] }); }
+
+  function renderSimulators() {
+    const current = screen ? screen.udid : wanted;
+    const list = simulators.slice();
+    if (current && !list.some((d) => d.udid === current)) list.push({ udid: current, name: screen ? screen.name : "Simulator" });
+    simEl.hidden = list.length < 2;
+    deviceEl.hidden = !simEl.hidden;
+    simEl.replaceChildren(...list.map((d) => {
+      const option = document.createElement("option");
+      option.value = d.udid;
+      option.textContent = d.name + (d.reserved_for ? " — " + d.reserved_for : "");
+      return option;
+    }));
+    if (current) simEl.value = current;
+  }
+
+  function watch(udid) {
+    if (udid === wanted) return;
+    wanted = udid;
+    const url = new URL(location.href);
+    if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
+    history.replaceState(null, "", url);
+    screen = null; live = false; pendingFrame = null;
+    setStatus("", "Switching…"); showOverlay("Switching simulator…");
+    sendStream();
+  }
 
   function onText(text) {
     let m; try { m = JSON.parse(text); } catch { return; }
@@ -104,12 +136,18 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       online = m.online;
       if (!online) { live = false; setStatus("offline", "Mac offline"); showOverlay("Your Mac is offline. Make sure it's awake and minirun is running."); }
       else { setStatus("", "Starting stream…"); if (!live) showOverlay("Waiting for the simulator…"); }
-      if (m.host && m.host.name) deviceEl.textContent = m.host.name;
+      if (m.host && m.host.name && !screen) deviceEl.textContent = m.host.name;
+    } else if (m.type === "simulators") {
+      simulators = Array.isArray(m.devices) ? m.devices : [];
+      renderSimulators();
     } else if (m.type === "screen") {
+      if ((m.key || "") !== wanted) return;
       screen = m;
       deviceEl.textContent = m.name;
       screenEl.style.setProperty("--ratio", String(m.pointWidth / m.pointHeight));
+      renderSimulators();
     } else if (m.type === "stream_status") {
+      if ((m.key || "") !== wanted) return;
       if (m.status === "live") { live = true; setStatus("live", "Live"); showOverlay(""); }
       else if (m.status === "error") { setStatus("offline", "Stream error"); showOverlay(m.message || "The simulator stream failed."); }
     }
@@ -117,9 +155,16 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   function onFrame(buffer) {
     const bytes = new Uint8Array(buffer);
-    if (bytes[0] !== 1 || bytes.length < 6) return;
+    if (bytes.length < 6) return;
+    // Kind 1: [1][seq][jpeg]. Kind 2: [2][seq][keyLength][key][jpeg], key = UDID or "".
+    let key = "", start = 5;
+    if (bytes[0] === 2) {
+      start = 6 + bytes[5];
+      key = new TextDecoder().decode(bytes.subarray(6, start));
+    } else if (bytes[0] !== 1) return;
+    if (key !== wanted) return; // a frame from before we switched simulators
     const seq = new DataView(buffer).getUint32(1);
-    pendingFrame = { seq, blob: new Blob([bytes.subarray(5)], { type: "image/jpeg" }) };
+    pendingFrame = { seq, blob: new Blob([bytes.subarray(start)], { type: "image/jpeg" }) };
     if (!decoding) showNext();
   }
 
@@ -195,6 +240,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     field.value = "";
   };
   $("quality").onchange = () => { store.set("minirun.quality", $("quality").value); sendStream(); };
+  simEl.onchange = () => watch(simEl.value);
   document.addEventListener("visibilitychange", () => {
     // Stop streaming in background tabs to save the Mac and your data plan.
     if (document.hidden && ws) ws.close(1000);

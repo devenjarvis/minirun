@@ -76,13 +76,34 @@ a logged-in GUI session; `minirun serve` already blocks idle sleep while it runs
 3. `describe_ui` gives the accessibility tree, then `tap {id: "loginButton"}`, `type_text`,
    `swipe`, and `screenshot` to look. `app_logs` reads the app's output.
 4. `run_tests` runs the tests and reports pass/fail with failure messages.
-5. `mac_status` gives Claude the viewer link to share with you.
+5. `build_and_run` and `boot_simulator` include a live view link for that simulator to share with
+   you (`mac_status` gives it too).
+
+## Several sessions at once
+
+Several Claude sessions can use one Mac at the same time, whether they're on separate apps or on
+different branches of the same app (for example, two worktrees). minirun keeps them apart:
+
+- **Each repo + ref has its own checkout.** `you/app` at `feature-a` builds in
+  `~/minirun/workspaces/you/app@feature-a`, with its own build folder, so one session's sync never
+  swaps the source under another session's build. Builds of the same checkout wait their turn.
+- **Each piece of work gets its own simulator.** `build_and_run` without `device` uses the simulator
+  reserved for its repo + ref. If there isn't one, it takes an unreserved booted simulator or
+  boots a separate one, creating a copy such as "iPhone 17 Pro (minirun 2)" if every simulator of
+  that model is busy. `boot_simulator {label: "you/app@feature-a"}` does the same up front.
+  Reservations are saved in `~/.config/minirun/simulators.json` and end when the simulator shuts down.
+- **No guessing.** Results name the simulator's UDID, and Claude passes it as `device` on later calls.
+  If a call leaves out `device` while several simulators are booted, it fails with a list of
+  them and who each is reserved for, rather than tapping on someone else's simulator.
+- **One viewer per simulator.** Each session's live view link opens on its own simulator
+  (`/?device=UDID`), and taps from that page only reach that simulator. When more than one simulator
+  is booted, the viewer shows a picker to switch between them.
 
 ## Tools
 
 | Area | Tools |
 | --- | --- |
-| Simulators | `list_simulators`, `boot_simulator`, `shutdown_simulator`, `configure_simulator` (dark mode, location, demo status bar, permissions) |
+| Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, location, demo status bar, permissions) |
 | Seeing | `screenshot` (sized so pixels = points), `describe_ui` (compact text or full JSON) |
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
@@ -101,8 +122,8 @@ Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
 | --- | --- | --- |
 | `relayURL` | — | `wss://minirun.<you>.workers.dev/agent` |
 | `agentToken` | — | Must match the Worker's `AGENT_TOKEN` secret |
-| `workspaceRoot` | `~/minirun/workspaces` | Where repositories are cloned |
-| `defaultDevice` | newest iPhone | Simulator to boot when none is running, e.g. `"iPhone 17 Pro"` |
+| `workspaceRoot` | `~/minirun/workspaces` | Where repositories are cloned, one folder per repo + ref |
+| `defaultDevice` | newest iPhone | Simulator model to boot when a session needs one, e.g. `"iPhone 17 Pro"` |
 | `allowShell` | `false` | Enables `run_command`: arbitrary shell commands on your Mac |
 | `preventSleep` | `true` | Blocks idle sleep while serving |
 
@@ -131,6 +152,9 @@ tab is hidden.
 ## Limitations (v0.1)
 
 - One Mac per Worker deployment. Simulators only for UI control (physical devices are planned).
+- Each branch keeps its own checkout and build folder. Delete old ones from `~/minirun/workspaces`
+  to free disk space.
+- The Mac and the Worker must be updated together: the viewer's per-simulator streams need both.
 - `type_text` types US-keyboard characters. For other text, use `set_pasteboard` and paste.
 - The live view is JPEG frames, up to about 30 fps. A hardware H.264 stream is next.
 

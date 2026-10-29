@@ -14,6 +14,12 @@ public final class ToolRegistry: @unchecked Sendable {
     public let config: MiniRunConfig
     public let jobs = JobStore()
     let geometry = ScreenGeometryCache()
+    /// Which booted simulator is reserved for which repo and branch.
+    let claims = SimulatorClaimStore(url: SimulatorClaimStore.defaultURL)
+    /// One simulator pick (and boot) at a time, so two sessions can't both take the same one.
+    let allocation = KeyedLock()
+    /// One sync/build at a time per checkout.
+    let checkouts = KeyedLock()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL
@@ -43,8 +49,65 @@ public final class ToolRegistry: @unchecked Sendable {
         order.append(definition.name)
     }
 
+    /// The simulator a tool call acts on: `device` if given, else the only booted one.
+    /// Fails with a list of booted simulators rather than guessing when several are running.
     func device(_ args: ToolArguments, boot: Bool = true) async throws -> XcodeParsing.SimDevice {
-        try await Simctl.resolve(args.string("device"), config: config, boot: boot)
+        let all = try await Simctl.devices()
+        let choice = SimulatorPicker.target(
+            query: args.string("device"), workspace: nil, devices: all,
+            claims: await claimSnapshot(all), preferredName: config.defaultDevice
+        )
+        let device = try await realize(choice, boot: boot).device
+        await claims.touch(device.udid)
+        return device
+    }
+
+    /// The simulator for a build of `workspace` ("owner/app@ref"), reserved for it. Uses the one
+    /// already reserved for this workspace, an unreserved booted one, or boots a separate one.
+    func workspaceDevice(_ args: ToolArguments, workspace: String) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
+        try await allocation.withLock("simulators") { () async throws -> (device: XcodeParsing.SimDevice, note: String?) in
+            let all = try await Simctl.devices()
+            let choice = SimulatorPicker.target(
+                query: args.string("device"), workspace: workspace, devices: all,
+                claims: await claimSnapshot(all), preferredName: config.defaultDevice
+            )
+            let (device, realizedNote) = try await realize(choice, boot: true)
+            var note = realizedNote
+            if let previous = await claims.reserve(device.udid, for: workspace) {
+                note = [note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
+            }
+            return (device, note)
+        }
+    }
+
+    func claimSnapshot(_ devices: [XcodeParsing.SimDevice]) async -> [String: SimulatorClaim] {
+        await claims.snapshot(booted: Set(devices.filter(\.isBooted).map(\.udid)))
+    }
+
+    /// Carries out a picker decision: boots the simulator, or creates a new one first.
+    func realize(_ choice: SimulatorPicker.Choice, boot: Bool) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
+        switch choice {
+        case .failure(let message):
+            throw ToolError(message)
+        case .use(let device, let note):
+            guard boot, !device.isBooted else { return (device, note) }
+            try await Simctl.boot(device.udid)
+            await SimulatorDriver.shared.reset(udid: device.udid)
+            await geometry.invalidate(udid: device.udid)
+            return (device.booted, note)
+        case .create(let name, let like, let note):
+            let udid = try await Simctl.create(name: name, like: like)
+            try await Simctl.boot(udid)
+            let device = XcodeParsing.SimDevice(udid: udid, name: name, state: "Booted", runtime: like.runtime, isAvailable: true, deviceType: like.deviceType)
+            return (device, [note, "Created \(name) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " "))
+        }
+    }
+
+    /// "UDID … — pass it as device" plus the live view link, for results that hand out a simulator.
+    func deviceFooter(_ device: XcodeParsing.SimDevice) -> String {
+        var text = "Simulator: \(device.name), UDID \(device.udid). Pass device: \"\(device.udid)\" on later calls so they reach this simulator."
+        if let link = config.viewerURL(device: device.udid) { text += "\nLive view of this simulator for the user: \(link)" }
+        return text
     }
 
     func newLogURL(_ label: String) -> URL {

@@ -14,18 +14,13 @@ enum Simctl {
         return try XcodeParsing.parseDevices(Data(result.stdout.utf8))
     }
 
-    /// Resolves a device query, booting the default device if nothing is booted and `boot` is true.
-    static func resolve(_ query: String?, config: MiniRunConfig, boot: Bool = true) async throws -> Device {
-        let all = try await devices()
-        guard let device = XcodeParsing.pickDevice(all, query: query, preferredName: config.defaultDevice) else {
-            if let query { throw ToolError("No available simulator matches \"\(query)\". Call list_simulators to see options.") }
-            throw ToolError("No iOS simulators are installed. Install an iOS runtime in Xcode > Settings > Components.")
-        }
-        if !device.isBooted && boot {
-            try await self.boot(device.udid)
-            return Device(udid: device.udid, name: device.name, state: "Booted", runtime: device.runtime, isAvailable: true)
-        }
-        return device
+    /// Creates a new simulator of the same model and runtime as `like`. Returns its UDID.
+    static func create(name: String, like: Device) async throws -> String {
+        guard let type = like.deviceType else { throw ToolError("Can't tell what kind of device \(like.name) is, so a copy can't be created. Pass device with a simulator that isn't in use.") }
+        let result = try await run(["create", name, type, like.runtime], timeout: 120, what: "Creating \(name)")
+        let udid = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !udid.isEmpty else { throw ToolError("simctl create didn't return a UDID.") }
+        return udid
     }
 
     static func boot(_ udid: String) async throws {
