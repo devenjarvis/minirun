@@ -1,0 +1,5 @@
+[job_475d4a2f] boot simulator: succeeded in 10m 20s
+Booted minirun-smoke (iOS 26.5).
+Simulator: minirun-smoke, UDID 61E0531B-F68A-4022-A841-412811D60873. Pass device: "61E0531B-F68A-4022-A841-412811D60873" on later calls so they reach this simulator.
+[image saved to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/minirun-53D14167.jpg]
+Screenshot 375x812px.

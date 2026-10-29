@@ -1,0 +1,15 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created 61E0531B-F68A-4022-A841-412811D60873 (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"61E0531B-F68A-4022-A841-412811D60873"} &
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} &
++ minirun call screenshot {"device":"61E0531B-F68A-4022-A841-412811D60873"}
+FAILED: expected output to contain: image saved
+--- output was:
+simctl list timed out after 60s:
