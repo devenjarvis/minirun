@@ -1,0 +1,11 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created B7843DB9-B226-42E0-8863-40D5809856F7 (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"B7843DB9-B226-42E0-8863-40D5809856F7"}
+FAILED: expected output to contain: Booted
