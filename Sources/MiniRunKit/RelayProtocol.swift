@@ -3,12 +3,34 @@ import Foundation
 /// Messages between the Mac (`minirun serve`) and the Cloudflare relay (Durable Object).
 ///
 /// Text frames carry JSON objects with a `type` field. Binary frames carry video:
-/// `[kind: UInt8][sequence: UInt32 big-endian][payload]`, where kind 1 is a JPEG frame.
+/// `[kind: UInt8][sequence: UInt32 big-endian][payload]`. Kind 1 is a JPEG frame of the default
+/// stream; kind 2 is a JPEG frame of a named stream, with `[keyLength: UInt8][key: UTF-8]` before
+/// the JPEG. A stream's key is the simulator UDID viewers asked for, or "" for "whichever is booted".
 public enum RelayProtocol {
-    public static let version = 1
+    public static let version = 2
 
     public enum FrameKind: UInt8, Sendable {
         case jpeg = 1
+        case keyedJPEG = 2
+    }
+
+    /// One stream the relay wants, because at least one viewer is watching it.
+    public struct StreamRequest: Equatable, Sendable {
+        public let key: String
+        public let fps: Int
+        public let quality: Int
+        public let scale: Double
+
+        public init(key: String, fps: Int, quality: Int, scale: Double) {
+            self.key = key
+            self.fps = min(30, max(1, fps))
+            self.quality = min(95, max(10, quality))
+            self.scale = min(1.0, max(0.2, scale))
+        }
+
+        init(key: String, json: JSONValue) {
+            self.init(key: key, fps: json["fps"]?.intValue ?? 12, quality: json["quality"]?.intValue ?? 60, scale: json["scale"]?.doubleValue ?? 0.5)
+        }
     }
 
     // MARK: Mac -> relay
@@ -26,9 +48,10 @@ public enum RelayProtocol {
         ["type": "result", "id": .string(id), "result": result.json]
     }
 
-    public static func screen(udid: String, name: String, pointWidth: Double, pointHeight: Double, pixelWidth: Int, pixelHeight: Int) -> JSONValue {
+    public static func screen(key: String = "", udid: String, name: String, pointWidth: Double, pointHeight: Double, pixelWidth: Int, pixelHeight: Int) -> JSONValue {
         [
             "type": "screen",
+            "key": .string(key),
             "udid": .string(udid),
             "name": .string(name),
             "pointWidth": .number(pointWidth),
@@ -38,10 +61,15 @@ public enum RelayProtocol {
         ]
     }
 
-    public static func streamStatus(_ status: String, message: String? = nil) -> JSONValue {
-        var object: [String: JSONValue] = ["type": "stream_status", "status": .string(status)]
+    public static func streamStatus(_ status: String, key: String = "", message: String? = nil) -> JSONValue {
+        var object: [String: JSONValue] = ["type": "stream_status", "status": .string(status), "key": .string(key)]
         if let message { object["message"] = .string(message) }
         return .object(object)
+    }
+
+    /// The booted simulators, for the viewer's simulator picker.
+    public static func simulators(_ devices: [JSONValue]) -> JSONValue {
+        ["type": "simulators", "devices": .array(devices)]
     }
 
     public static func encodeFrame(kind: FrameKind, sequence: UInt32, payload: Data) -> Data {
@@ -52,11 +80,26 @@ public enum RelayProtocol {
         return data
     }
 
-    public static func decodeFrame(_ data: Data) -> (kind: UInt8, sequence: UInt32, payload: Data)? {
-        guard data.count >= 5 else { return nil }
-        let bytes = [UInt8](data.prefix(5))
+    /// A JPEG frame for the stream `key` (kind 2).
+    public static func encodeFrame(key: String, sequence: UInt32, payload: Data) -> Data {
+        let keyBytes = Array(key.utf8.prefix(255))
+        var data = Data(capacity: payload.count + 6 + keyBytes.count)
+        data.append(FrameKind.keyedJPEG.rawValue)
+        withUnsafeBytes(of: sequence.bigEndian) { data.append(contentsOf: $0) }
+        data.append(UInt8(keyBytes.count))
+        data.append(contentsOf: keyBytes)
+        data.append(payload)
+        return data
+    }
+
+    public static func decodeFrame(_ data: Data) -> (kind: UInt8, sequence: UInt32, key: String, payload: Data)? {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 5 else { return nil }
         let sequence = (UInt32(bytes[1]) << 24) | (UInt32(bytes[2]) << 16) | (UInt32(bytes[3]) << 8) | UInt32(bytes[4])
-        return (bytes[0], sequence, data.dropFirst(5))
+        guard bytes[0] == FrameKind.keyedJPEG.rawValue else { return (bytes[0], sequence, "", Data(bytes[5...])) }
+        guard bytes.count >= 6, bytes.count >= 6 + Int(bytes[5]) else { return nil }
+        let end = 6 + Int(bytes[5])
+        return (bytes[0], sequence, String(decoding: bytes[6..<end], as: UTF8.self), Data(bytes[end...]))
     }
 
     // MARK: relay -> Mac
@@ -64,10 +107,10 @@ public enum RelayProtocol {
     public enum Incoming: Equatable, Sendable {
         /// Run a tool. `id` is nil for fire-and-forget input from the viewer.
         case call(id: String?, tool: String, arguments: JSONValue)
-        case streamStart(udid: String?, fps: Int, quality: Int, scale: Double)
-        case streamStop
-        /// A viewer finished rendering the frame with this sequence number.
-        case ack(sequence: UInt32)
+        /// The complete set of streams viewers are watching now; empty means stop streaming.
+        case streams([StreamRequest])
+        /// A viewer of stream `key` finished rendering the frame with this sequence number.
+        case ack(sequence: UInt32, key: String)
         case unknown(String)
     }
 
@@ -80,13 +123,18 @@ public enum RelayProtocol {
             guard let tool = message["tool"]?.stringValue else { return .unknown(text) }
             return .call(id: message["id"]?.stringValue, tool: tool, arguments: message["arguments"] ?? [:])
         case "stream":
-            if message["action"]?.stringValue == "stop" { return .streamStop }
-            let fps = min(30, max(1, message["fps"]?.intValue ?? 12))
-            let quality = min(95, max(10, message["quality"]?.intValue ?? 60))
-            let scale = min(1.0, max(0.2, message["scale"]?.doubleValue ?? 0.5))
-            return .streamStart(udid: message["udid"]?.stringValue, fps: fps, quality: quality, scale: scale)
+            switch message["action"]?.stringValue {
+            case "stop":
+                return .streams([])
+            case "set":
+                let list = message["streams"]?.arrayValue ?? []
+                return .streams(list.map { StreamRequest(key: $0["udid"]?.stringValue ?? "", json: $0) })
+            default:
+                // Version 1 relays start a single stream.
+                return .streams([StreamRequest(key: message["udid"]?.stringValue ?? "", json: message)])
+            }
         case "ack":
-            return .ack(sequence: UInt32(clamping: message["seq"]?.intValue ?? 0))
+            return .ack(sequence: UInt32(clamping: message["seq"]?.intValue ?? 0), key: message["key"]?.stringValue ?? "")
         default:
             return .unknown(text)
         }

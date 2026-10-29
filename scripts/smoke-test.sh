@@ -6,7 +6,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${MINIRUN_BIN:-$ROOT/.build/debug/minirun}"
 export MINIRUN_CONFIG="${MINIRUN_CONFIG:-$(mktemp -d)/config.json}"
 run() { echo "+ minirun call $*" >&2; "$BIN" call "$@"; }
-expect() { grep -q -- "$1" || { echo "FAILED: expected output to contain: $1" >&2; exit 1; }; }
+expect() {
+  local output; output=$(cat)
+  grep -q -- "$1" <<< "$output" || { echo "FAILED: expected output to contain: $1" >&2; echo "--- output was:" >&2; echo "$output" >&2; exit 1; }
+}
 
 "$BIN" doctor
 "$BIN" tools > /dev/null
@@ -43,4 +46,17 @@ run swipe "{\"device\":\"$UDID\",\"direction\":\"up\"}" | expect "Swiped"
 run press_button "{\"device\":\"$UDID\",\"button\":\"home\"}" | expect "Pressed"
 run app_logs "{\"device\":\"$UDID\",\"bundle_id\":\"dev.minirun.HelloApp\",\"seconds\":120}" > /dev/null
 run terminate_app "{\"device\":\"$UDID\",\"bundle_id\":\"dev.minirun.HelloApp\"}" | expect "Terminated"
+
+# A second session on the same Mac: it gets its own simulator, nothing guesses between the two,
+# and builds find the simulator reserved for their workspace.
+run boot_simulator '{"device":"minirun-smoke","label":"smoke/second"}' | tee /tmp/minirun-boot2.txt | expect "Created minirun-smoke (minirun 2)"
+UDID2=$(sed -n 's/^Simulator: .*, UDID \([0-9A-Fa-f-]*\)\..*/\1/p' /tmp/minirun-boot2.txt | head -1)
+[[ -n "$UDID2" && "$UDID2" != "$UDID" ]] || { echo "FAILED: no second simulator UDID" >&2; exit 1; }
+trap 'xcrun simctl delete "$UDID" "$UDID2" >/dev/null 2>&1 || true' EXIT
+run boot_simulator '{"label":"smoke/second"}' | expect "$UDID2"
+if out=$("$BIN" call tap '{"x":10,"y":10}'); then echo "FAILED: tap without device should refuse to guess" >&2; exit 1; fi
+echo "$out" | expect "simulators are booted"
+run list_simulators '{"include_shutdown":false}' | expect "smoke/second"
+run build_and_run "{\"path\":\"$ROOT/Tests/Fixtures/HelloApp\",\"scheme\":\"HelloApp\",\"wait_seconds\":600}" | expect "UDID $UDID"
+run shutdown_simulator "{\"device\":\"$UDID2\"}" | expect "Shut down"
 echo "Smoke test passed."

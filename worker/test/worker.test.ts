@@ -147,6 +147,10 @@ describe("minirun worker", () => {
 
     const status = await rpc(token, "tools/call", { name: "mac_status", arguments: {} });
     expect(status.result.content[0].text).toContain("online (Test Mac)");
+    const mine = await rpc(token, "tools/call", { name: "mac_status", arguments: { device: "ABC-123" } });
+    expect(mine.result.content[0].text).toContain(`${ORIGIN}/?device=ABC-123`);
+    const bad = await rpc(token, "tools/call", { name: "mac_status", arguments: { device: "../x" } });
+    expect(bad.result.isError).toBe(true);
 
     const call = await rpc(token, "tools/call", { name: "screenshot", arguments: { scale: 0.5 } });
     expect(call.result.content[0].text).toBe('ran screenshot with {"scale":0.5}');
@@ -156,6 +160,8 @@ describe("minirun worker", () => {
   it("serves the viewer only after login, and relays frames and input", async () => {
     const anonymous = await SELF.fetch(`${ORIGIN}/`, { redirect: "manual" });
     expect(anonymous.status).toBe(302);
+    const deepLink = await SELF.fetch(`${ORIGIN}/?device=ABC-123`, { redirect: "manual" });
+    expect(deepLink.headers.get("Location")).toBe(`/login?next=${encodeURIComponent("/?device=ABC-123")}`);
 
     const wrong = new FormData();
     wrong.set("password", "nope");
@@ -179,7 +185,11 @@ describe("minirun worker", () => {
     const viewer = viewerResponse.webSocket!;
     viewer.accept();
     const start = JSON.parse(await streamStart);
-    expect(start.action).toBe("start");
+    expect(start).toMatchObject({ action: "set", streams: [{ udid: null }] });
+
+    // The Mac says which simulator the default stream shows; input goes to that one.
+    agent.send(JSON.stringify({ type: "screen", key: "", udid: "SIM-A", name: "iPhone 17 Pro", pointWidth: 402, pointHeight: 874 }));
+    await new Promise((r) => setTimeout(r, 50));
 
     // A frame from the Mac reaches the viewer.
     const frameArrived = new Promise<ArrayBuffer>((resolve) => {
@@ -200,18 +210,89 @@ describe("minirun worker", () => {
     const inputCall = nextMessage(agent, (d) => d.includes('"call"'));
     viewer.send(JSON.stringify({ type: "input", tool: "tap", arguments: { x: 10, y: 20 } }));
     const call = JSON.parse(await inputCall);
-    expect(call).toMatchObject({ type: "call", tool: "tap", arguments: { x: 10, y: 20 } });
+    expect(call).toMatchObject({ type: "call", tool: "tap", arguments: { x: 10, y: 20, device: "SIM-A" } });
     expect(call.id).toBeUndefined();
 
     const ack = nextMessage(agent, (d) => d.includes('"ack"'));
     viewer.send(JSON.stringify({ type: "ack", seq: 7 }));
-    expect(JSON.parse(await ack).seq).toBe(7);
+    expect(JSON.parse(await ack)).toMatchObject({ seq: 7, key: "" });
 
     // Viewers can't call arbitrary tools.
     viewer.send(JSON.stringify({ type: "input", tool: "run_command", arguments: { command: "rm -rf /" } }));
 
     const stop = nextMessage(agent, (d) => d.includes('"stop"'));
     viewer.close();
+    expect(JSON.parse(await stop).action).toBe("stop");
+    agent.close();
+  });
+
+  it("streams each viewer the simulator it picked, and sends its input there", async () => {
+    const form = new FormData();
+    form.set("password", "test-password");
+    const login = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
+
+    const agent = (await connectAgent()) as WebSocket;
+    agent.send(JSON.stringify({ type: "hello", version: 2, host: { name: "Test Mac" }, tools: [] }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    async function openViewer(device: string): Promise<WebSocket> {
+      const response = await SELF.fetch(`${ORIGIN}/viewer/ws?device=${device}`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+      const ws = response.webSocket!;
+      ws.accept();
+      return ws;
+    }
+    function frames(ws: WebSocket): Uint8Array[] {
+      const received: Uint8Array[] = [];
+      ws.addEventListener("message", (event) => {
+        if (typeof event.data === "string") return;
+        const data = event.data as ArrayBuffer | Blob;
+        if (data instanceof Blob) data.arrayBuffer().then((b) => received.push(new Uint8Array(b)));
+        else received.push(new Uint8Array(data));
+      });
+      return received;
+    }
+    function keyedFrame(key: string, seq: number): Uint8Array {
+      const keyBytes = new TextEncoder().encode(key);
+      return new Uint8Array([2, 0, 0, 0, seq, keyBytes.length, ...keyBytes, 0xff, 0xd8]);
+    }
+
+    const firstSet = nextMessage(agent, (d) => d.includes('"set"'));
+    const a = await openViewer("SIM-A");
+    expect(JSON.parse(await firstSet).streams).toEqual([{ udid: "SIM-A", fps: 12, quality: 60, scale: 0.5 }]);
+    const bothSet = nextMessage(agent, (d) => d.includes('"SIM-B"'));
+    const b = await openViewer("SIM-B");
+    const both = JSON.parse(await bothSet).streams.map((s: { udid: string }) => s.udid).sort();
+    expect(both).toEqual(["SIM-A", "SIM-B"]);
+
+    const aFrames = frames(a);
+    const bFrames = frames(b);
+    agent.send(keyedFrame("SIM-A", 1));
+    agent.send(keyedFrame("SIM-B", 1));
+    agent.send(keyedFrame("SIM-B", 2));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(aFrames.length).toBe(1);
+    expect(bFrames.length).toBe(2);
+    expect(new TextDecoder().decode(aFrames[0]!.subarray(6, 11))).toBe("SIM-A");
+
+    // Input from each viewer goes to its own simulator, whatever the page claims.
+    const inputCall = nextMessage(agent, (d) => d.includes('"call"'));
+    b.send(JSON.stringify({ type: "input", tool: "tap", arguments: { x: 1, y: 2, device: "SIM-A" } }));
+    expect(JSON.parse(await inputCall).arguments).toEqual({ x: 1, y: 2, device: "SIM-B" });
+
+    // Switching simulators re-plans the streams.
+    const switched = nextMessage(agent, (d) => d.includes('"set"') && !d.includes('"SIM-B"'));
+    b.send(JSON.stringify({ type: "stream", device: "SIM-A", fps: 6, quality: 45, scale: 0.33 }));
+    expect(JSON.parse(await switched).streams.map((s: { udid: string }) => s.udid)).toEqual(["SIM-A"]);
+
+    // The simulator list reaches viewers, and mac_status keeps it.
+    const listed = nextMessage(a, (d) => d.includes('"simulators"'));
+    agent.send(JSON.stringify({ type: "simulators", devices: [{ udid: "SIM-A", name: "iPhone 17 Pro", reserved_for: "you/app@a" }] }));
+    expect(JSON.parse(await listed).devices[0].reserved_for).toBe("you/app@a");
+
+    const stop = nextMessage(agent, (d) => d.includes('"stop"'));
+    a.close();
+    b.close();
     expect(JSON.parse(await stop).action).toBe("stop");
     agent.close();
   });

@@ -15,7 +15,8 @@ extension ToolRegistry {
             let sim = try await self.device(args)
             let path = try args.requireString("app_path")
             try await Simctl.install(sim.udid, appPath: path)
-            return .text("Installed \(URL(fileURLWithPath: path).lastPathComponent) on \(sim.name).")
+            if let bundle = Bundle(path: path)?.bundleIdentifier { await claims.noteApp(sim.udid, bundleID: bundle) }
+            return .text("Installed \(URL(fileURLWithPath: path).lastPathComponent) on \(sim.name) (\(sim.udid)).")
         }
 
         register(ToolDefinition(
@@ -32,8 +33,9 @@ extension ToolRegistry {
             let bundle = try args.requireString("bundle_id")
             let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
             let pid = try await Simctl.launch(sim.udid, bundleID: bundle, arguments: args.strings("arguments"), environment: env)
+            await claims.noteApp(sim.udid, bundleID: bundle)
             try await Task.sleep(nanoseconds: 1_500_000_000)
-            return ToolResult([.text("Launched \(bundle) (pid \(pid)).")] + ((try? await screenshotContent(udid: sim.udid)) ?? []))
+            return ToolResult([.text("Launched \(bundle) (pid \(pid)) on \(sim.name) (\(sim.udid)).")] + ((try? await screenshotContent(udid: sim.udid)) ?? []))
         }
 
         register(ToolDefinition(

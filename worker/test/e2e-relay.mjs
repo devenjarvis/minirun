@@ -75,7 +75,9 @@ const result = await new Promise((resolve, reject) => {
   let frames = 0, screen = null;
   ws.on("message", (data, isBinary) => {
     if (!isBinary) { const m = JSON.parse(data.toString()); if (m.type === "screen") screen = m; return; }
-    assert(data[0] === 1 && data[5] === 0xff && data[6] === 0xd8, "frame is a JPEG");
+    // Kind 2 frames carry [keyLength][key] (the simulator UDID, or "" for the default stream) before the JPEG.
+    const start = data[0] === 2 ? 6 + data[5] : 5;
+    assert((data[0] === 1 || data[0] === 2) && data[start] === 0xff && data[start + 1] === 0xd8, "frame is a JPEG");
     frames++;
     ws.send(JSON.stringify({ type: "ack", seq: data.readUInt32BE(1) }));
     if (frames === 1 && screen) ws.send(JSON.stringify({ type: "input", tool: "swipe", arguments: { direction: "down" } }));

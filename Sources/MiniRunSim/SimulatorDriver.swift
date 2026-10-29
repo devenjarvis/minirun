@@ -235,9 +235,10 @@ public final class SimulatorDriver {
         try await HIDInteractor.performHIDEvent(event, for: udid, logger: logger)
     }
 
-    /// Drops cached HID connections, e.g. after a simulator reboots.
-    public func reset() {
-        HIDInteractor.clearHIDConnections()
+    /// Drops cached HID connections, e.g. after a simulator reboots. Pass `udid` to leave other
+    /// simulators' connections alone.
+    public func reset(udid: String? = nil) {
+        HIDInteractor.clearHIDConnections(for: udid)
         simulatorSet = nil
     }
 }
