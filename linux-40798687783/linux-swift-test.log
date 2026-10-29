@@ -1,0 +1,99 @@
+Building for debugging...
+[0/13] Write sources
+[2/13] Write swift-version-24593BA9C3E375BF.txt
+[4/20] Compiling MiniRunKit Jobs.swift
+[5/20] Compiling MiniRunKit RelayProtocol.swift
+[6/20] Emitting module MiniRunKit
+[7/20] Compiling MiniRunKit Config.swift
+[8/20] Compiling MiniRunKit JSONValue.swift
+[9/20] Compiling MiniRunKit Shell.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:173:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+171 |     init(logURL: URL?) {
+172 |         if let logURL {
+173 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+174 |             logHandle = try? FileHandle(forWritingTo: logURL)
+175 |             _ = try? logHandle?.seekToEnd()
+[10/20] Compiling MiniRunKit Tools.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:173:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+171 |     init(logURL: URL?) {
+172 |         if let logURL {
+173 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+174 |             logHandle = try? FileHandle(forWritingTo: logURL)
+175 |             _ = try? logHandle?.seekToEnd()
+[11/21] Compiling MiniRunKit XcodeParsing.swift
+[12/22] Wrapping AST for MiniRunKit for debugging
+[14/24] Emitting module MiniRunKitTests
+[15/24] Compiling MiniRunKitTests MiniRunKitTests.swift
+[16/25] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageDiscoveredTests.derived/all-discovered-tests.swift
+[17/25] Write sources
+[18/25] Wrapping AST for MiniRunKitTests for debugging
+[20/28] Compiling minirunPackageDiscoveredTests MiniRunKitTests.swift
+[21/28] Compiling minirunPackageDiscoveredTests all-discovered-tests.swift
+[22/28] Emitting module minirunPackageDiscoveredTests
+[23/29] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageTests.derived/runner.swift
+[24/29] Write sources
+[25/29] Wrapping AST for minirunPackageDiscoveredTests for debugging
+[27/31] Emitting module minirunPackageTests
+[28/31] Compiling minirunPackageTests runner.swift
+[29/32] Wrapping AST for minirunPackageTests for debugging
+[30/32] Write Objects.LinkFileList
+[31/32] Linking minirunPackageTests.xctest
+Build complete! (8.47s)
+Test Suite 'All tests' started at 2026-10-29 01:10:17.937
+Test Suite 'debug.xctest' started at 2026-10-29 01:10:17.938
+Test Suite 'ConfigTests' started at 2026-10-29 01:10:17.938
+Test Case 'ConfigTests.testDecodesPartialConfig' started at 2026-10-29 01:10:17.938
+Test Case 'ConfigTests.testDecodesPartialConfig' passed (0.001 seconds)
+Test Case 'ConfigTests.testResolveRepo' started at 2026-10-29 01:10:17.939
+Test Case 'ConfigTests.testResolveRepo' passed (0.001 seconds)
+Test Suite 'ConfigTests' passed at 2026-10-29 01:10:17.940
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'JSONValueTests' started at 2026-10-29 01:10:17.940
+Test Case 'JSONValueTests.testArguments' started at 2026-10-29 01:10:17.940
+Test Case 'JSONValueTests.testArguments' passed (0.0 seconds)
+Test Case 'JSONValueTests.testRoundTrip' started at 2026-10-29 01:10:17.940
+Test Case 'JSONValueTests.testRoundTrip' passed (0.001 seconds)
+Test Suite 'JSONValueTests' passed at 2026-10-29 01:10:17.941
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RelayProtocolTests' started at 2026-10-29 01:10:17.941
+Test Case 'RelayProtocolTests.testDecodeMessages' started at 2026-10-29 01:10:17.941
+Test Case 'RelayProtocolTests.testDecodeMessages' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testFrameEncoding' started at 2026-10-29 01:10:17.941
+Test Case 'RelayProtocolTests.testFrameEncoding' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testResultShape' started at 2026-10-29 01:10:17.941
+Test Case 'RelayProtocolTests.testResultShape' passed (0.0 seconds)
+Test Suite 'RelayProtocolTests' passed at 2026-10-29 01:10:17.941
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ShellAndJobTests' started at 2026-10-29 01:10:17.941
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' started at 2026-10-29 01:10:17.941
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' passed (2.002 seconds)
+Test Case 'ShellAndJobTests.testShellCapturesOutput' started at 2026-10-29 01:10:19.943
+Test Case 'ShellAndJobTests.testShellCapturesOutput' passed (0.103 seconds)
+Test Case 'ShellAndJobTests.testShellStdin' started at 2026-10-29 01:10:20.046
+Test Case 'ShellAndJobTests.testShellStdin' passed (0.052 seconds)
+Test Case 'ShellAndJobTests.testShellTimeout' started at 2026-10-29 01:10:20.098
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:168: error: ShellAndJobTests.testShellTimeout : XCTAssertLessThan failed: ("5.5523247718811035") is not less than ("5.0") - 
+Test Case 'ShellAndJobTests.testShellTimeout' failed (5.553 seconds)
+Test Suite 'ShellAndJobTests' failed at 2026-10-29 01:10:25.651
+	 Executed 4 tests, with 1 failure (0 unexpected) in 7.709 (7.709) seconds
+Test Suite 'XcodeParsingTests' started at 2026-10-29 01:10:25.651
+Test Case 'XcodeParsingTests.testAccessibilitySummary' started at 2026-10-29 01:10:25.651
+Test Case 'XcodeParsingTests.testAccessibilitySummary' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testParseAndPickDevices' started at 2026-10-29 01:10:25.651
+Test Case 'XcodeParsingTests.testParseAndPickDevices' passed (0.001 seconds)
+Test Case 'XcodeParsingTests.testParseIssues' started at 2026-10-29 01:10:25.652
+Test Case 'XcodeParsingTests.testParseIssues' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testSchemesAndProduct' started at 2026-10-29 01:10:25.652
+Test Case 'XcodeParsingTests.testSchemesAndProduct' passed (0.0 seconds)
+Test Suite 'XcodeParsingTests' passed at 2026-10-29 01:10:25.652
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'debug.xctest' failed at 2026-10-29 01:10:25.652
+	 Executed 15 tests, with 1 failure (0 unexpected) in 7.714 (7.714) seconds
+Test Suite 'All tests' failed at 2026-10-29 01:10:25.652
+	 Executed 15 tests, with 1 failure (0 unexpected) in 7.714 (7.714) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.1.3 (1d1f7e489c9c606)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests passed after 0.001 seconds.
