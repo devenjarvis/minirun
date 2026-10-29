@@ -69,7 +69,7 @@ public final class ToolRegistry: @unchecked Sendable {
         } else if let size {
             shot = try await SimulatorDriver.shared.screenshotJPEG(udid: udid, targetWidth: Int(size.width.rounded()), quality: quality)
         } else {
-            shot = try await SimulatorDriver.shared.screenshotJPEG(udid: udid, scale: 0.4, quality: quality)
+            shot = try await SimulatorDriver.shared.screenshotJPEG(udid: udid, scale: 1.0 / 3.0, quality: quality) // 3x screens: ≈ points
         }
         var note = "Screenshot \(shot.width)x\(shot.height)px."
         if let size {

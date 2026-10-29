@@ -165,7 +165,8 @@ final class ShellAndJobTests: XCTestCase {
     func testShellTimeout() async throws {
         let result = try await Shell.run("/bin/sh", ["-c", "exec sleep 10"], timeout: 0.5)
         XCTAssertTrue(result.timedOut)
-        XCTAssertLessThan(result.duration, 5)
+        // SIGTERM, then SIGKILL 5s later if needed (corelibs Foundation on Linux can need the latter).
+        XCTAssertLessThan(result.duration, 8)
     }
 
     func testShellStdin() async throws {
