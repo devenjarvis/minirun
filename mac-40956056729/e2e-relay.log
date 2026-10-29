@@ -1,0 +1,51 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.Chybw8jGLP/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  31 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, run_command, get_job, job_log, list_jobs
+• mac_status
+  The Mac is online (sat12-dp154-3593521b-5585-4cba-913f-43be87211e6c-DA8928AF8254).
+• screenshot through the relay
+  Screenshot 402x874px.
+• describe_ui through the relay
+  Application " " (0,0 402x874) |   Group (0,0 402x874) |     Group (0,0 402x874)
+• viewer login + live frames + input
+  5 frames; screen iPhone 17 402x874 pt
+• H.264 live view
+FAILED: keyframe carries an SPS
+--- minirun serve log
+2026-10-29T21:35:33Z minirun 0.1.0 starting
+2026-10-29T21:35:33Z Simulator support loaded
+2026-10-29T21:35:33Z Preventing idle sleep while running
+2026-10-29T21:35:33Z 30 tools ready; workspaces at /Users/runner/minirun/workspaces
+2026-10-29T21:35:34Z Connected to relay 127.0.0.1
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
+--- wrangler log
+
+ ⛅️ wrangler 4.155.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                      Resource                  Mode
+env.MAC_RELAY (MacRelay)                     Durable Object            local
+env.OAUTH_KV (REPLACE_WITH_KV_ID)            KV Namespace              local
+env.OWNER_PASSWORD ("(hidden)")              Environment Variable      local
+env.AGENT_TOKEN ("(hidden)")                 Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8787
+[wrangler:info] GET /login 200 OK (308ms)
+[wrangler:info] GET /login 200 OK (5ms)
+[wrangler:info] POST /register 201 Created (23ms)
+[wrangler:info] GET /authorize 200 OK (13ms)
+[wrangler:info] POST /authorize 302 Found (28ms)
+[wrangler:info] POST /token 200 OK (39ms)
+[wrangler:info] POST /mcp 200 OK (11ms)
+[wrangler:info] POST /mcp 200 OK (30ms)
+[wrangler:info] GET /agent 101 Switching Protocols (11ms)
+[wrangler:info] POST /mcp 200 OK (9ms)
+[wrangler:info] POST /mcp 200 OK (5ms)
+[wrangler:info] POST /mcp 200 OK (235276ms)
+[wrangler:info] POST /mcp 200 OK (16012ms)
+[wrangler:info] POST /login 302 Found (76ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (186ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (135ms)
