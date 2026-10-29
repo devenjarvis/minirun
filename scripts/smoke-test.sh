@@ -47,6 +47,14 @@ finish "$BOOT1" /tmp/minirun-boot1.txt
 expect "Booted" < /tmp/minirun-boot1.txt
 finish "$BOOT2" /tmp/minirun-boot2.txt
 expect "Created minirun-smoke (minirun 2)" < /tmp/minirun-boot2.txt
+# Right after two first boots CoreSimulator can stall for a minute or more (simctl list timed out on a
+# GitHub runner), so let it settle before the next calls.
+settle=$SECONDS
+for _ in $(seq 1 20); do
+  start=$SECONDS; xcrun simctl list devices > /dev/null || true
+  (( SECONDS - start < 5 )) && break
+done
+echo "CoreSimulator settled after $((SECONDS - settle))s"
 run screenshot "{\"device\":\"$UDID\"}" | expect "image saved"
 
 (cd "$ROOT/Tests/Fixtures/HelloApp" && xcodegen generate --quiet)
