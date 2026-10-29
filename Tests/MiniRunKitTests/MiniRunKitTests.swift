@@ -40,6 +40,33 @@ final class RelayProtocolTests: XCTestCase {
         XCTAssertEqual(decodedKeyed.sequence, 9)
         XCTAssertEqual(Data(decodedKeyed.payload), payload)
         XCTAssertNil(RelayProtocol.decodeFrame(Data([2, 0, 0, 0, 1, 9, 65])), "key longer than the frame")
+
+        let video = RelayProtocol.encodeVideoFrame(key: "SIM-A", sequence: 3, keyframe: true, payload: Data([0, 0, 0, 1, 0x65]))
+        XCTAssertEqual([UInt8](video), [3, 0, 0, 0, 3, 5] + Array("SIM-A".utf8) + [1, 0, 0, 0, 1, 0x65])
+        let decodedVideo = try XCTUnwrap(RelayProtocol.decodeFrame(video))
+        XCTAssertEqual(decodedVideo.key, "SIM-A")
+        XCTAssertEqual([UInt8](decodedVideo.payload), [1, 0, 0, 0, 1, 0x65], "flags byte, then Annex B")
+        XCTAssertEqual(RelayProtocol.encodeVideoFrame(key: "", sequence: 4, keyframe: false, payload: Data([9]))[6], 0)
+    }
+
+    func testAnnexB() throws {
+        let sps = Data([0x67, 0x4D, 0x40, 0x1F])
+        let pps = Data([0x68, 0xEE])
+        let avcc = Data([0, 0, 0, 2, 0x65, 0xAA, 0, 0, 0, 1, 0x06])
+        let annexB = try XCTUnwrap(H264.annexB(lengthPrefixed: avcc, parameterSets: [sps, pps]))
+        XCTAssertEqual([UInt8](annexB), [0, 0, 0, 1, 0x67, 0x4D, 0x40, 0x1F, 0, 0, 0, 1, 0x68, 0xEE, 0, 0, 0, 1, 0x65, 0xAA, 0, 0, 0, 1, 0x06])
+        XCTAssertEqual([UInt8](try XCTUnwrap(H264.annexB(lengthPrefixed: Data([0, 1, 0x41]), lengthSize: 2))), [0, 0, 0, 1, 0x41])
+        XCTAssertNil(H264.annexB(lengthPrefixed: Data([0, 0, 0, 5, 0x65])), "length past the end")
+        XCTAssertNil(H264.annexB(lengthPrefixed: Data([0, 0])), "truncated length")
+        XCTAssertEqual(H264.annexB(lengthPrefixed: Data()), Data())
+    }
+
+    func testBitrate() {
+        let smooth = H264.bitrate(width: 602, height: 1310, fps: 30, quality: 55)
+        XCTAssertGreaterThan(smooth, 1_000_000)
+        XCTAssertLessThan(smooth, 2_000_000)
+        XCTAssertEqual(H264.bitrate(width: 100, height: 100, fps: 1, quality: 10), 150_000)
+        XCTAssertEqual(H264.bitrate(width: 4000, height: 4000, fps: 30, quality: 95), 8_000_000)
     }
 
     func testDecodeMessages() {
@@ -60,6 +87,12 @@ final class RelayProtocolTests: XCTestCase {
         )
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"ack","seq":42}"#), .ack(sequence: 42, key: ""))
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"ack","seq":42,"key":"SIM-B"}"#), .ack(sequence: 42, key: "SIM-B"))
+        XCTAssertEqual(
+            RelayProtocol.decode(#"{"type":"stream","action":"set","streams":[{"udid":"SIM-A","fps":30,"quality":55,"scale":0.5,"codec":"h264"},{"udid":"SIM-B","codec":"vp9"}]}"#),
+            .streams([.init(key: "SIM-A", fps: 30, quality: 55, scale: 0.5, codec: .h264), .init(key: "SIM-B", fps: 12, quality: 60, scale: 0.5)]),
+            "unknown codecs fall back to JPEG"
+        )
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"keyframe","key":"SIM-A"}"#), .keyframe(key: "SIM-A"))
         if case .unknown = RelayProtocol.decode("garbage") {} else { XCTFail("expected unknown") }
     }
 

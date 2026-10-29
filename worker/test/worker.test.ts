@@ -259,7 +259,7 @@ describe("minirun worker", () => {
 
     const firstSet = nextMessage(agent, (d) => d.includes('"set"'));
     const a = await openViewer("SIM-A");
-    expect(JSON.parse(await firstSet).streams).toEqual([{ udid: "SIM-A", fps: 12, quality: 60, scale: 0.5 }]);
+    expect(JSON.parse(await firstSet).streams).toEqual([{ udid: "SIM-A", fps: 12, quality: 60, scale: 0.5, codec: "jpeg" }]);
     const bothSet = nextMessage(agent, (d) => d.includes('"SIM-B"'));
     const b = await openViewer("SIM-B");
     const both = JSON.parse(await bothSet).streams.map((s: { udid: string }) => s.udid).sort();
@@ -294,6 +294,80 @@ describe("minirun worker", () => {
     a.close();
     b.close();
     expect(JSON.parse(await stop).action).toBe("stop");
+    agent.close();
+  });
+
+  it("streams H.264 to viewers that can decode it, keyframe first", async () => {
+    const form = new FormData();
+    form.set("password", "test-password");
+    const login = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
+
+    const agent = (await connectAgent()) as WebSocket;
+    agent.send(JSON.stringify({ type: "hello", version: 3, host: { name: "Test Mac" }, tools: [] }));
+    await new Promise((r) => setTimeout(r, 50));
+    const toMac: string[] = [];
+    agent.addEventListener("message", (event) => {
+      if (typeof event.data === "string" && event.data !== "pong") toMac.push(event.data);
+    });
+
+    async function openViewer(): Promise<{ ws: WebSocket; frames: number[] }> {
+      const response = await SELF.fetch(`${ORIGIN}/viewer/ws?device=SIM-V`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+      const ws = response.webSocket!;
+      ws.accept();
+      const frames: number[] = [];
+      ws.addEventListener("message", (event) => {
+        if (typeof event.data === "string") return;
+        const data = event.data as ArrayBuffer | Blob;
+        const record = (b: ArrayBuffer) => frames.push(new DataView(b).getUint32(1));
+        if (data instanceof Blob) data.arrayBuffer().then(record);
+        else record(data);
+      });
+      return { ws, frames };
+    }
+    function videoFrame(seq: number, keyframe: boolean): Uint8Array {
+      const key = new TextEncoder().encode("SIM-V");
+      return new Uint8Array([3, 0, 0, 0, seq, key.length, ...key, keyframe ? 1 : 0, 0, 0, 0, 1, keyframe ? 0x65 : 0x41]);
+    }
+    const settle = () => new Promise((r) => setTimeout(r, 100));
+
+    const h264 = nextMessage(agent, (d) => d.includes('"h264"'));
+    const viewer = await openViewer();
+    viewer.ws.send(JSON.stringify({ type: "stream", device: "SIM-V", codec: "h264", fps: 30, quality: 55, scale: 0.5 }));
+    expect(JSON.parse(await h264).streams).toEqual([{ udid: "SIM-V", fps: 30, quality: 55, scale: 0.5, codec: "h264" }]);
+    await settle();
+    expect(toMac.some((m) => JSON.parse(m).type === "keyframe" && JSON.parse(m).key === "SIM-V")).toBe(true);
+
+    // A delta frame is useless to a viewer that hasn't had a keyframe yet.
+    agent.send(videoFrame(1, false));
+    agent.send(videoFrame(2, true));
+    agent.send(videoFrame(3, false));
+    await settle();
+    expect(viewer.frames).toEqual([2, 3]);
+
+    // A viewer that falls too far behind skips to the next keyframe.
+    for (let seq = 4; seq <= 20; seq++) agent.send(videoFrame(seq, false));
+    await settle();
+    expect(viewer.frames.at(-1)).toBe(11); // 10 frames in flight since the last one counted as seen (1)
+    viewer.ws.send(JSON.stringify({ type: "ack", seq: 20 }));
+    await settle();
+    agent.send(videoFrame(21, false));
+    agent.send(videoFrame(22, true));
+    await settle();
+    expect(viewer.frames.at(-1)).toBe(22);
+    expect(viewer.frames).not.toContain(21);
+
+    // A viewer without H.264 turns the stream back to JPEG, and never gets H.264 frames.
+    const jpeg = nextMessage(agent, (d) => d.includes('"set"') && d.includes('"jpeg"'));
+    const old = await openViewer();
+    expect(JSON.parse(await jpeg).streams[0].codec).toBe("jpeg");
+    agent.send(videoFrame(23, true));
+    await settle();
+    expect(old.frames).toEqual([]);
+    expect(viewer.frames.at(-1)).toBe(23);
+
+    viewer.ws.close();
+    old.ws.close();
     agent.close();
   });
 });

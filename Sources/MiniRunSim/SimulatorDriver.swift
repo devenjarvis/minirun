@@ -91,6 +91,13 @@ public final class SimulatorDriver {
         return try Self.encodeJPEG(png, targetWidth: targetWidth, scale: scale, quality: quality)
     }
 
+    /// An H.264 encoder fed straight from the simulator's display. `bitrate` gets the encoded size.
+    public func screenEncoder(udid: String, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) async throws -> ScreenEncoder {
+        let target = try await simulator(udid)
+        let framebuffer = try FBFramebuffer.mainScreenSurface(for: target, logger: logger)
+        return ScreenEncoder(framebuffer: framebuffer, scale: scale, fps: fps, bitrate: bitrate)
+    }
+
     public func screenshotPNG(udid: String) async throws -> Data {
         try await simulator(udid).takeScreenshot(format: .png)
     }

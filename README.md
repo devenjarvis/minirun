@@ -9,7 +9,7 @@ open ports, and no tunnel to run.
 
 ```
  Claude (phone, web, laptop)            Your browser (phone/laptop)
-        │  MCP over HTTPS + OAuth               │  live JPEG stream + touches
+        │  MCP over HTTPS + OAuth               │  live H.264 (or JPEG) + touches
         ▼                                       ▼
  ┌──────────────────── Cloudflare Worker (minirun.<you>.workers.dev) ────────────────────┐
  │  /mcp  OAuth-protected MCP endpoint      /  viewer (password login)                    │
@@ -33,6 +33,11 @@ open ports, and no tunnel to run.
 - **The Worker (TypeScript)** is a remote MCP server that Claude connects to as a custom
   connector, protected by OAuth that you approve with your password. Tool calls are forwarded
   to the Mac through a Durable Object. The same object fans the live screen out to browser viewers.
+- **The live view is H.264.** The Mac encodes the simulator's display with VideoToolbox (the
+  hardware encoder on Apple silicon), reading frames straight from the simulator's framebuffer,
+  and the viewer decodes them with WebCodecs. Frames are only sent when the screen changes. A
+  browser without WebCodecs gets JPEG frames instead, and so does everyone watching that simulator
+  with it, since one stream serves all of a simulator's viewers.
 - **Long work runs as jobs.** `build`, `build_and_run`, `run_tests` and `run_command` return
   within `wait_seconds` (default 45). If the work is still going they return a `job_id`, and
   Claude waits on it with `get_job`. Long builds never hit request timeouts.
@@ -65,6 +70,7 @@ Then:
    also works in the Claude mobile app.
 2. **Watch live** at `https://minirun.<you>.workers.dev/` from any browser. Tap and swipe on the
    screen, type with the box at the bottom, and pick a stream quality (Saver, Smooth or Sharp).
+   Add `?codec=jpeg` to the address to use JPEG frames instead of H.264.
 
 For private repositories, run `gh auth login && gh auth setup-git` on the Mac so it can clone them.
 
@@ -206,9 +212,10 @@ GitHub-hosted runners (`runs-on: macos-26`) remain the fallback; keep a hosted j
 ## Costs (Cloudflare free plan)
 
 Workers, one SQLite Durable Object and KV all fit in the free tier for one person. Streaming
-uses Durable Object requests, roughly 1–2 per second at the default 12 fps. That works out to
-many hours of viewing a day within the free 100k requests. The viewer stops streaming when its
-tab is hidden.
+uses Durable Object requests: each frame and its acknowledgement count as 1/20 of a request.
+H.264 only sends frames while the screen changes, so a still screen costs almost nothing and
+scrolling at 30 fps costs about 3 requests per second. That works out to many hours of viewing a
+day within the free 100k requests. The viewer stops streaming when its tab is hidden.
 
 ## Limitations (v0.1)
 
@@ -217,7 +224,8 @@ tab is hidden.
   to free disk space.
 - The Mac and the Worker must be updated together: the viewer's per-simulator streams need both.
 - `type_text` types US-keyboard characters. For other text, use `set_pasteboard` and paste.
-- The live view is JPEG frames, up to about 30 fps. A hardware H.264 stream is next.
+- The live view runs at up to 30 fps. Viewers that join, or fall too far behind, wait for the
+  next keyframe, which the Mac sends on request.
 
 ## Development
 

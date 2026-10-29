@@ -20,10 +20,14 @@ interface Hello {
   tools: ToolDefinition[];
 }
 
+type Codec = "jpeg" | "h264";
+
 interface StreamSettings {
   fps: number;
   quality: number;
   scale: number;
+  /** What the viewer can decode. A stream is H.264 only if all its viewers can decode it. */
+  codec: Codec;
 }
 
 /** What a viewer is watching, kept on its socket so it survives hibernation. */
@@ -52,10 +56,19 @@ const VIEWER_TOOLS = new Set(["tap", "swipe", "long_press", "type_text", "press_
 /** Frames a viewer may have in flight before we skip frames for it. */
 const VIEWER_WINDOW = 3;
 
+/**
+ * The same for H.264, whose frames are smaller. Skipping one breaks the picture until the next
+ * keyframe, so it's set above the Mac's own window (6) and only a lagging viewer hits it.
+ */
+const VIDEO_WINDOW = 10;
+
+/** How often a stream's viewers may ask the Mac for a keyframe. */
+const KEYFRAME_INTERVAL_MS = 500;
+
 /** Longest a tool call may take. Mac jobs return within their wait_seconds (max 600). */
 const CALL_TIMEOUT_MS = 11 * 60 * 1000;
 
-const DEFAULT_STREAM: StreamSettings = { fps: 12, quality: 60, scale: 0.5 };
+const DEFAULT_STREAM: StreamSettings = { fps: 12, quality: 60, scale: 0.5, codec: "jpeg" };
 
 const decoder = new TextDecoder();
 
@@ -74,8 +87,13 @@ export function streamKey(value: unknown): string | null {
  */
 export class MacRelay extends DurableObject<Env> {
   private pending = new Map<string, Pending>();
-  /** Per-viewer flow control: last frame sent and last frame acknowledged. */
-  private viewerFrames = new Map<WebSocket, { sent: number; acked: number }>();
+  /**
+   * Per-viewer flow control: last frame sent, last frame acknowledged, and whether the viewer
+   * must wait for an H.264 keyframe (it just joined, or missed a frame).
+   */
+  private viewerFrames = new Map<WebSocket, FlowState>();
+  /** When each stream last asked the Mac for a keyframe. */
+  private keyframeRequested = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -161,7 +179,7 @@ export class MacRelay extends DurableObject<Env> {
       const key = streamKey(new URL(request.url).searchParams.get("device")) ?? "";
       this.ctx.acceptWebSocket(server, ["viewer"]);
       server.serializeAttachment({ key, ...DEFAULT_STREAM } satisfies ViewerState);
-      this.viewerFrames.set(server, { sent: 0, acked: 0 });
+      this.viewerFrames.set(server, newFlow());
       this.ctx.waitUntil(this.greetViewer(server));
     }
     return new Response(null, { status: 101, webSocket: client });
@@ -180,7 +198,8 @@ export class MacRelay extends DurableObject<Env> {
   }
 
   private viewerState(ws: WebSocket): ViewerState {
-    return (ws.deserializeAttachment() as ViewerState | null) ?? { key: "", ...DEFAULT_STREAM };
+    // Attachments from before a setting existed get its default.
+    return { key: "", ...DEFAULT_STREAM, ...(ws.deserializeAttachment() as Partial<ViewerState> | null) };
   }
 
   private async greetViewer(ws: WebSocket) {
@@ -190,6 +209,15 @@ export class MacRelay extends DurableObject<Env> {
     const screen = await this.ctx.storage.get<string>(`screen:${this.viewerState(ws).key}`);
     if (screen) safeSend(ws, screen);
     this.syncStreams();
+    this.requestKeyframe(this.viewerState(ws).key, true);
+  }
+
+  /** Asks the Mac for an H.264 keyframe on stream `key`, at most every KEYFRAME_INTERVAL_MS unless `now`. */
+  private requestKeyframe(key: string, now = false) {
+    const last = this.keyframeRequested.get(key) ?? 0;
+    if (!now && Date.now() - last < KEYFRAME_INTERVAL_MS) return;
+    this.keyframeRequested.set(key, Date.now());
+    this.agent()?.send(JSON.stringify({ type: "keyframe", key }));
   }
 
   /** Tells the Mac which simulators to stream: one stream per simulator someone is watching. */
@@ -200,13 +228,15 @@ export class MacRelay extends DurableObject<Env> {
     for (const viewer of this.viewers()) {
       if (viewer === leaving) continue;
       const state = this.viewerState(viewer);
-      streams.set(state.key, state);
+      // The newest viewer's settings win, but one viewer without H.264 keeps the stream JPEG.
+      const codec = streams.get(state.key)?.codec === "jpeg" ? "jpeg" : state.codec;
+      streams.set(state.key, { ...state, codec });
     }
     if (streams.size === 0) {
       agent.send(JSON.stringify({ type: "stream", action: "stop" }));
       return;
     }
-    const list = [...streams.values()].map(({ key, fps, quality, scale }) => ({ udid: key || null, fps, quality, scale }));
+    const list = [...streams.values()].map(({ key, fps, quality, scale, codec }) => ({ udid: key || null, fps, quality, scale, codec }));
     agent.send(JSON.stringify({ type: "stream", action: "set", streams: list }));
   }
 
@@ -281,25 +311,47 @@ export class MacRelay extends DurableObject<Env> {
   private onFrame(frame: ArrayBuffer) {
     if (frame.byteLength < 5) return;
     const bytes = new Uint8Array(frame);
-    // Kind 1: the default stream. Kind 2: [keyLength][key] follows the sequence number.
+    // Kind 1: a JPEG of the default stream. Kind 2: a JPEG with [keyLength][key] after the
+    // sequence number. Kind 3: H.264, with [keyLength][key][flags] (bit 0 = keyframe).
     let key = "";
-    if (bytes[0] === 2) {
-      if (frame.byteLength < 6 || frame.byteLength < 6 + bytes[5]!) return;
+    const video = bytes[0] === 3;
+    if (bytes[0] === 2 || video) {
+      if (frame.byteLength < 6 + bytes[5]! + (video ? 1 : 0)) return;
       key = decoder.decode(bytes.subarray(6, 6 + bytes[5]!));
     } else if (bytes[0] !== 1) {
       return;
     }
+    const keyframe = video && (bytes[6 + bytes[5]!]! & 1) === 1;
     const sequence = new DataView(frame).getUint32(1);
     for (const viewer of this.viewers()) {
-      if (this.viewerState(viewer).key !== key) continue;
+      const viewerState = this.viewerState(viewer);
+      if (viewerState.key !== key) continue;
+      // A JPEG-only viewer can't show H.264; the stream switches to JPEG for it shortly.
+      if (video && viewerState.codec !== "h264") continue;
       let state = this.viewerFrames.get(viewer);
       if (!state) {
-        state = { sent: 0, acked: 0 };
+        state = newFlow();
         this.viewerFrames.set(viewer, state);
       }
-      // Skip this frame for viewers that are falling behind; they'll get a fresher one.
-      if (state.sent - state.acked >= VIEWER_WINDOW) continue;
-      if (safeSend(viewer, frame)) state.sent = sequence;
+      if (video) {
+        // H.264 frames depend on the ones before, so a viewer that missed one waits for a keyframe.
+        if (state.needsKeyframe && !keyframe) {
+          this.requestKeyframe(key);
+          continue;
+        }
+        if (state.sent - state.acked >= VIDEO_WINDOW) {
+          state.needsKeyframe = true;
+          this.requestKeyframe(key);
+          continue;
+        }
+      } else if (state.sent - state.acked >= VIEWER_WINDOW) {
+        // Skip this frame for viewers that are falling behind; they'll get a fresher one.
+        continue;
+      }
+      if (safeSend(viewer, frame)) {
+        state.sent = sequence;
+        if (video) state.needsKeyframe = false;
+      }
       if (state.acked === 0) state.acked = sequence - 1;
     }
   }
@@ -317,6 +369,13 @@ export class MacRelay extends DurableObject<Env> {
         const state = this.viewerFrames.get(ws);
         if (state && seq > state.acked) state.acked = seq;
         this.agent()?.send(JSON.stringify({ type: "ack", seq, key: this.viewerState(ws).key }));
+        break;
+      }
+      case "keyframe": {
+        // The viewer's decoder lost its place (e.g. after an error).
+        const state = this.viewerFrames.get(ws);
+        if (state) state.needsKeyframe = true;
+        this.requestKeyframe(this.viewerState(ws).key);
         break;
       }
       case "input": {
@@ -337,15 +396,17 @@ export class MacRelay extends DurableObject<Env> {
           fps: clamp(Number(message.fps) || DEFAULT_STREAM.fps, 1, 30),
           quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
           scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),
+          codec: message.codec === "h264" ? "h264" : "jpeg",
         };
         ws.serializeAttachment(state);
         if (key !== previous.key) {
           // A different simulator: restart flow control and show its last known screen.
-          this.viewerFrames.set(ws, { sent: 0, acked: 0 });
+          this.viewerFrames.set(ws, newFlow());
           const screen = await this.ctx.storage.get<string>(`screen:${key}`);
           if (screen) safeSend(ws, screen);
         }
         this.syncStreams();
+        if (key !== previous.key || state.codec !== previous.codec) this.requestKeyframe(key, true);
         break;
       }
     }
@@ -381,6 +442,16 @@ export class MacRelay extends DurableObject<Env> {
       this.syncStreams(ws);
     }
   }
+}
+
+interface FlowState {
+  sent: number;
+  acked: number;
+  needsKeyframe: boolean;
+}
+
+function newFlow(): FlowState {
+  return { sent: 0, acked: 0, needsKeyframe: true };
 }
 
 function safeSend(ws: WebSocket, data: string | ArrayBuffer): boolean {

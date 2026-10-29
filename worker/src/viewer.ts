@@ -1,6 +1,9 @@
 import { baseStyles } from "./pages";
 
-/** The live viewer: streams the simulator screen and turns touches into taps and swipes. */
+/**
+ * The live viewer: streams the simulator screen and turns touches into taps and swipes.
+ * Browsers with WebCodecs get H.264 (decoded onto a canvas); others get JPEG frames.
+ */
 export function viewerPage(): string {
   return `<!doctype html>
 <html lang="en">
@@ -24,7 +27,8 @@ header .mark { margin: 0; }
 main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
 .screen { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ratio, 0.46); height: 100%; border-radius: 28px; overflow: hidden;
   background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
-.screen img { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.screen img, .screen canvas { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.screen img[hidden], .screen canvas[hidden] { display: none; }
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); font-size: 14px; background: rgba(0,0,0,.55); }
 .overlay[hidden] { display: none; }
 .touch { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: rgba(124,196,255,.35); border: 2px solid rgba(124,196,255,.9);
@@ -47,6 +51,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 <main>
   <div id="screen" class="screen">
     <img id="frame" alt="Simulator screen">
+    <canvas id="video" hidden></canvas>
     <div id="overlay" class="overlay">Connecting…</div>
   </div>
 </main>
@@ -65,15 +70,22 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 </footer>
 <script>
 (() => {
-  const presets = { saver: { fps: 6, quality: 45, scale: 0.33 }, smooth: { fps: 15, quality: 55, scale: 0.5 }, sharp: { fps: 10, quality: 80, scale: 0.8 } };
+  const presets = {
+    jpeg: { saver: { fps: 6, quality: 45, scale: 0.33 }, smooth: { fps: 15, quality: 55, scale: 0.5 }, sharp: { fps: 10, quality: 80, scale: 0.8 } },
+    // H.264 only sends frames when the screen changes, so it can afford a higher frame rate.
+    h264: { saver: { fps: 10, quality: 45, scale: 0.33 }, smooth: { fps: 30, quality: 55, scale: 0.5 }, sharp: { fps: 30, quality: 80, scale: 0.8 } },
+  };
   const $ = (id) => document.getElementById(id);
-  const screenEl = $("screen"), img = $("frame"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
+  const screenEl = $("screen"), img = $("frame"), canvas = $("video"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
   let ws = null, retry = 1000, online = false, live = false;
   let screen = null; // { udid, pointWidth, pointHeight, name }
   let simulators = [];
   // The simulator this page shows: ?device=UDID, or "" for whichever one is booted.
   let wanted = new URLSearchParams(location.search).get("device") || "";
   let currentURL = null, decoding = false, pendingFrame = null;
+  // "h264" once we know this browser can decode it (?codec=jpeg forces JPEG).
+  let codec = "jpeg";
+  const video = { decoder: null, codec: "", needKeyframe: true, errors: 0 };
 
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
   $("quality").value = store.get("minirun.quality") || "smooth";
@@ -89,7 +101,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     setStatus("", "Connecting…");
-    ws.onopen = () => { retry = 1000; sendStream(); };
+    ws.onopen = () => { retry = 1000; video.needKeyframe = true; sendStream(); };
     ws.onmessage = (event) => typeof event.data === "string" ? onText(event.data) : onFrame(event.data);
     ws.onclose = (event) => {
       live = false;
@@ -102,7 +114,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   }
 
   function send(message) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(message)); }
-  function sendStream() { send({ type: "stream", device: wanted, ...presets[$("quality").value] }); }
+  function sendStream() { send({ type: "stream", device: wanted, codec, ...presets[codec][$("quality").value] }); }
 
   function renderSimulators() {
     const current = screen ? screen.udid : wanted;
@@ -125,7 +137,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     const url = new URL(location.href);
     if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
     history.replaceState(null, "", url);
-    screen = null; live = false; pendingFrame = null;
+    screen = null; live = false; pendingFrame = null; video.needKeyframe = true;
     setStatus("", "Switching…"); showOverlay("Switching simulator…");
     sendStream();
   }
@@ -157,15 +169,90 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     const bytes = new Uint8Array(buffer);
     if (bytes.length < 6) return;
     // Kind 1: [1][seq][jpeg]. Kind 2: [2][seq][keyLength][key][jpeg], key = UDID or "".
+    // Kind 3: [3][seq][keyLength][key][flags][H.264 Annex B], flags bit 0 = keyframe.
     let key = "", start = 5;
-    if (bytes[0] === 2) {
+    if (bytes[0] === 2 || bytes[0] === 3) {
       start = 6 + bytes[5];
       key = new TextDecoder().decode(bytes.subarray(6, start));
     } else if (bytes[0] !== 1) return;
     if (key !== wanted) return; // a frame from before we switched simulators
     const seq = new DataView(buffer).getUint32(1);
+    if (bytes[0] === 3) { onVideo(seq, (bytes[start] & 1) === 1, bytes.subarray(start + 1)); return; }
     pendingFrame = { seq, blob: new Blob([bytes.subarray(start)], { type: "image/jpeg" }) };
     if (!decoding) showNext();
+  }
+
+  function showSurface(element) {
+    img.hidden = element !== img;
+    canvas.hidden = element !== canvas;
+  }
+
+  // The WebCodecs codec string ("avc1.PPCCLL") from the SPS NAL unit in an Annex B keyframe.
+  function avcCodec(bytes) {
+    for (let i = 0; i + 6 < bytes.length; i++) {
+      if (bytes[i] === 0 && bytes[i + 1] === 0 && bytes[i + 2] === 1 && (bytes[i + 3] & 0x1f) === 7) {
+        return "avc1." + [bytes[i + 4], bytes[i + 5], bytes[i + 6]].map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+      }
+    }
+    return null;
+  }
+
+  function onVideo(seq, keyframe, data) {
+    if (codec !== "h264") { send({ type: "ack", seq }); return; } // until the Mac switches this stream to JPEG
+    if (keyframe) {
+      const avc = avcCodec(data) || "avc1.4D401F";
+      if (!video.decoder || video.decoder.state === "closed" || avc !== video.codec) startDecoder(avc);
+      video.needKeyframe = false;
+    }
+    // Until a keyframe arrives there's nothing to decode against.
+    if (video.needKeyframe || !video.decoder || video.decoder.state !== "configured") { send({ type: "ack", seq }); return; }
+    try {
+      // Without a codec description, WebCodecs reads H.264 as Annex B. The timestamp carries seq to the output.
+      video.decoder.decode(new EncodedVideoChunk({ type: keyframe ? "key" : "delta", timestamp: seq, data }));
+    } catch {
+      videoFailed();
+      send({ type: "ack", seq });
+    }
+  }
+
+  function startDecoder(avc) {
+    if (video.decoder && video.decoder.state !== "closed") video.decoder.close();
+    video.codec = avc;
+    video.decoder = new VideoDecoder({ output: drawFrame, error: videoFailed });
+    video.decoder.configure({ codec: avc, optimizeForLatency: true });
+  }
+
+  function videoFailed() {
+    video.needKeyframe = true;
+    if (video.decoder && video.decoder.state !== "closed") video.decoder.close();
+    video.decoder = null;
+    if (++video.errors >= 3) { codec = "jpeg"; sendStream(); return; } // this browser can't keep up; use JPEG
+    send({ type: "keyframe" });
+  }
+
+  function drawFrame(frame) {
+    const seq = frame.timestamp;
+    if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+      canvas.width = frame.displayWidth;
+      canvas.height = frame.displayHeight;
+    }
+    canvas.getContext("2d").drawImage(frame, 0, 0, canvas.width, canvas.height);
+    frame.close();
+    video.errors = 0;
+    showSurface(canvas);
+    if (!live) { live = true; setStatus("live", "Live"); showOverlay(""); }
+    if (!screen) screenEl.style.setProperty("--ratio", String(canvas.width / canvas.height));
+    send({ type: "ack", seq });
+  }
+
+  async function detectH264() {
+    if (new URLSearchParams(location.search).get("codec") === "jpeg") return false;
+    if (typeof VideoDecoder !== "function" || typeof EncodedVideoChunk !== "function") return false;
+    try {
+      return (await VideoDecoder.isConfigSupported({ codec: "avc1.4D401F", optimizeForLatency: true })).supported === true;
+    } catch {
+      return false;
+    }
   }
 
   function showNext() {
@@ -177,6 +264,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     img.onload = () => {
       if (currentURL) URL.revokeObjectURL(currentURL);
       currentURL = url;
+      showSurface(img);
       if (!live) { live = true; setStatus("live", "Live"); showOverlay(""); }
       if (!screen) screenEl.style.setProperty("--ratio", String(img.naturalWidth / img.naturalHeight));
       send({ type: "ack", seq });
@@ -188,8 +276,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   // Touch → tap / long press / swipe, in simulator points.
   function toPoints(clientX, clientY) {
-    const rect = img.getBoundingClientRect();
-    const w = screen ? screen.pointWidth : img.naturalWidth / 3, h = screen ? screen.pointHeight : img.naturalHeight / 3;
+    const surface = canvas.hidden ? img : canvas;
+    const rect = surface.getBoundingClientRect();
+    const naturalWidth = canvas.hidden ? img.naturalWidth : canvas.width, naturalHeight = canvas.hidden ? img.naturalHeight : canvas.height;
+    const w = screen ? screen.pointWidth : naturalWidth / 3, h = screen ? screen.pointHeight : naturalHeight / 3;
     // object-fit: contain — account for letterboxing.
     const scale = Math.min(rect.width / w, rect.height / h);
     const offsetX = (rect.width - w * scale) / 2, offsetY = (rect.height - h * scale) / 2;
@@ -247,7 +337,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     else if (!document.hidden && (!ws || ws.readyState > 1)) connect();
   });
 
-  connect();
+  detectH264().then((supported) => { codec = supported ? "h264" : "jpeg"; connect(); });
 })();
 </script>
 </body>

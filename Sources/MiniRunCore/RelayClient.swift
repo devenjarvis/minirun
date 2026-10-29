@@ -116,6 +116,8 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             }
         case .ack(let sequence, let key):
             Task { await streamer.ack(sequence, key: key) }
+        case .keyframe(let key):
+            Task { await streamer.requestKeyframe(key: key) }
         case .unknown:
             break
         }

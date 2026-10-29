@@ -2,14 +2,16 @@ import Foundation
 import MiniRunKit
 import MiniRunSim
 
-/// Captures JPEG frames of each simulator someone is watching and hands them to the relay.
+/// Streams each simulator someone is watching to the relay, as H.264 when its viewers can decode
+/// it and as JPEG frames otherwise (or when H.264 can't start).
 ///
 /// Each stream is keyed by the UDID its viewers asked for, or "" for "whichever simulator is
 /// booted". While anything is streaming, the booted simulators are also sent to the relay so
 /// the viewer can offer a picker.
 ///
 /// Flow control: at most `window` frames of a stream may be unacknowledged, so a slow phone
-/// connection gets fewer, fresher frames instead of a growing backlog.
+/// connection gets fewer, fresher frames instead of a growing backlog. H.264 frames can't be
+/// dropped, so the encoder waits instead, and a viewer that misses frames asks for a keyframe.
 actor FrameStreamer {
     private final class Stream {
         let request: RelayProtocol.StreamRequest
@@ -17,6 +19,7 @@ actor FrameStreamer {
         var sequence: UInt32 = 0
         var lastAcked: UInt32 = 0
         var lastAckTime = Date()
+        var wantsKeyframe = true
 
         init(_ request: RelayProtocol.StreamRequest) {
             self.request = request
@@ -29,6 +32,8 @@ actor FrameStreamer {
     private var streams: [String: Stream] = [:]
     private var watcher: Task<Void, Never>?
     private let window: UInt32 = 2
+    /// H.264 frames are small, so more can be in flight.
+    private let videoWindow: UInt32 = 6
 
     init(registry: ToolRegistry, sendFrame: @escaping @Sendable (Data) async -> Void, sendText: @escaping @Sendable (JSONValue) async -> Void) {
         self.registry = registry
@@ -67,6 +72,10 @@ actor FrameStreamer {
         stream.lastAckTime = Date()
     }
 
+    func requestKeyframe(key: String) {
+        streams[key]?.wantsKeyframe = true
+    }
+
     private func run(_ stream: Stream) async {
         let settings = stream.request
         let key = settings.key
@@ -77,6 +86,7 @@ actor FrameStreamer {
             await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription))
             return
         }
+        if settings.codec == .h264, await runVideo(stream, device: device) { return }
 
         var announced = false
         var failures = 0
@@ -116,6 +126,66 @@ actor FrameStreamer {
             let elapsed = Date().timeIntervalSince(started)
             if elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
         }
+    }
+
+    /// Streams H.264. Returns false if the encoder couldn't start or never produced a frame, so
+    /// the caller can fall back to JPEG (which every viewer can show).
+    private func runVideo(_ stream: Stream, device: XcodeParsing.SimDevice) async -> Bool {
+        let settings = stream.request
+        let key = settings.key
+        let fps = settings.fps, quality = settings.quality
+        let encoder: ScreenEncoder
+        do {
+            encoder = try await SimulatorDriver.shared.screenEncoder(udid: device.udid, scale: settings.scale, fps: fps) { width, height in
+                H264.bitrate(width: width, height: height, fps: fps, quality: quality)
+            }
+        } catch {
+            return false
+        }
+        defer { encoder.close() }
+
+        let began = Date()
+        var announced = false
+        var failures = 0
+        let interval = 1.0 / Double(fps)
+        while !Task.isCancelled {
+            let started = Date()
+            if !announced && started.timeIntervalSince(began) > 5 { return false }
+            if stream.sequence &- stream.lastAcked >= videoWindow && started.timeIntervalSince(stream.lastAckTime) < 2 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                continue
+            }
+            do {
+                if let frame = try await encoder.encode(forceKeyframe: stream.wantsKeyframe),
+                   let payload = H264.annexB(lengthPrefixed: frame.nalUnits, lengthSize: frame.lengthSize, parameterSets: frame.parameterSets) {
+                    if !announced {
+                        let size = await registry.geometry.pointSize(udid: device.udid)
+                        await sendText(RelayProtocol.screen(
+                            key: key, udid: device.udid, name: device.name,
+                            pointWidth: size?.width ?? Double(frame.sourceWidth) / 3,
+                            pointHeight: size?.height ?? Double(frame.sourceHeight) / 3,
+                            pixelWidth: frame.sourceWidth, pixelHeight: frame.sourceHeight
+                        ))
+                        await sendText(RelayProtocol.streamStatus("live", key: key))
+                        announced = true
+                    }
+                    if Task.isCancelled { break }
+                    if frame.isKeyframe { stream.wantsKeyframe = false }
+                    stream.sequence &+= 1
+                    await sendFrame(RelayProtocol.encodeVideoFrame(key: key, sequence: stream.sequence, keyframe: frame.isKeyframe, payload: payload))
+                }
+                failures = 0
+            } catch {
+                failures += 1
+                if !announced && failures >= 3 { return false }
+                if failures == 3 { await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription)) }
+                try? await Task.sleep(nanoseconds: UInt64(min(5.0, 0.5 * Double(failures)) * 1_000_000_000))
+                continue
+            }
+            let elapsed = Date().timeIntervalSince(started)
+            if elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
+        }
+        return true
     }
 
     /// Sends the booted simulators whenever they change, so the viewer's picker stays current.
