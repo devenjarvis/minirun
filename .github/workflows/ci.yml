@@ -70,6 +70,9 @@ jobs:
       - name: Unit tests
         run: scripts/ci-step.sh swift-test swift test
       - name: Simulator smoke test
+        # Leaves its first simulator booted so the relay test below doesn't wait minutes for another first boot.
+        env:
+          MINIRUN_SMOKE_KEEP: "1"
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
       - name: Relay end-to-end test (wrangler dev + minirun serve)
         run: |
@@ -85,3 +88,13 @@ jobs:
           cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
           cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
           scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
+      - name: Clean up simulators
+        if: always()
+        run: |
+          for sim in $(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke")))'); do
+            xcrun simctl shutdown "$sim" 2>/dev/null || true
+            xcrun simctl delete "$sim" 2>/dev/null || true
+          done
+          # Otherwise the runner spends over a minute terminating it as an orphan process. Not on
+          # self-hosted Macs, where Simulator.app may be showing other sessions' simulators.
+          if [[ "$RUNNER_ENVIRONMENT" == "github-hosted" ]]; then killall -9 Simulator 2>/dev/null || true; fi
