@@ -1,0 +1,14 @@
+.build/
+.swiftpm/
+Vendor/XCFrameworks/
+Vendor/PrivateHeaders/
+Vendor/.axe-ref
+Vendor/LICENSE-idb
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.minirun/
+node_modules/
+worker/.wrangler/
+worker/.dev.vars
+.DS_Store

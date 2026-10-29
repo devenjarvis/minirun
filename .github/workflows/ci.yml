@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  kit:
+    name: MiniRunKit tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+
+  worker:
+    name: Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  mac:
+    name: macOS build + simulator smoke test
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xcode version
+        id: xcode
+        run: |
+          xcodebuild -version && swift --version
+          echo "version=$(xcodebuild -version | tr -d '\n ' )" >> "$GITHUB_OUTPUT"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Cache frameworks
+        uses: actions/cache@v4
+        with:
+          path: Vendor
+          key: frameworks-${{ runner.os }}-${{ hashFiles('scripts/build-frameworks.sh') }}-${{ steps.xcode.outputs.version }}
+      - name: Build FBSimulatorControl frameworks
+        run: ./scripts/build-frameworks.sh
+      - name: Build minirun
+        run: swift build
+      - name: Unit tests
+        run: swift test
+      - name: Simulator smoke test
+        run: ./scripts/smoke-test.sh
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: |
+            ~/Library/Logs/minirun
+            /tmp/minirun-*.txt
+            /tmp/minirun-*.jpg
+          if-no-files-found: ignore
