@@ -87,5 +87,42 @@ const result = await new Promise((resolve, reject) => {
 });
 console.log(`  ${result.frames} frames; screen ${result.screen?.name} ${result.screen?.pointWidth}x${result.screen?.pointHeight} pt`);
 ws.close();
+
+step("H.264 live view");
+const video = new WebSocket(`${base.replace(/^http/, "ws")}/viewer/ws`, { headers: { Cookie: cookie } });
+video.on("open", () => video.send(JSON.stringify({ type: "stream", codec: "h264", fps: 15, quality: 55, scale: 0.5 })));
+const h264 = await new Promise((resolve, reject) => {
+  const timer = setTimeout(() => reject(new Error("no H.264 frames within 30s")), 30000);
+  let frames = 0, bytes = 0, codec = null, swiped = false;
+  video.on("message", (data, isBinary) => {
+    if (!isBinary) return;
+    if (data[0] !== 3) return; // JPEG frames from before the stream switched over
+    // [3][seq][keyLength][key][flags][Annex B]: the first frame a viewer gets is a keyframe with SPS + PPS.
+    const start = 6 + data[5];
+    const keyframe = (data[start] & 1) === 1;
+    const payload = data.subarray(start + 1);
+    assert(payload[0] === 0 && payload[1] === 0 && payload[2] === 0 && payload[3] === 1, "Annex B start code");
+    if (frames === 0) {
+      assert(keyframe, "first H.264 frame is a keyframe");
+      const sps = payload.indexOf(Buffer.from([0, 0, 0, 1, 0x67]));
+      assert(sps >= 0, "keyframe carries an SPS");
+      codec = "avc1." + payload.subarray(sps + 5, sps + 8).toString("hex").toUpperCase();
+    }
+    frames++;
+    bytes += payload.length;
+    video.send(JSON.stringify({ type: "ack", seq: data.readUInt32BE(1) }));
+    // The screen only produces frames when it changes, so scroll to get some.
+    // A still screen sends just the keyframe, so give it a few seconds to send more after that.
+    if (!swiped) {
+      swiped = true;
+      video.send(JSON.stringify({ type: "input", tool: "swipe", arguments: { direction: "up" } }));
+      setTimeout(() => { clearTimeout(timer); resolve({ frames, bytes, codec }); }, 8000);
+    }
+    if (frames >= 3) { clearTimeout(timer); resolve({ frames, bytes, codec }); }
+  });
+  video.on("error", reject);
+});
+console.log(`  ${h264.frames} frames, ${h264.bytes} bytes, ${h264.codec}`);
+video.close();
 console.log("E2E relay test passed.");
 process.exit(0);
