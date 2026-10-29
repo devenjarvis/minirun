@@ -71,6 +71,13 @@ jobs:
         run: scripts/ci-step.sh swift-test swift test
       - name: Simulator smoke test
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
+      - name: Relay end-to-end test (wrangler dev + minirun serve)
+        run: |
+          (cd worker && npm ci)
+          scripts/ci-step.sh e2e-relay ./scripts/e2e-relay.sh
+      - name: Publish screenshots
+        if: success() && github.ref == 'refs/heads/main'
+        run: scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
       - name: Publish logs on failure
         if: failure()
         run: |

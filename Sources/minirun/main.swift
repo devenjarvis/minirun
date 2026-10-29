@@ -64,7 +64,7 @@ func main() async {
         let registry = ToolRegistry(config: config)
         var result = await registry.call(args[1], arguments: arguments)
         // Poll jobs to completion so scripts get the final answer.
-        while let text = result.content.first.flatMap({ if case .text(let t) = $0 { return t } else { return nil } }),
+        while let text = result.content.first.flatMap({ (item: ToolContent) -> String? in if case .text(let t) = item { return t } else { return nil } }),
               text.contains("is still running"), let range = text.range(of: #"job_[0-9a-f]{8}"#, options: .regularExpression) {
             result = await registry.call("get_job", arguments: ["job_id": .string(String(text[range])), "wait_seconds": 600])
         }

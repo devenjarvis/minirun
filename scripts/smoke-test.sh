@@ -35,6 +35,9 @@ sleep 1
 run type_text "{\"device\":\"$UDID\",\"text\":\"Claude\"}" | expect "Typed"
 sleep 1
 run describe_ui "{\"device\":\"$UDID\"}" | expect "Hello, Claude!"
+# Keep a screenshot of the result for the CI logs.
+shot=$(run screenshot "{\"device\":\"$UDID\"}" | sed -n 's/.*image saved to \(.*\)]/\1/p')
+mkdir -p "$ROOT/ci-logs/screens" && cp "$shot" "$ROOT/ci-logs/screens/hello-app.jpg" || true
 
 run swipe "{\"device\":\"$UDID\",\"direction\":\"up\"}" | expect "Swiped"
 run press_button "{\"device\":\"$UDID\",\"button\":\"home\"}" | expect "Pressed"

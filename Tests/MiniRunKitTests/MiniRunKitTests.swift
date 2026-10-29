@@ -163,7 +163,7 @@ final class ShellAndJobTests: XCTestCase {
     }
 
     func testShellTimeout() async throws {
-        let result = try await Shell.run("/bin/sh", ["-c", "sleep 10"], timeout: 0.5)
+        let result = try await Shell.run("/bin/sh", ["-c", "exec sleep 10"], timeout: 0.5)
         XCTAssertTrue(result.timedOut)
         XCTAssertLessThan(result.duration, 5)
     }

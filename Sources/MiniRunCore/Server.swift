@@ -28,11 +28,11 @@ public enum Server {
 
         let registry = ToolRegistry(config: config)
         log("\(registry.definitions.count) tools ready; workspaces at \(config.workspaceRoot)")
-        let client = RelayClient(url: url, token: token, registry: registry, log: log)
+        let client = RelayClient(url: url, token: token, registry: registry, log: { Server.log($0) })
         await client.run()
     }
 
-    @Sendable public static func log(_ message: String) {
+    public static func log(_ message: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
         FileHandle.standardError.write(Data("\(stamp) \(message)\n".utf8))
     }
