@@ -1,0 +1,15 @@
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:334:17: warning: no 'async' operations occur within 'await' expression
+                await self.finished(udid)
+                ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:337:13: warning: no 'async' operations occur within 'await' expression
+            await self.finished(udid)
+            ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:334:17: warning: no 'async' operations occur within 'await' expression
+                await self.finished(udid)
+                ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:337:13: warning: no 'async' operations occur within 'await' expression
+            await self.finished(udid)
+            ^
+note: Using codesigning identity override: -
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app: replacing existing signature
+Built /Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app
