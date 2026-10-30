@@ -1,9 +1,11 @@
 #!/bin/bash
 # One-time setup on the Mac: builds minirun, deploys the Cloudflare Worker (if needed), and
 # installs a LaunchAgent so `minirun serve` starts at login and restarts if it crashes.
+# The Worker is deployed with the Cloudflare API by `minirun worker deploy`; no node needed. It
+# asks for a Cloudflare API token, or takes one from $MINIRUN_CLOUDFLARE_TOKEN.
 #
-#   ./scripts/install.sh            build, deploy Worker, install and start
-#   ./scripts/install.sh --no-worker   skip the Worker (already deployed; run `minirun setup` yourself)
+#   ./scripts/install.sh            build, deploy or update the Worker, install and start
+#   ./scripts/install.sh --no-worker   skip the Worker (run `minirun worker deploy` yourself)
 #   ./scripts/install.sh --uninstall
 #
 # Optionally also registers this Mac as a self-hosted GitHub Actions runner (see scripts/github-runner.sh):
@@ -33,7 +35,7 @@ done
 if $UNINSTALL; then
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   rm -f "$PLIST"
-  rm -rf "$PREFIX/bin"
+  rm -rf "$PREFIX/bin" "$PREFIX/worker"
   echo "minirun removed (config in ~/.config/minirun and workspaces in ~/minirun were kept)."
   if compgen -G "$PREFIX/github-runner/*/" >/dev/null; then
     echo "GitHub runners are still installed; remove each with: $ROOT/scripts/github-runner.sh uninstall owner/repo"
@@ -53,7 +55,7 @@ step "Checking prerequisites"
 xcode-select -p >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1 || {
   echo "Install Xcode from the App Store, open it once, then run: sudo xcode-select -s /Applications/Xcode.app"; exit 1; }
 command -v brew >/dev/null || { echo "Install Homebrew first: https://brew.sh"; exit 1; }
-for tool in xcodegen node gh; do command -v "$tool" >/dev/null || brew install "$tool"; done
+for tool in xcodegen gh; do command -v "$tool" >/dev/null || brew install "$tool"; done
 xcrun simctl list runtimes | grep -q "iOS" || echo "warning: no iOS simulator runtime installed (Xcode > Settings > Components)."
 
 step "Building simulator frameworks (first run takes a few minutes)"
@@ -71,13 +73,22 @@ for fw in FBControlCore FBSimulatorControl FBDeviceControl XCTestBootstrap; do
   cp -R "$src" "$PREFIX/bin/"
 done
 codesign --force --sign - --deep "$PREFIX/bin/minirun" >/dev/null 2>&1 || true
+# The prebuilt Worker that `minirun worker deploy` uploads (made by `npm run bundle` in worker/).
+rm -rf "$PREFIX/worker"
+cp -R "$ROOT/worker/dist" "$PREFIX/worker"
 echo "Installed to $PREFIX/bin/minirun"
 
-if ! $NO_WORKER && ! grep -q '"relayURL"' "$HOME/.config/minirun/config.json" 2>/dev/null; then
-  step "Deploying the Cloudflare Worker"
-  "$ROOT/worker/setup.sh"
-  source "$HOME/.config/minirun/worker.env"
-  "$PREFIX/bin/minirun" setup --relay "$WORKER_URL" --token "$AGENT_TOKEN"
+CONFIG_DIR="$HOME/.config/minirun"
+if ! $NO_WORKER; then
+  if ! grep -q '"relayURL"' "$CONFIG_DIR/config.json" 2>/dev/null || [[ -f "$CONFIG_DIR/worker.json" ]]; then
+    # First install, or a Worker this Mac manages: deploy, or update it to match this build.
+    step "Deploying the Cloudflare Worker"
+    "$PREFIX/bin/minirun" worker deploy
+  else
+    echo
+    echo "Your Worker was deployed with worker/setup.sh. To update it from this Mac from now on (no node"
+    echo "needed), run: $PREFIX/bin/minirun worker deploy"
+  fi
 fi
 
 step "Installing the LaunchAgent"
@@ -119,8 +130,9 @@ for repo in ${GITHUB_RUNNERS[@]+"${GITHUB_RUNNERS[@]}"}; do
     exit 1; }
 done
 
-if [[ -f "$HOME/.config/minirun/worker.env" ]]; then
-  source "$HOME/.config/minirun/worker.env"
+WORKER_URL=$(grep -oE '"relayURL" *: *"[^"]+"' "$CONFIG_DIR/config.json" 2>/dev/null | sed -E 's/.*"(wss?:[^"]+)"$/\1/; s#^wss://#https://#; s#^ws://#http://#; s#/agent$##' || true)
+if [[ -n "$WORKER_URL" ]]; then
+  OWNER_PASSWORD=$("$PREFIX/bin/minirun" worker password 2>/dev/null || echo "(run: $PREFIX/bin/minirun worker password)")
   cat <<DONE
 
 All set. Next:

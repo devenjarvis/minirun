@@ -10,6 +10,7 @@ Usage:
   minirun serve                         Connect to the relay and serve tools (run by launchd)
   minirun setup --relay URL --token T   Save relay settings to ~/.config/minirun/config.json
         [--device "iPhone 17 Pro"] [--allow-shell] [--workspaces DIR]
+  minirun worker deploy                 Deploy or update the Cloudflare Worker (see `minirun worker help`)
   minirun status [--json]               Show what the running `minirun serve` is doing
   minirun doctor                        Check Xcode, simulators and the relay settings
   minirun tools                         Print the MCP tool definitions as JSON
@@ -50,6 +51,10 @@ func main() async {
         if args.contains("--no-shell") { config.allowShell = false }
         do { try config.save() } catch { fail("Could not save config: \(error.localizedDescription)") }
         print("Saved \(MiniRunConfig.configURL.path)")
+
+    case "worker":
+        let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
+        do { try await WorkerCommand.live(executable: executable).run(Array(args.dropFirst())) } catch { fail(error.localizedDescription) }
 
     case "status":
         let response: ControlProtocol.Response
@@ -136,7 +141,7 @@ func doctor(_ config: MiniRunConfig) async {
     } else {
         check("minirun serve", false, "not running — launchctl kickstart -k gui/$(id -u)/dev.minirun.agent")
     }
-    check("Relay URL", config.relayURL != nil, config.relayURL ?? "not set — run minirun setup")
+    check("Relay URL", config.relayURL != nil, config.relayURL ?? "not set — run minirun worker deploy")
     check("Agent token", config.agentToken?.isEmpty == false, config.agentToken == nil ? "not set" : "set")
     check("Workspaces", true, config.workspaceRoot)
     check("run_command", true, config.allowShell ? "enabled" : "disabled")

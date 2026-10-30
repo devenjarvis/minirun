@@ -1,7 +1,9 @@
 #!/bin/bash
-# Deploys the minirun Worker to your Cloudflare account (free plan is fine) and prints the
-# settings for the Mac. Safe to re-run: it reuses the KV namespace and keeps existing secrets
-# unless you pass --new-password or --new-token.
+# Deploys the minirun Worker with wrangler, for working on the Worker itself. Everyone else
+# should use `minirun worker deploy` on the Mac, which needs no node (scripts/install.sh runs it).
+#
+# Prints the settings for the Mac. Safe to re-run: it reuses the KV namespace and keeps existing
+# secrets unless you pass --new-password or --new-token.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
