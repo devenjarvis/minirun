@@ -53,11 +53,12 @@ git clone https://github.com/devenjarvis/minirun && cd minirun
 
 That script:
 
-1. Installs `xcodegen`, `node` and `gh` with Homebrew if missing.
+1. Installs `xcodegen` and `gh` with Homebrew if missing.
 2. Builds the FBSimulatorControl frameworks from AXe's pinned idb fork (a few minutes, once).
 3. Builds `minirun` and installs it to `~/.minirun/bin`.
-4. Deploys the Worker to your Cloudflare account. It opens a browser to log in, creates a KV
-   namespace, and generates a password and an agent token, saved in `~/.config/minirun/worker.env`.
+4. Deploys the Worker to your Cloudflare account with `minirun worker deploy` (see
+   [The Worker](#the-worker)). It asks for a Cloudflare API token, creates a KV namespace,
+   uploads the prebuilt Worker, and generates a password and an agent token.
 5. Installs a LaunchAgent so `minirun serve` starts at login and restarts if it crashes.
 
 Add `--github-runner owner/repo` to also run that repository's GitHub Actions jobs on the Mac
@@ -73,6 +74,34 @@ Then:
    Add `?codec=jpeg` to the address to use JPEG frames instead of H.264.
 
 For private repositories, run `gh auth login && gh auth setup-git` on the Mac so it can clone them.
+
+### The Worker
+
+`minirun worker deploy` deploys the Worker through the Cloudflare API, with no node or wrangler on
+the Mac. It needs a Cloudflare API token:
+
+1. Open [dash.cloudflare.com/profile/api-tokens](https://dash.cloudflare.com/profile/api-tokens)
+   and choose **Create Token**.
+2. Use the **Edit Cloudflare Workers** template. Under Account Resources pick your account. Zone
+   Resources don't matter to minirun.
+3. Paste the token when `minirun worker deploy` asks, or set `MINIRUN_CLOUDFLARE_TOKEN`.
+
+The token, account, Worker URL and password are saved in `~/.config/minirun/worker.json`, which
+only your user can read. Later deploys reuse them. Deploying is safe to repeat: it updates the
+Worker to the version bundled with this build of minirun and keeps the KV namespace, the
+Durable Object and the secrets.
+
+```bash
+minirun worker deploy                  # deploy, or update to this build's Worker
+minirun worker deploy --subdomain me   # first Worker on the account: claim me.workers.dev
+minirun worker deploy --account ID     # the token reaches several accounts
+minirun worker status                  # is the deployed Worker this build's?
+minirun worker password                # the password for the viewer and the connector
+minirun worker forget-token            # delete the saved API token
+```
+
+Already deployed with `worker/setup.sh`? Run `minirun worker deploy` once. It adopts that Worker,
+its KV namespace and its password (from `worker.env`), and the Mac manages it from then on.
 
 For headless Mac minis, set the Mac to never sleep and to log in automatically. Simulators need
 a logged-in GUI session; `minirun serve` already blocks idle sleep while it runs.
@@ -135,7 +164,7 @@ JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that 
 
 ## Configuration
 
-`~/.config/minirun/config.json` (written by `minirun setup`):
+`~/.config/minirun/config.json` (written by `minirun worker deploy` and `minirun setup`):
 
 | Key | Default | |
 | --- | --- | --- |
@@ -160,8 +189,10 @@ After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
   keyboard input, not run tools like `build` or `run_command`.
 - `run_command` is off by default. Turning it on lets anyone holding a connector token run shell
   commands on your Mac, so keep the password private.
-- Rotate secrets with `worker/setup.sh --new-password` or `--new-token`. A new token also needs
-  `minirun setup --token …` on the Mac.
+- Rotate secrets with `minirun worker deploy --new-password` or `--new-token`. A new token is
+  saved on the Mac and `minirun serve` restarts to use it.
+- The saved Cloudflare API token can deploy and change Workers on your account. Delete it with
+  `minirun worker forget-token` if you'd rather paste it for each update.
 - The optional GitHub runner runs pull request code on the Mac as your user. Read
   [Run CI on your Mac](#run-ci-on-your-mac-optional) before turning it on, especially for public
   repositories.
@@ -235,6 +266,7 @@ day within the free 100k requests. The viewer stops streaming when its tab is hi
 - Each branch keeps its own checkout and build folder. Delete old ones from `~/minirun/workspaces`
   to free disk space.
 - The Mac and the Worker must be updated together: the viewer's per-simulator streams need both.
+  `./scripts/install.sh` updates the Worker too when this Mac deployed it.
 - `type_text` types US-keyboard characters. For other text, use `set_pasteboard` and paste.
 - The live view runs at up to 30 fps. Viewers that join, or fall too far behind, wait for the
   next keyframe, which the Mac sends on request.
@@ -246,7 +278,12 @@ swift test                       # MiniRunKit unit tests (any platform)
 ./scripts/build-frameworks.sh    # macOS: FBSimulatorControl into Vendor/
 swift build && ./scripts/smoke-test.sh   # macOS: boots a simulator and drives a fixture app
 cd worker && npm ci && npm test  # Worker tests (OAuth flow, relay, viewer) in workerd
+cd worker && npm run bundle      # rebuild worker/dist after changing the Worker; commit it
 ```
+
+`worker/dist` is the prebuilt Worker that `minirun worker deploy` uploads, along with a manifest
+generated from `wrangler.jsonc`. CI fails if it doesn't match the source. `worker/setup.sh` still
+deploys with wrangler, for working on the Worker itself.
 
 CI runs all of the above on GitHub's macOS runners. If a run fails, the logs are pushed to the
 `ci-logs` branch.

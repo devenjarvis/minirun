@@ -36,6 +36,9 @@ jobs:
       - run: npm ci
       - run: ../scripts/ci-step.sh worker-typecheck npm run typecheck
       - run: ../scripts/ci-step.sh worker-test npm test
+      - name: worker/dist matches the source
+        # `minirun worker deploy` uploads the committed bundle, so it must be rebuilt with every change.
+        run: ../scripts/ci-step.sh worker-bundle sh -c 'npm run bundle && git diff --exit-code -- dist || { echo "worker/dist is stale: run npm run bundle in worker/ and commit it."; exit 1; }'
 
   mac:
     name: macOS build + simulator smoke test

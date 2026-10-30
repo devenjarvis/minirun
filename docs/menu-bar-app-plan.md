@@ -106,7 +106,18 @@ which matches `Package.swift`.
 - **"Not running" state:** offer "Start" (`launchctl kickstart`) and show the last lines of
   `~/Library/Logs/minirun/minirun.log`.
 
-### Phase 2: deploy the Worker from Swift (removes node from the Mac)
+### Phase 2: deploy the Worker from Swift (removes node from the Mac) — done
+
+Built as `minirun worker deploy|status|password|forget-token` (`Sources/MiniRunKit/Cloudflare.swift`,
+`WorkerDeploy.swift`, `WorkerCommand.swift`). Differences from the sketch below:
+- All the Worker's settings are in one file, `~/.config/minirun/worker.json` (0600): account,
+  URL, owner password and API token. The agent token stays in `config.json`.
+- The deployed version is a `MINIRUN_BUNDLE` text variable holding the bundle's SHA-256. It is read
+  back from the script settings, so `minirun worker status` can say whether the Worker is current.
+- Until `reload_config` exists (Phase 0), a changed relay URL or agent token restarts the
+  LaunchAgent instead.
+- Not yet checked against the live API: it follows the calls wrangler 4.155 makes, and is tested
+  against recorded responses.
 
 **Worker bundle.** A developer script, `worker/scripts/bundle.mjs` (`npm run bundle`), runs
 `wrangler deploy --dry-run --outdir dist`. It also writes `dist/manifest.json` from
@@ -143,12 +154,11 @@ FoundationNetworking only, so it builds and is tested on Linux.
 - Rotation: `PUT …/scripts/minirun/secrets` for `OWNER_PASSWORD` or `AGENT_TOKEN`. A new token
   is saved to config and followed by `reload_config`, so the Mac reconnects without a restart.
 
-**Credentials.** The user creates a Cloudflare API token from a custom template. The plan is
-Account → Workers Scripts: Edit, Workers KV Storage: Edit, and Account Settings: Read; confirm
-the exact minimum during implementation. Store it in `~/.config/minirun/cloudflare-token` (0600),
-because Worker updates need it later. "Forget token" deletes it. The owner password moves from
-`worker.env` to `~/.config/minirun/secrets.json` (0600). An existing `worker.env` is read
-once and adopted.
+**Credentials.** The user creates a Cloudflare API token from Cloudflare's "Edit Cloudflare
+Workers" template. It includes Account Settings: Read, Workers Scripts: Edit and Workers KV
+Storage: Edit. The token is saved because Worker updates need it later; "Forget token" deletes
+it. An existing `worker.env` is adopted, and kept in step while it exists, because `setup.sh`
+reads it.
 
 **CLI**, which replaces `worker/setup.sh`:
 `minirun worker deploy [--account ID] [--new-password] [--new-token]`, `minirun worker status`
