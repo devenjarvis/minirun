@@ -1,0 +1,226 @@
+Building for debugging...
+[0/13] Write sources
+[2/13] Write swift-version-24593BA9C3E375BF.txt
+[4/24] Emitting module MiniRunKit
+[5/27] Compiling MiniRunKit JSONValue.swift
+[6/27] Compiling MiniRunKit Jobs.swift
+[7/27] Compiling MiniRunKit RelayProtocol.swift
+[8/27] Compiling MiniRunKit CallLedger.swift
+[9/27] Compiling MiniRunKit Config.swift
+[10/27] Compiling MiniRunKit ControlSocket.swift
+[11/27] Compiling MiniRunKit H264.swift
+[12/27] Compiling MiniRunKit Shell.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:173:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+171 |     init(logURL: URL?) {
+172 |         if let logURL {
+173 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+174 |             logHandle = try? FileHandle(forWritingTo: logURL)
+175 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[13/27] Compiling MiniRunKit Simulators.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:173:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+171 |     init(logURL: URL?) {
+172 |         if let logURL {
+173 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+174 |             logHandle = try? FileHandle(forWritingTo: logURL)
+175 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[14/27] Compiling MiniRunKit Status.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:173:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+171 |     init(logURL: URL?) {
+172 |         if let logURL {
+173 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+174 |             logHandle = try? FileHandle(forWritingTo: logURL)
+175 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[15/27] Compiling MiniRunKit Tools.swift
+[16/27] Compiling MiniRunKit Workspaces.swift
+[17/27] Compiling MiniRunKit XcodeParsing.swift
+[18/30] Wrapping AST for MiniRunKit for debugging
+[20/30] Compiling MiniRunKitTests MiniRunKitTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:685:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+683 |         let path = directory + "/control.sock"
+684 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+685 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+686 |         let first = ControlServer(path: path) { _ in "first" }
+687 |         try first.start()
+[21/30] Emitting module MiniRunKitTests
+[22/31] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageDiscoveredTests.derived/all-discovered-tests.swift
+[23/31] Write sources
+[24/31] Wrapping AST for MiniRunKitTests for debugging
+[26/34] Emitting module minirunPackageDiscoveredTests
+[27/34] Compiling minirunPackageDiscoveredTests all-discovered-tests.swift
+[28/34] Compiling minirunPackageDiscoveredTests MiniRunKitTests.swift
+[29/35] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageTests.derived/runner.swift
+[30/35] Write sources
+[31/35] Wrapping AST for minirunPackageDiscoveredTests for debugging
+[33/37] Compiling minirunPackageTests runner.swift
+[34/37] Emitting module minirunPackageTests
+[35/38] Wrapping AST for minirunPackageTests for debugging
+[36/38] Write Objects.LinkFileList
+[37/38] Linking minirunPackageTests.xctest
+Build complete! (9.96s)
+Test Suite 'All tests' started at 2026-10-30 12:23:42.680
+Test Suite 'debug.xctest' started at 2026-10-30 12:23:42.681
+Test Suite 'ConfigTests' started at 2026-10-30 12:23:42.681
+Test Case 'ConfigTests.testDecodesPartialConfig' started at 2026-10-30 12:23:42.681
+Test Case 'ConfigTests.testDecodesPartialConfig' passed (0.001 seconds)
+Test Case 'ConfigTests.testResolveRepo' started at 2026-10-30 12:23:42.683
+Test Case 'ConfigTests.testResolveRepo' passed (0.001 seconds)
+Test Suite 'ConfigTests' passed at 2026-10-30 12:23:42.683
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ControlSocketTests' started at 2026-10-30 12:23:42.683
+Test Case 'ControlSocketTests.testConcurrentRequests' started at 2026-10-30 12:23:42.683
+Test Case 'ControlSocketTests.testConcurrentRequests' passed (0.102 seconds)
+Test Case 'ControlSocketTests.testOneServerPerPathAndLeftoverSocketsAreReplaced' started at 2026-10-30 12:23:42.785
+Test Case 'ControlSocketTests.testOneServerPerPathAndLeftoverSocketsAreReplaced' passed (0.001 seconds)
+Test Case 'ControlSocketTests.testSocketPathLimit' started at 2026-10-30 12:23:42.787
+Test Case 'ControlSocketTests.testSocketPathLimit' passed (0.0 seconds)
+Test Case 'ControlSocketTests.testStatusRoundTripsOverTheSocket' started at 2026-10-30 12:23:42.787
+Test Case 'ControlSocketTests.testStatusRoundTripsOverTheSocket' passed (0.003 seconds)
+Test Case 'ControlSocketTests.testSummary' started at 2026-10-30 12:23:42.790
+Test Case 'ControlSocketTests.testSummary' passed (0.0 seconds)
+Test Suite 'ControlSocketTests' passed at 2026-10-30 12:23:42.790
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.107 (0.107) seconds
+Test Suite 'JSONValueTests' started at 2026-10-30 12:23:42.790
+Test Case 'JSONValueTests.testArguments' started at 2026-10-30 12:23:42.790
+Test Case 'JSONValueTests.testArguments' passed (0.0 seconds)
+Test Case 'JSONValueTests.testRoundTrip' started at 2026-10-30 12:23:42.791
+Test Case 'JSONValueTests.testRoundTrip' passed (0.001 seconds)
+Test Suite 'JSONValueTests' passed at 2026-10-30 12:23:42.791
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RelayProtocolTests' started at 2026-10-30 12:23:42.791
+Test Case 'RelayProtocolTests.testAnnexB' started at 2026-10-30 12:23:42.791
+Test Case 'RelayProtocolTests.testAnnexB' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testBitrate' started at 2026-10-30 12:23:42.791
+Test Case 'RelayProtocolTests.testBitrate' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testCallLedger' started at 2026-10-30 12:23:42.792
+Test Case 'RelayProtocolTests.testCallLedger' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testDecodeMessages' started at 2026-10-30 12:23:42.792
+Test Case 'RelayProtocolTests.testDecodeMessages' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testFrameEncoding' started at 2026-10-30 12:23:42.792
+Test Case 'RelayProtocolTests.testFrameEncoding' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testResultShape' started at 2026-10-30 12:23:42.792
+Test Case 'RelayProtocolTests.testResultShape' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testSPSWithoutReordering' started at 2026-10-30 12:23:42.792
+Test Case 'RelayProtocolTests.testSPSWithoutReordering' passed (0.0 seconds)
+Test Suite 'RelayProtocolTests' passed at 2026-10-30 12:23:42.793
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ShellAndJobTests' started at 2026-10-30 12:23:42.793
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' started at 2026-10-30 12:23:42.793
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' passed (2.001 seconds)
+Test Case 'ShellAndJobTests.testShellCapturesOutput' started at 2026-10-30 12:23:44.794
+Test Case 'ShellAndJobTests.testShellCapturesOutput' passed (0.053 seconds)
+Test Case 'ShellAndJobTests.testShellStdin' started at 2026-10-30 12:23:44.847
+Test Case 'ShellAndJobTests.testShellStdin' passed (0.052 seconds)
+Test Case 'ShellAndJobTests.testShellTimeout' started at 2026-10-30 12:23:44.899
+Test Case 'ShellAndJobTests.testShellTimeout' passed (5.553 seconds)
+Test Suite 'ShellAndJobTests' passed at 2026-10-30 12:23:50.452
+	 Executed 4 tests, with 0 failures (0 unexpected) in 7.659 (7.659) seconds
+Test Suite 'SimulatorPickerTests' started at 2026-10-30 12:23:50.452
+Test Case 'SimulatorPickerTests.testActivityCountsOverlappingWork' started at 2026-10-30 12:23:50.452
+Test Case 'SimulatorPickerTests.testActivityCountsOverlappingWork' passed (0.001 seconds)
+Test Case 'SimulatorPickerTests.testBootGivesEachSessionItsOwnSimulator' started at 2026-10-30 12:23:50.452
+Test Case 'SimulatorPickerTests.testBootGivesEachSessionItsOwnSimulator' passed (0.001 seconds)
+Test Case 'SimulatorPickerTests.testBootRespectsTheLimit' started at 2026-10-30 12:23:50.453
+Test Case 'SimulatorPickerTests.testBootRespectsTheLimit' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testBootsRunOnceAndReportFailures' started at 2026-10-30 12:23:50.454
+Test Case 'SimulatorPickerTests.testBootsRunOnceAndReportFailures' passed (0.101 seconds)
+Test Case 'SimulatorPickerTests.testBuildsFindTheirOwnSimulator' started at 2026-10-30 12:23:50.555
+Test Case 'SimulatorPickerTests.testBuildsFindTheirOwnSimulator' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testClaimStorePersistsAndPrunes' started at 2026-10-30 12:23:50.555
+Test Case 'SimulatorPickerTests.testClaimStorePersistsAndPrunes' passed (0.004 seconds)
+Test Case 'SimulatorPickerTests.testClaimStoreSavesUseTimesAndUnreserves' started at 2026-10-30 12:23:50.559
+Test Case 'SimulatorPickerTests.testClaimStoreSavesUseTimesAndUnreserves' passed (0.002 seconds)
+Test Case 'SimulatorPickerTests.testFreshSkipsTheDuo' started at 2026-10-30 12:23:50.561
+Test Case 'SimulatorPickerTests.testFreshSkipsTheDuo' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testIdleSimulatorsShutDownButOneStaysWarm' started at 2026-10-30 12:23:50.561
+Test Case 'SimulatorPickerTests.testIdleSimulatorsShutDownButOneStaysWarm' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testPlainToolsNeverGuessBetweenBootedSimulators' started at 2026-10-30 12:23:50.561
+Test Case 'SimulatorPickerTests.testPlainToolsNeverGuessBetweenBootedSimulators' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testStaleCopies' started at 2026-10-30 12:23:50.561
+Test Case 'SimulatorPickerTests.testStaleCopies' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testTemplateForCopies' started at 2026-10-30 12:23:50.561
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:429: error: SimulatorPickerTests.testTemplateForCopies : XCTAssertNil failed: "SimDevice(udid: "TB", name: "iPhone 17 Pro (minirun template, building)", state: "Shutdown", runtime: "com.apple.CoreSimulator.SimRuntime.iOS-26-0", isAvailable: true, deviceType: Optional("com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"), lastBootedAt: nil)" - 
+Test Case 'SimulatorPickerTests.testTemplateForCopies' failed (0.0 seconds)
+Test Suite 'SimulatorPickerTests' failed at 2026-10-30 12:23:50.562
+	 Executed 12 tests, with 1 failure (0 unexpected) in 0.11 (0.11) seconds
+Test Suite 'WorkspaceTests' started at 2026-10-30 12:23:50.562
+Test Case 'WorkspaceTests.testDirectoriesPerRef' started at 2026-10-30 12:23:50.562
+Test Case 'WorkspaceTests.testDirectoriesPerRef' passed (0.0 seconds)
+Test Case 'WorkspaceTests.testKeyedLockSerializesPerKey' started at 2026-10-30 12:23:50.562
+Test Case 'WorkspaceTests.testKeyedLockSerializesPerKey' passed (0.01 seconds)
+Test Case 'WorkspaceTests.testViewerURL' started at 2026-10-30 12:23:50.573
+Test Case 'WorkspaceTests.testViewerURL' passed (0.0 seconds)
+Test Suite 'WorkspaceTests' passed at 2026-10-30 12:23:50.573
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.011 (0.011) seconds
+Test Suite 'XcodeParsingTests' started at 2026-10-30 12:23:50.573
+Test Case 'XcodeParsingTests.testAccessibilitySummary' started at 2026-10-30 12:23:50.573
+Test Case 'XcodeParsingTests.testAccessibilitySummary' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testDefaultiPhoneSkipsDuoAndPrefersNewestPro' started at 2026-10-30 12:23:50.573
+Test Case 'XcodeParsingTests.testDefaultiPhoneSkipsDuoAndPrefersNewestPro' passed (0.001 seconds)
+Test Case 'XcodeParsingTests.testParseAndPickDevices' started at 2026-10-30 12:23:50.574
+Test Case 'XcodeParsingTests.testParseAndPickDevices' passed (0.003 seconds)
+Test Case 'XcodeParsingTests.testParseIssues' started at 2026-10-30 12:23:50.576
+Test Case 'XcodeParsingTests.testParseIssues' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testSchemesAndProduct' started at 2026-10-30 12:23:50.577
+Test Case 'XcodeParsingTests.testSchemesAndProduct' passed (0.0 seconds)
+Test Suite 'XcodeParsingTests' passed at 2026-10-30 12:23:50.577
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.004 (0.004) seconds
+Test Suite 'debug.xctest' failed at 2026-10-30 12:23:50.577
+	 Executed 40 tests, with 1 failure (0 unexpected) in 7.895 (7.895) seconds
+Test Suite 'All tests' failed at 2026-10-30 12:23:50.577
+	 Executed 40 tests, with 1 failure (0 unexpected) in 7.895 (7.895) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.1.3 (1d1f7e489c9c606)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests passed after 0.001 seconds.
