@@ -68,11 +68,20 @@ struct MenuView: View {
             }
             if let update = store.update {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("minirun \(update.version) is available.").font(.callout)
+                    Text(store.updateStatus ?? "minirun \(update.version) is available.").font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Get it") { store.open(update.url) }
-                        .buttonStyle(.borderless)
-                        .help("Opens the release on GitHub. Builds aren't signed; see the README.")
+                    if store.updating {
+                        ProgressView().controlSize(.small)
+                    } else if update.asset != nil && AppPaths.isInstalled {
+                        Button("Install") { Task { await store.installUpdate(update, automatic: true) } }
+                            .buttonStyle(.borderless)
+                            .help("Installs it now, or as soon as no job is running. minirun serve restarts for a moment.")
+                    } else {
+                        Button("Get it") { store.open(update.url) }
+                            .buttonStyle(.borderless)
+                            .help("Opens the release on GitHub. Builds aren't signed; see the README.")
+                    }
                 }
             }
             if let notice = snapshot.notice {

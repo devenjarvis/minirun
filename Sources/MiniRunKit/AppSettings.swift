@@ -130,12 +130,30 @@ public enum Diagnostics {
     }
 }
 
-/// Looks for a newer minirun on GitHub Releases. Releases aren't signed, so the app only says one
-/// exists and links to it; it never downloads or installs anything.
+/// Looks for a newer minirun on GitHub Releases. The menu links to it, and the app's updater
+/// installs its zip (see `Updater`).
 public enum UpdateCheck {
     public struct Release: Equatable, Sendable {
         public var version: String
+        /// The release's page on GitHub.
         public var url: String
+        /// minirun-<version>.zip, if the release has one.
+        public var asset: Asset?
+
+        public init(version: String, url: String, asset: Asset? = nil) {
+            self.version = version
+            self.url = url
+            self.asset = asset
+        }
+    }
+
+    public struct Asset: Equatable, Sendable {
+        public var name: String
+        public var downloadURL: String
+        /// The zip's SHA-256 (hex), from GitHub's asset digest, if it reports one.
+        public var sha256: String?
+        /// minirun-<version>.zip.sha256, which the release workflow attaches too.
+        public var checksumURL: String?
     }
 
     /// Whether `tag` ("v0.3.0" or "0.3.0") is a later version than `current`.
@@ -165,12 +183,83 @@ public enum UpdateCheck {
         request.timeoutInterval = 20
         let (status, body) = try await transport.send(request)
         if status == 404 { return nil }
-        guard status == 200, let json = try? JSONValue.parse(body), let tag = json["tag_name"]?.stringValue else {
+        guard status == 200, let json = try? JSONValue.parse(body) else {
             throw ToolError("GitHub answered \(status) when asked for the latest release.")
         }
-        guard isNewer(tag, than: current) else { return nil }
+        return release(json, newerThan: current, repository: repository)
+    }
+
+    /// Reads GitHub's release JSON. Nil unless it's a newer, non-draft release.
+    static func release(_ json: JSONValue, newerThan current: String, repository: String) -> Release? {
+        guard let tag = json["tag_name"]?.stringValue, json["draft"]?.boolValue != true, json["prerelease"]?.boolValue != true,
+              isNewer(tag, than: current) else { return nil }
+        let version = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag
+        let assets = json["assets"]?.arrayValue ?? []
+        func named(_ name: String) -> JSONValue? { assets.first { $0["name"]?.stringValue == name } }
+        let zipName = "minirun-\(version).zip"
+        var asset: Asset?
+        if let zip = named(zipName), let download = zip["browser_download_url"]?.stringValue {
+            let digest = zip["digest"]?.stringValue.flatMap { $0.hasPrefix("sha256:") ? String($0.dropFirst(7)).lowercased() : nil }
+            asset = Asset(name: zipName, downloadURL: download, sha256: digest,
+                          checksumURL: named(zipName + ".sha256")?["browser_download_url"]?.stringValue)
+        }
         let url = json["html_url"]?.stringValue ?? "https://github.com/\(repository)/releases/latest"
-        return Release(version: tag.hasPrefix("v") ? String(tag.dropFirst()) : tag, url: url)
+        return Release(version: version, url: url, asset: asset)
+    }
+}
+
+/// The decisions behind the app's self-update, kept pure so they're tested on Linux. The app
+/// downloads, verifies and swaps the bundle (App/Sources/AppUpdater.swift).
+public enum Updater {
+    /// How often the app looks for a release while it updates itself.
+    public static let checkInterval: TimeInterval = 6 * 3600
+
+    public enum Decision: Equatable, Sendable {
+        case nothing
+        /// Install now.
+        case install(UpdateCheck.Release)
+        /// Not now; says why, and the app tries again at the next poll.
+        case wait(String)
+        /// A newer release exists but can't be installed from here; link to it instead.
+        case manual(String)
+    }
+
+    /// Whether to install `release` now. Updating restarts `minirun serve`, so it waits while a
+    /// job runs or someone watches or drives a simulator.
+    public static func decide(release: UpdateCheck.Release?, automatic: Bool, status: ServeStatus?, appInstalled: Bool) -> Decision {
+        guard let release else { return .nothing }
+        guard appInstalled else { return .manual("This copy of minirun isn't in /Applications, so it doesn't update itself.") }
+        guard release.asset != nil else { return .manual("minirun \(release.version) has no app download attached.") }
+        guard automatic else { return .manual("Automatic updates are off.") }
+        if let status {
+            let jobs = status.jobs.filter { $0.finishedAt == nil }.count
+            if jobs > 0 { return .wait("waiting for \(jobs) running job\(jobs == 1 ? "" : "s") to finish") }
+            if status.simulators.contains(where: \.busy) { return .wait("waiting until nobody is using a simulator") }
+        }
+        return .install(release)
+    }
+
+    /// The hash in a `shasum -a 256` line ("<hex>  minirun-0.3.0.zip").
+    public static func checksum(fromShasum text: String) -> String? {
+        guard let first = text.split(whereSeparator: { $0 == " " || $0 == "\n" || $0 == "\t" }).first else { return nil }
+        let hex = first.lowercased()
+        return hex.count == 64 && hex.allSatisfy(\.isHexDigit) ? hex : nil
+    }
+
+    /// What's wrong with an unzipped update, from its Info.plist, or nil if it's the app we expect.
+    public static func problem(infoPlist: [String: Any], expectedVersion: String, hasHelper: Bool) -> String? {
+        let id = infoPlist["CFBundleIdentifier"] as? String
+        guard id == "dev.minirun.menu" else { return "The download isn't the minirun app (bundle id \(id ?? "missing"))." }
+        let version = infoPlist["CFBundleShortVersionString"] as? String
+        guard version == expectedVersion else { return "The download is version \(version ?? "unknown"), not \(expectedVersion)." }
+        guard hasHelper else { return "The download has no Contents/Helpers/minirun." }
+        return nil
+    }
+
+    /// The Worker should be updated without asking: automatic updates are on, it runs other code
+    /// than the app carries, and there's a saved API token to deploy with.
+    public static func shouldUpdateWorker(automatic: Bool, outdated: Bool, hasToken: Bool) -> Bool {
+        automatic && outdated && hasToken
     }
 }
 

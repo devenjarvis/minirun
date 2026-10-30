@@ -206,7 +206,7 @@ mini needs (automatic login, no sleep).
 **Settings (⌘,):**
 
 - **General:** open at login, keep the Mac awake, notifications (relay down for 5 minutes, a job
-  failed), install the `minirun` command, check for updates.
+  failed), install the `minirun` command, automatic updates.
 - **Cloudflare:** the Worker's URL and account, bundled versus deployed version, Update Worker,
   rotate the password or agent token, and forget the saved API token.
 - **Simulators:** the default device, idle shutdown minutes and the most simulators to keep booted.
@@ -215,6 +215,19 @@ mini needs (automatic login, no sleep).
 - **Security:** `run_command`, behind a warning.
 - **Diagnostics:** `minirun doctor` as a checklist, with fixes you can run in Terminal; Open log;
   Copy diagnostics (versions, state and settings without secrets); Reveal config in Finder.
+
+**Automatic updates.** An app in `/Applications` keeps itself current, so the Mac needs no
+visits: every 6 hours it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
+When it finds one, it waits until no job is running and nobody is using a simulator. Then it
+downloads `minirun-<version>.zip`, checks it against the SHA-256 GitHub reports for it (or the
+`.sha256` file next to it), and checks the unzipped app: the bundle id, the version, the
+signature, and that its `minirun` starts. Then it swaps `/Applications/minirun.app`, restarts
+`minirun serve` from the new copy and relaunches. If the new copy doesn't start, the old one is
+put back. Next it updates the Worker with the saved Cloudflare API token, if the Worker runs
+older code. The app turns on Open at login the first time it runs, so it comes back after a
+restart. Turn automatic updates off in Settings → General; the menu then offers Install instead.
+Releases aren't signed, so you're trusting whoever can push tags to this repository's GitHub
+releases.
 
 Saving writes `~/.config/minirun/config.json` and asks the daemon to reload it, so changes apply
 without a restart.

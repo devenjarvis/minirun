@@ -298,7 +298,23 @@ checks the tag matches `MiniRun.version`, builds with the frameworks cache, and 
 `minirun-<version>.zip` and its SHA-256 to the release. The helper is built for the runner's
 architecture, so release builds are Apple silicon only. `MiniRun.version` moved to MiniRunKit
 (now 0.2.0) so the app can compare it, and a test keeps `MARKETING_VERSION` in step.
-`UpdateCheck` asks GitHub's latest-release API at most once a day and ignores pre-release tags.
+`UpdateCheck` asks GitHub's latest-release API and ignores drafts and pre-releases.
+
+**Automatic updates (added after the plan, to leave the Mac alone).** This reverses the "no
+auto-updating unsigned code" call below: the Mac is meant to run without visits, and the
+releases come from this repository's own workflow. Safeguards in place of a signature:
+- The zip must match its SHA-256: GitHub's asset `digest`, else the `.sha256` asset.
+- The unzipped app must have bundle id `dev.minirun.menu`, the release's version, a valid
+  (ad-hoc) signature, and a helper that starts and reports that version. The new copy is checked
+  again after it is moved into `/Applications`; if it fails there, the old copy goes back.
+- It only installs while no job runs and no simulator is busy (`Updater.decide`), then restarts
+  `minirun serve` (`launchctl kickstart -k`) and relaunches the app.
+- After an update, the app redeploys the Worker if it runs other code, using the saved API token
+  (once per launch; failures are notified, not retried in a loop).
+- On by default and checked every 6 hours. The app turns Open at login on once, at its first
+  launch from `/Applications`. Both can be switched off in Settings → General.
+The logic is in `Updater` (MiniRunKit, tested on Linux); the download and swap are in
+`App/Sources/AppUpdater.swift`. Still manual: pushing the release tag.
 
 
 - A `release.yml` workflow on tags. It builds the app on `macos-26`, using the existing
@@ -307,8 +323,8 @@ architecture, so release builds are Apple silicon only. `MiniRun.version` moved 
   `xattr -dr com.apple.quarantine /Applications/minirun.app`, or allow it under System Settings →
   Privacy & Security → Open Anyway. Building from source stays the recommended path.
 - No Homebrew cask and no Sparkle for now: Homebrew is moving away from casks that fail
-  Gatekeeper, and auto-updating unsigned code is not worth the risk. Instead, the menu shows "A
-  newer version is available" by checking the latest GitHub release tag, and links to it.
+  Gatekeeper. (The original plan also ruled out auto-updating unsigned code; see "Automatic
+  updates" above for why the app now does it, and how.)
 
 ### Phase 6: polish — partly done
 

@@ -81,10 +81,21 @@ struct GeneralTab: View {
             Section("Version") {
                 LabeledContent("This app") { Text(MiniRun.version) }
                 LabeledContent("minirun serve") { Text(store.menu.snapshot.daemonVersion ?? "not running") }
-                if let update = store.menu.update {
-                    Button("Get minirun \(update.version)…") { store.menu.open(update.url) }
+                Toggle("Install updates automatically", isOn: Binding(get: { store.menu.autoUpdate }, set: { store.menu.setAutoUpdate($0) }))
+                Text("Checks GitHub every 6 hours. Updates wait until no job is running and nobody is using a simulator, then restart minirun serve for a moment. The Worker is updated too, with the saved API token.")
+                    .font(.callout).foregroundStyle(.secondary)
+                if let status = store.menu.updateStatus {
+                    Text(status).font(.callout)
                 }
-                Button("Check for Updates") { Task { await store.menu.checkForUpdates(force: true) } }
+                if let update = store.menu.update {
+                    HStack {
+                        Button("Install minirun \(update.version)") { Task { await store.menu.installUpdate(update, automatic: true) } }
+                            .disabled(store.menu.updating || update.asset == nil || !AppPaths.isInstalled)
+                        Button("Release Notes…") { store.menu.open(update.url) }
+                    }
+                }
+                Button("Check for Updates") { Task { await store.menu.updateTick(forceCheck: true) } }
+                    .disabled(store.menu.updating)
             }
             SettingsFooter(store: store)
         }

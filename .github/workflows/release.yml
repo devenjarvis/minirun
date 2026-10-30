@@ -68,8 +68,8 @@ jobs:
             echo '    open /Applications/minirun.app'
             echo
             echo "(or open it once, then allow it under System Settings → Privacy & Security → Open Anyway)."
-            echo "The app sets up minirun serve and walks you through the Worker. Building from source with"
-            echo "./scripts/install.sh is still the recommended way to install."
+            echo "The app sets up minirun serve and walks you through the Worker. After that it installs new"
+            echo "releases by itself (Settings → General → Install updates automatically)."
           } > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --clobber

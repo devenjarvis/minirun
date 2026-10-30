@@ -318,3 +318,63 @@ final class WorkerManagerTests: XCTestCase {
         XCTAssertFalse(current.outOfDate)
     }
 }
+
+final class UpdaterTests: XCTestCase {
+    let release: JSONValue = [
+        "tag_name": "v0.3.0", "html_url": "https://github.com/devenjarvis/minirun/releases/tag/v0.3.0",
+        "draft": false, "prerelease": false,
+        "assets": [
+            ["name": "minirun-0.3.0.zip", "browser_download_url": "https://github.com/dl/minirun-0.3.0.zip",
+             "digest": "sha256:ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789"],
+            ["name": "minirun-0.3.0.zip.sha256", "browser_download_url": "https://github.com/dl/minirun-0.3.0.zip.sha256"],
+        ],
+    ]
+
+    func testReadsTheZipAndItsDigest() throws {
+        let parsed = try XCTUnwrap(UpdateCheck.release(release, newerThan: "0.2.0", repository: "devenjarvis/minirun"))
+        XCTAssertEqual(parsed.version, "0.3.0")
+        XCTAssertEqual(parsed.asset?.downloadURL, "https://github.com/dl/minirun-0.3.0.zip")
+        XCTAssertEqual(parsed.asset?.sha256, "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+        XCTAssertEqual(parsed.asset?.checksumURL, "https://github.com/dl/minirun-0.3.0.zip.sha256")
+
+        var draft = release
+        if case .object(var fields) = draft { fields["draft"] = true; draft = .object(fields) }
+        XCTAssertNil(UpdateCheck.release(draft, newerThan: "0.2.0", repository: "x/y"))
+        XCTAssertNil(UpdateCheck.release(release, newerThan: "0.3.0", repository: "x/y"))
+    }
+
+    func testDecide() {
+        let ready = UpdateCheck.Release(version: "0.3.0", url: "u", asset: .init(name: "z", downloadURL: "d", sha256: nil, checksumURL: nil))
+        let now = Date()
+        func status(jobs: [ServeStatus.Job] = [], busy: Bool = false) -> ServeStatus {
+            ServeStatus(version: "0.2.0", pid: 1, startedAt: now, relay: .init(state: .connected),
+                        simulators: [.init(udid: "A", name: "iPhone", runtime: "iOS 26.0", busy: busy)], jobs: jobs)
+        }
+        XCTAssertEqual(Updater.decide(release: nil, automatic: true, status: nil, appInstalled: true), .nothing)
+        XCTAssertEqual(Updater.decide(release: ready, automatic: true, status: status(), appInstalled: true), .install(ready))
+        XCTAssertEqual(Updater.decide(release: ready, automatic: true, status: nil, appInstalled: true), .install(ready), "no daemon: nothing to interrupt")
+        let running = ServeStatus.Job(id: "j", title: "build", status: "running", startedAt: now)
+        XCTAssertEqual(Updater.decide(release: ready, automatic: true, status: status(jobs: [running]), appInstalled: true), .wait("waiting for 1 running job to finish"))
+        XCTAssertEqual(Updater.decide(release: ready, automatic: true, status: status(busy: true), appInstalled: true), .wait("waiting until nobody is using a simulator"))
+        guard case .manual = Updater.decide(release: ready, automatic: false, status: status(), appInstalled: true) else { return XCTFail("off means manual") }
+        guard case .manual = Updater.decide(release: ready, automatic: true, status: status(), appInstalled: false) else { return XCTFail("dev builds don't update") }
+        let noZip = UpdateCheck.Release(version: "0.3.0", url: "u")
+        guard case .manual = Updater.decide(release: noZip, automatic: true, status: status(), appInstalled: true) else { return XCTFail("needs a zip") }
+    }
+
+    func testChecksumAndBundleChecks() {
+        let hex = String(repeating: "a1", count: 32)
+        XCTAssertEqual(Updater.checksum(fromShasum: "\(hex.uppercased())  minirun-0.3.0.zip\n"), hex)
+        XCTAssertNil(Updater.checksum(fromShasum: "not a hash"))
+
+        let good: [String: Any] = ["CFBundleIdentifier": "dev.minirun.menu", "CFBundleShortVersionString": "0.3.0"]
+        XCTAssertNil(Updater.problem(infoPlist: good, expectedVersion: "0.3.0", hasHelper: true))
+        XCTAssertNotNil(Updater.problem(infoPlist: good, expectedVersion: "0.4.0", hasHelper: true))
+        XCTAssertNotNil(Updater.problem(infoPlist: good, expectedVersion: "0.3.0", hasHelper: false))
+        XCTAssertNotNil(Updater.problem(infoPlist: ["CFBundleIdentifier": "com.evil"], expectedVersion: "0.3.0", hasHelper: true))
+
+        XCTAssertTrue(Updater.shouldUpdateWorker(automatic: true, outdated: true, hasToken: true))
+        XCTAssertFalse(Updater.shouldUpdateWorker(automatic: true, outdated: true, hasToken: false))
+        XCTAssertFalse(Updater.shouldUpdateWorker(automatic: false, outdated: true, hasToken: true))
+    }
+}
