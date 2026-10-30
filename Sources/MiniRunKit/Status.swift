@@ -144,7 +144,7 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         return lines.joined(separator: "\n")
     }
 
-    static func duration(_ seconds: TimeInterval) -> String {
+    public static func duration(_ seconds: TimeInterval) -> String {
         let s = max(0, Int(seconds))
         if s < 90 { return "\(s)s" }
         if s < 5400 { return "\(s / 60)m" }
