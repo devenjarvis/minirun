@@ -26,10 +26,7 @@ cleanup() {
   [[ -n "${MINIRUN_SMOKE_KEEP:-}" ]] || sims="$UDID $sims"
   for sim in $sims; do xcrun simctl shutdown "$sim" >/dev/null 2>&1 || true; xcrun simctl delete "$sim" >/dev/null 2>&1 || true; done
 }
-# The busiest processes once a minute, to show what slow steps are waiting on.
-(while sleep 60; do echo "--- top processes at $(date +%T)"; top -l 2 -n 6 -o cpu -stats command,cpu,mem | tail -7; iostat -d -c 2 -w 1 | tail -1; done) >&2 &
-SAMPLER=$!
-trap 'kill $SAMPLER 2>/dev/null; cleanup' EXIT
+trap cleanup EXIT
 echo "Cloned $UDID from the template $TEMPLATE"
 
 run boot_simulator "{\"device\":\"$UDID\"}" | expect "Booted"
