@@ -30,7 +30,7 @@ hand.
 | `minirun doctor` | `Doctor` in MiniRunKit returns structured checks; the CLI prints them (Phase 0, done) | Settings → Diagnostics and the setup window (Phase 4, done) |
 | Worker deploy | `worker/setup.sh`: `npm ci`, `wrangler login` in a browser, `wrangler deploy`, `wrangler secret put`. Writes the password and token in plain text to `worker.env` | Swift Cloudflare API client (Phase 2) |
 | Frameworks | `build-frameworks.sh` builds idb from source (5–10 min, needs XcodeGen) | Unchanged for source installs. Release zips include them |
-| GitHub runner | `scripts/github-runner.sh` (install/status/uninstall) | Wrap it in Settings later |
+| GitHub runner | `scripts/github-runner.sh` (install/start/stop/status/uninstall) | Settings → GitHub Runners and a menu section run the bundled script (Phase 6, done) |
 
 ## Architecture: the app supervises the daemon
 
@@ -330,12 +330,14 @@ The logic is in `Updater` (MiniRunKit, tested on Linux); the download and swap a
 
 Done: notifications (relay disconnected for 5 minutes, once per outage; a job failed; nothing
 replayed from the first poll), with a switch in Settings → General; and the live view in an app
-window (a WKWebView on the viewer URL, which keeps its login cookie).
+window (a WKWebView on the viewer URL, which keeps its login cookie). The GitHub runners tab:
+the app carries `github-runner.sh` in Contents/Resources and runs it to add, start, stop and
+remove runners; `GitHubRunners` in MiniRunKit reads what it installed, launchd's state and
+GitHub's view (through gh). The script exits 3 when it refuses a public repository, and the app
+then shows the warning and asks before passing `--allow-public`.
 
 Not done yet:
 - Notifying when a simulator is shut down at the cap: the status doesn't report that event.
-- The GitHub runners tab: `github-runner.sh` lives in the repository, not the app bundle, so the
-  app would need to carry it (or a Swift port of it).
 - "Delete stale simulator copies": the daemon doesn't track copies yet
   (`docs/simulator-lifecycle-followups.md`, item 2).
 

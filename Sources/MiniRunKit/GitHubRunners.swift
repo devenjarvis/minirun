@@ -16,7 +16,7 @@ public struct GitHubRunner: Equatable, Sendable, Identifiable {
         /// Installed but not loaded, or loaded and not running.
         case stopped
         /// `svc.sh install` never ran (an interrupted install).
-        case none
+        case missing
         /// Another launchd state, such as "waiting" or "spawn scheduled".
         case other(String)
     }
@@ -45,7 +45,7 @@ public struct GitHubRunner: Equatable, Sendable, Identifiable {
     public var id: String { directory }
 
     public init(repo: String, directory: String, configured: Bool, name: String?, serviceLabel: String?,
-                service: Service = .none, remote: Remote? = nil) {
+                service: Service = .missing, remote: Remote? = nil) {
         self.repo = repo
         self.directory = directory
         self.configured = configured
@@ -65,7 +65,7 @@ public struct GitHubRunner: Equatable, Sendable, Identifiable {
     public var badge: Badge {
         guard configured else { return .broken }
         switch service {
-        case .none: return .broken
+        case .missing: return .broken
         case .stopped: return .stopped
         case .running, .other:
             guard let remote else { return service == .running ? .running : .starting }
@@ -85,7 +85,7 @@ public struct GitHubRunner: Equatable, Sendable, Identifiable {
         switch self.service {
         case .running: service = "service running"
         case .stopped: service = "service stopped"
-        case .none: service = "no service installed"
+        case .missing: service = "no service installed"
         case .other(let state): service = "service \(state)"
         }
         let github = remote.map { "GitHub: " + ($0.online ? "online" : "offline") + ($0.busy ? ", running a job" : ", idle") } ?? "GitHub: unknown"
@@ -93,7 +93,7 @@ public struct GitHubRunner: Equatable, Sendable, Identifiable {
     }
 
     public var canStart: Bool { configured && serviceLabel != nil && service != .running }
-    public var canStop: Bool { configured && serviceLabel != nil && service != .stopped && service != .none }
+    public var canStop: Bool { configured && serviceLabel != nil && service != .stopped && service != .missing }
 }
 
 public enum GitHubRunners {

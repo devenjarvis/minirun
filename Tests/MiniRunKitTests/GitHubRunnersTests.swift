@@ -45,7 +45,7 @@ final class GitHubRunnersTests: XCTestCase {
 
     func testRemoteMatchesByName() {
         let json = Data(#"{"total_count": 2, "runners": [{"id": 1, "name": "other-mac", "status": "online", "busy": true}, {"id": 2, "name": "mini-minirun", "status": "online", "busy": false}]}"#.utf8)
-        XCTAssertEqual(GitHubRunners.remote(named: "mini-minirun", in: json), .init(online: true, busy: false))
+        XCTAssertEqual(GitHubRunners.remote(named: "mini-minirun", in: json), GitHubRunner.Remote(online: true, busy: false))
         XCTAssertNil(GitHubRunners.remote(named: "gone", in: json))
         XCTAssertNil(GitHubRunners.remote(named: "mini-minirun", in: Data("not json".utf8)))
     }
@@ -54,18 +54,18 @@ final class GitHubRunnersTests: XCTestCase {
         var runner = GitHubRunner(repo: "you/app", directory: "/r/you-app", configured: true, name: "mini-minirun", serviceLabel: "actions.runner.x")
         runner.service = .running
         XCTAssertEqual(runner.badge, .running, "running, GitHub not asked yet")
-        runner.remote = .init(online: true, busy: true)
+        runner.remote = GitHubRunner.Remote(online: true, busy: true)
         XCTAssertEqual(runner.badge, .busy)
         XCTAssertEqual(runner.detail, "mini-minirun · service running · GitHub: online, running a job")
         XCTAssertTrue(runner.canStop)
         XCTAssertFalse(runner.canStart)
-        runner.remote = .init(online: false, busy: false)
+        runner.remote = GitHubRunner.Remote(online: false, busy: false)
         XCTAssertEqual(runner.badge, .offline)
         runner.service = .stopped
         XCTAssertEqual(runner.badge, .stopped)
         XCTAssertTrue(runner.canStart)
         XCTAssertFalse(runner.canStop)
-        runner.service = .none
+        runner.service = .missing
         XCTAssertEqual(runner.badge, .broken)
         XCTAssertEqual(runner.settingsURL, "https://github.com/you/app/settings/actions/runners")
         XCTAssertEqual(runner.diagnosticsPath, "/r/you-app/_diag")
