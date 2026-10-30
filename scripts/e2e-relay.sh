@@ -23,6 +23,13 @@ SERVE_PID=$!
 
 status=0
 node test/e2e-relay.mjs "http://127.0.0.1:$PORT" e2e-password || status=$?
+if [[ $status -eq 0 ]]; then
+  # The control socket that `minirun status` and the menu bar app read.
+  echo "--- minirun status"
+  "$BIN" status || status=$?
+  json=$("$BIN" status --json) || status=$?
+  [[ "$json" == *'"state":"connected"'* ]] || { echo "minirun status --json doesn't say the relay is connected: $json"; status=1; }
+fi
 echo "--- minirun serve log"; tail -n 40 "$TMP/serve.log"
 if [[ $status -ne 0 ]]; then echo "--- wrangler log"; tail -n 60 "$TMP/wrangler.log"; fi
 rm -f .dev.vars

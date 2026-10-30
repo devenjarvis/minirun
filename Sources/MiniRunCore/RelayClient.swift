@@ -13,12 +13,15 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var streamer: FrameStreamer!
     private var streamControl: Task<Void, Never>?
     private let log: @Sendable (String) -> Void
+    private let stateLock = NSLock()
+    private var state: ServeStatus.Relay
 
     public init(url: URL, token: String, registry: ToolRegistry, log: @escaping @Sendable (String) -> Void) {
         self.url = url
         self.token = token
         self.registry = registry
         self.log = log
+        state = ServeStatus.Relay(state: .connecting, host: url.host)
         super.init()
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
@@ -29,6 +32,22 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             sendFrame: { [weak self] data in await self?.send(.data(data)) },
             sendText: { [weak self] json in await self?.send(.string(json.encodedString())) }
         )
+    }
+
+    /// The connection as of now, for `minirun status`.
+    public var relayStatus: ServeStatus.Relay {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return state
+    }
+
+    private func setState(_ new: ServeStatus.Relay.State, problem: String? = nil) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        if state.state != new { state.since = Date() }
+        state.state = new
+        // Keep the last problem while reconnecting, so status can say why it dropped.
+        if new == .connected { state.problem = nil } else if let problem { state.problem = problem }
     }
 
     /// Runs until the process exits.
@@ -51,6 +70,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("minirun/\(MiniRun.version)", forHTTPHeaderField: "User-Agent")
+        setState(.connecting)
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = 32 * 1024 * 1024
         socket = task
@@ -61,9 +81,11 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             try await task.send(.string(hello.encodedString()))
         } catch {
             log("Relay connect failed: \(error.localizedDescription)")
+            setState(.disconnected, problem: "Couldn't connect: \(error.localizedDescription)")
             return
         }
         log("Connected to relay \(url.host ?? "")")
+        setState(.connected)
 
         let keepAlive = Task { [weak task] in
             while !Task.isCancelled {
@@ -80,6 +102,9 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             } catch {
                 if task.closeCode == .policyViolation || task.closeCode.rawValue == 4001 {
                     log("Relay rejected the agent token. Check agentToken in ~/.config/minirun/config.json matches AGENT_TOKEN on the Worker.")
+                    setState(.disconnected, problem: "The relay rejected the agent token. Check that agentToken in ~/.config/minirun/config.json matches AGENT_TOKEN on the Worker.")
+                } else {
+                    setState(.disconnected, problem: "Connection lost: \(error.localizedDescription)")
                 }
                 return
             }

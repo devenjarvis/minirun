@@ -10,6 +10,7 @@ Usage:
   minirun serve                         Connect to the relay and serve tools (run by launchd)
   minirun setup --relay URL --token T   Save relay settings to ~/.config/minirun/config.json
         [--device "iPhone 17 Pro"] [--allow-shell] [--workspaces DIR]
+  minirun status [--json]               Show what the running `minirun serve` is doing
   minirun doctor                        Check Xcode, simulators and the relay settings
   minirun tools                         Print the MCP tool definitions as JSON
   minirun call TOOL ['{"json":"args"}'] Run one tool locally (images are saved to /tmp)
@@ -49,6 +50,16 @@ func main() async {
         if args.contains("--no-shell") { config.allowShell = false }
         do { try config.save() } catch { fail("Could not save config: \(error.localizedDescription)") }
         print("Saved \(MiniRunConfig.configURL.path)")
+
+    case "status":
+        let response: ControlProtocol.Response
+        do {
+            response = try serveStatus()
+        } catch {
+            fail("minirun serve isn't answering (\(error.localizedDescription))\nStart it with: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent")
+        }
+        guard response.ok, let status = response.status else { fail(response.error ?? "minirun serve sent no status.") }
+        print(args.contains("--json") ? ControlProtocol.encode(status) : status.summary())
 
     case "doctor":
         await doctor(config)
@@ -90,6 +101,12 @@ func main() async {
     }
 }
 
+/// Asks the running `minirun serve` for its status over the control socket.
+func serveStatus() throws -> ControlProtocol.Response {
+    let line = try ControlSocket.request(MiniRunConfig.controlSocketURL.path, ControlProtocol.encode(ControlProtocol.Request(command: "status")))
+    return try ControlProtocol.decode(ControlProtocol.Response.self, from: line)
+}
+
 @MainActor
 func doctor(_ config: MiniRunConfig) async {
     func check(_ label: String, _ ok: Bool, _ detail: String) { print("\(ok ? "✓" : "✗") \(label): \(detail)") }
@@ -113,6 +130,12 @@ func doctor(_ config: MiniRunConfig) async {
         check("Simulators", false, "simctl failed")
     }
 
+    if let status = try? serveStatus().status {
+        let relay = status.relay.state == .connected ? "connected to the relay" : "\(status.relay.state.rawValue)" + (status.relay.problem.map { ": \($0)" } ?? "")
+        check("minirun serve", status.relay.state == .connected, "running (pid \(status.pid)), \(relay)")
+    } else {
+        check("minirun serve", false, "not running — launchctl kickstart -k gui/$(id -u)/dev.minirun.agent")
+    }
     check("Relay URL", config.relayURL != nil, config.relayURL ?? "not set — run minirun setup")
     check("Agent token", config.agentToken?.isEmpty == false, config.agentToken == nil ? "not set" : "set")
     check("Workspaces", true, config.workspaceRoot)

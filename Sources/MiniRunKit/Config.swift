@@ -64,6 +64,11 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         return URL(fileURLWithPath: home + "/.config/minirun/config.json")
     }
 
+    /// Where `minirun serve` answers `minirun status` and the menu bar app.
+    public static var controlSocketURL: URL {
+        configURL.deletingLastPathComponent().appendingPathComponent("control.sock")
+    }
+
     public static func load() -> MiniRunConfig {
         guard let data = try? Data(contentsOf: configURL), let config = try? JSONDecoder().decode(MiniRunConfig.self, from: data) else {
             return MiniRunConfig()
