@@ -67,7 +67,10 @@ actor FrameStreamer {
     }
 
     func ack(_ sequence: UInt32, key: String) {
-        guard let stream = streams[key] else { return }
+        // An ack past the last frame sent is for an earlier stream (this one restarted, or the Mac
+        // reconnected while the viewer stayed open). Counting it would make every later frame
+        // look unacknowledged and stall the stream.
+        guard let stream = streams[key], sequence <= stream.sequence else { return }
         if sequence > stream.lastAcked { stream.lastAcked = sequence }
         stream.lastAckTime = Date()
     }
@@ -165,9 +168,14 @@ actor FrameStreamer {
                 try? await Task.sleep(nanoseconds: 10_000_000)
                 continue
             }
+            var sent = false
             do {
                 if let frame = try await encoder.encode(forceKeyframe: stream.wantsKeyframe),
-                   let payload = H264.annexB(lengthPrefixed: frame.nalUnits, lengthSize: frame.lengthSize, parameterSets: frame.parameterSets) {
+                   // Without the SPS saying frames aren't reordered, browsers hold several back.
+                   let payload = H264.annexB(
+                       lengthPrefixed: frame.nalUnits, lengthSize: frame.lengthSize,
+                       parameterSets: frame.parameterSets.map { $0.first.map { $0 & 0x1f } == 7 ? H264.withoutReordering(sps: $0) : $0 }
+                   ) {
                     if !announced {
                         let size = await registry.geometry.pointSize(udid: device.udid)
                         await sendText(RelayProtocol.screen(
@@ -183,6 +191,7 @@ actor FrameStreamer {
                     if frame.isKeyframe { stream.wantsKeyframe = false }
                     stream.sequence &+= 1
                     await sendFrame(RelayProtocol.encodeVideoFrame(key: key, sequence: stream.sequence, keyframe: frame.isKeyframe, payload: payload))
+                    sent = true
                 }
                 failures = 0
             } catch {
@@ -192,8 +201,11 @@ actor FrameStreamer {
                 try? await Task.sleep(nanoseconds: UInt64(min(5.0, 0.5 * Double(failures)) * 1_000_000_000))
                 continue
             }
+            // At most `fps` frames a second, but otherwise encode as soon as the simulator reports a
+            // change rather than on the next tick, which saves up to a frame interval of latency.
             let elapsed = Date().timeIntervalSince(started)
-            if elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
+            if sent && elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
+            if !sent { await encoder.waitForChange(timeout: interval) }
         }
         return true
     }

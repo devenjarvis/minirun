@@ -121,7 +121,7 @@ async function macStatus(env: Env, origin: string, device: unknown): Promise<Too
     key
       ? `Live view of simulator ${key}: ${link} — the user can watch and tap it there (they'll be asked for the minirun password).`
       : `Live view: ${link} — the user can watch and tap a simulator there and switch between booted ones (they'll be asked for the minirun password). Pass device to get a link that opens on your simulator.`,
-    `Viewers connected: ${status.viewers}. Tools available: ${status.toolCount}.`,
+    `Viewers connected: ${status.viewers}. Tools available: ${status.toolCount}.` + (status.location ? ` The relay runs in Cloudflare's ${status.location} data center.` : ""),
   ];
   if (!status.online) {
     lines.push("Ask the user to check that the Mac is awake and that `minirun serve` is running.");

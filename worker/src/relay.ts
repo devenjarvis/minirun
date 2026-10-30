@@ -53,6 +53,12 @@ interface Pending {
 /** Tools the viewer may call directly (fire-and-forget input). */
 const VIEWER_TOOLS = new Set(["tap", "swipe", "long_press", "type_text", "press_key", "press_button", "open_url"]);
 
+/** Phases of a live touch from the viewer. */
+const TOUCH_PHASES = new Set(["down", "move", "up"]);
+
+/** The first Mac protocol version that takes live touches. */
+const TOUCH_VERSION = 4;
+
 /** Frames a viewer may have in flight before we skip frames for it. */
 const VIEWER_WINDOW = 3;
 
@@ -94,6 +100,10 @@ export class MacRelay extends DurableObject<Env> {
   private viewerFrames = new Map<WebSocket, FlowState>();
   /** When each stream last asked the Mac for a keyframe. */
   private keyframeRequested = new Map<string, number>();
+  /** Where each viewer's finger is down, so it can be lifted if the viewer goes away mid-touch. */
+  private touching = new Map<WebSocket, { device: string; x: number; y: number }>();
+  /** The Cloudflare data center this object runs in (e.g. "ATL"), looked up once. */
+  private location: Promise<string | null> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -118,6 +128,10 @@ export class MacRelay extends DurableObject<Env> {
   async status(): Promise<{
     online: boolean;
     host: Record<string, string> | null;
+    /** Whether the Mac takes live touches (otherwise the viewer sends whole gestures). */
+    touch: boolean;
+    /** Where this relay runs. Every frame and touch passes through it, so it should be near the Mac and viewers. */
+    location: string | null;
     viewers: number;
     connectedAt: number | null;
     toolCount: number;
@@ -128,12 +142,30 @@ export class MacRelay extends DurableObject<Env> {
     return {
       online: agent !== null,
       host: hello?.host ?? null,
+      touch: (hello?.version ?? 0) >= TOUCH_VERSION,
+      location: await this.dataCenter(),
       viewers: this.viewers().length,
       connectedAt: (await this.ctx.storage.get<number>("connectedAt")) ?? null,
       toolCount: hello?.tools.length ?? 0,
       // Only as fresh as the last time someone watched; the Mac sends it while streaming.
       simulators: (await this.ctx.storage.get<SimulatorInfo[]>("simulators")) ?? null,
     };
+  }
+
+  /** The data center this object runs in, from Cloudflare's trace page (fetched from here). */
+  private dataCenter(): Promise<string | null> {
+    this.location ??= fetch("https://www.cloudflare.com/cdn-cgi/trace")
+      .then((response) => response.text())
+      .then((text) => {
+        const colo = /^colo=(\w+)$/m.exec(text)?.[1] ?? null;
+        if (!colo) console.log("relay location: unexpected trace", text.slice(0, 200));
+        return colo;
+      })
+      .catch((error) => {
+        console.log("relay location lookup failed", String(error));
+        return null;
+      });
+    return this.location;
   }
 
   /** Tool definitions from the Mac's last hello (kept so tools/list works while it's offline). */
@@ -204,7 +236,7 @@ export class MacRelay extends DurableObject<Env> {
 
   private async greetViewer(ws: WebSocket) {
     const status = await this.status();
-    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host }));
+    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host, touch: status.touch }));
     if (status.simulators) safeSend(ws, JSON.stringify({ type: "simulators", devices: status.simulators }));
     const screen = await this.ctx.storage.get<string>(`screen:${this.viewerState(ws).key}`);
     if (screen) safeSend(ws, screen);
@@ -278,7 +310,8 @@ export class MacRelay extends DurableObject<Env> {
     switch (message.type) {
       case "hello": {
         await this.ctx.storage.put("hello", message as unknown as Hello);
-        this.broadcast(JSON.stringify({ type: "status", online: true, host: (message as unknown as Hello).host }));
+        const hello = message as unknown as Hello;
+        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION }));
         this.syncStreams();
         break;
       }
@@ -388,6 +421,18 @@ export class MacRelay extends DurableObject<Env> {
         this.agent()?.send(JSON.stringify({ type: "call", tool, arguments: { ...args, device } }));
         break;
       }
+      case "touch": {
+        const { phase, x, y } = message;
+        if (typeof phase !== "string" || !TOUCH_PHASES.has(phase)) return;
+        if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return;
+        // Like input, a touch only reaches the simulator this viewer is watching.
+        const device = await this.viewerDevice(ws);
+        if (!device) return;
+        if (phase === "up") this.touching.delete(ws);
+        else this.touching.set(ws, { device, x, y });
+        this.agent()?.send(JSON.stringify({ type: "touch", device, phase, x, y }));
+        break;
+      }
       case "stream": {
         const previous = this.viewerState(ws);
         const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
@@ -438,6 +483,11 @@ export class MacRelay extends DurableObject<Env> {
         this.broadcast(JSON.stringify({ type: "status", online: false }));
       }
     } else {
+      const held = this.touching.get(ws);
+      if (held) {
+        this.touching.delete(ws);
+        this.agent()?.send(JSON.stringify({ type: "touch", phase: "up", ...held }));
+      }
       this.viewerFrames.delete(ws);
       this.syncStreams(ws);
     }

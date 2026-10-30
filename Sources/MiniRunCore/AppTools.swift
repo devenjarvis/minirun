@@ -33,6 +33,8 @@ extension ToolRegistry {
             let bundle = try args.requireString("bundle_id")
             let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
             let pid = try await Simctl.launch(sim.udid, bundleID: bundle, arguments: args.strings("arguments"), environment: env)
+            // The new app may be landscape-only, which changes how taps map to the screen.
+            await SimulatorDriver.shared.forgetCoordinateMapping(udid: sim.udid)
             await claims.noteApp(sim.udid, bundleID: bundle)
             try await Task.sleep(nanoseconds: 1_500_000_000)
             return ToolResult([.text("Launched \(bundle) (pid \(pid)) on \(sim.name) (\(sim.udid)).")] + ((try? await screenshotContent(udid: sim.udid)) ?? []))

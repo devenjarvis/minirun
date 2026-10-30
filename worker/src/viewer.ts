@@ -78,6 +78,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   const $ = (id) => document.getElementById(id);
   const screenEl = $("screen"), img = $("frame"), canvas = $("video"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
   let ws = null, retry = 1000, online = false, live = false;
+  // Whether the Mac takes live touches; older ones get whole gestures on finger-up instead.
+  let touchLive = false;
   let screen = null; // { udid, pointWidth, pointHeight, name }
   let simulators = [];
   // The simulator this page shows: ?device=UDID, or "" for whichever one is booted.
@@ -146,6 +148,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     let m; try { m = JSON.parse(text); } catch { return; }
     if (m.type === "status") {
       online = m.online;
+      touchLive = m.touch === true;
       if (!online) { live = false; setStatus("offline", "Mac offline"); showOverlay("Your Mac is offline. Make sure it's awake and minirun is running."); }
       else { setStatus("", "Starting stream…"); if (!live) showOverlay("Waiting for the simulator…"); }
       if (m.host && m.host.name && !screen) deviceEl.textContent = m.host.name;
@@ -297,19 +300,42 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   }
   function input(tool, args) { if (online) send({ type: "input", tool, arguments: args }); }
 
-  let start = null;
+  // Live touches: down, moves (at most one per animation frame) and up are sent as they happen,
+  // so drags and long presses track the finger. Without them, the gesture is sent on finger-up.
+  let start = null, moved = null, moveQueued = false;
+  function touch(phase, point) { if (online) send({ type: "touch", phase, x: point.x, y: point.y }); }
+  function flushMove() {
+    moveQueued = false;
+    if (start && start.live && moved) { touch("move", moved); moved = null; }
+  }
   screenEl.addEventListener("pointerdown", (e) => {
     if (!live) return;
     screenEl.setPointerCapture(e.pointerId);
-    start = { x: e.clientX, y: e.clientY, t: performance.now() };
+    start = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, live: touchLive };
+    moved = null;
     e.preventDefault();
+    if (start.live) {
+      ripple(e.clientX, e.clientY);
+      touch("down", toPoints(e.clientX, e.clientY));
+    }
+  });
+  screenEl.addEventListener("pointermove", (e) => {
+    if (!start || !start.live || e.pointerId !== start.id) return;
+    moved = toPoints(e.clientX, e.clientY);
+    if (!moveQueued) { moveQueued = true; requestAnimationFrame(flushMove); }
   });
   screenEl.addEventListener("pointerup", (e) => {
-    if (!start) return;
-    const dt = performance.now() - start.t, moved = Math.hypot(e.clientX - start.x, e.clientY - start.y);
+    if (!start || e.pointerId !== start.id) return;
+    if (start.live) {
+      moved = null;
+      touch("up", toPoints(e.clientX, e.clientY));
+      start = null;
+      return;
+    }
+    const dt = performance.now() - start.t, distance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
     const from = toPoints(start.x, start.y);
     ripple(start.x, start.y);
-    if (moved < 10) {
+    if (distance < 10) {
       if (dt > 500) input("long_press", { ...from, duration: Math.min(dt / 1000, 5) });
       else input("tap", from);
     } else {
@@ -318,7 +344,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     }
     start = null;
   });
-  screenEl.addEventListener("pointercancel", () => { start = null; });
+  screenEl.addEventListener("pointercancel", (e) => {
+    if (start && start.live && e.pointerId === start.id) touch("up", toPoints(e.clientX, e.clientY));
+    start = null; moved = null;
+  });
 
   $("home").onclick = () => input("press_button", { button: "home" });
   $("enter").onclick = () => input("press_key", { key: "return" });
