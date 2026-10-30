@@ -1,0 +1,78 @@
+name: Release
+
+# Push a tag like v0.2.0 (it must match MiniRun.version) to build minirun.app with the daemon,
+# frameworks and Worker inside, and attach it to a GitHub Release. The build is ad-hoc signed
+# and not notarized; the README says how to open it.
+
+permissions:
+  contents: write
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build (e.g. v0.2.0)
+        required: true
+
+jobs:
+  app:
+    name: Build and publish minirun.app
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+      - name: Tag matches the version
+        run: |
+          version=$(sed -nE 's/.*static let version = "([^"]+)".*/\1/p' Sources/MiniRunKit/Version.swift)
+          [[ "$TAG" == "v$version" ]] || { echo "::error::Tag $TAG doesn't match MiniRun.version $version"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Xcode version
+        id: xcode
+        run: echo "version=$(xcodebuild -version | tr -d '\n ' )" >> "$GITHUB_OUTPUT"
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Restore frameworks
+        id: frameworks
+        uses: actions/cache/restore@v4
+        with:
+          path: Vendor
+          key: frameworks-${{ runner.os }}-${{ hashFiles('scripts/build-frameworks.sh') }}-${{ steps.xcode.outputs.version }}
+      - name: Build FBSimulatorControl frameworks
+        if: steps.frameworks.outputs.cache-hit != 'true'
+        run: ./scripts/build-frameworks.sh
+      - name: Build minirun
+        run: swift build -c release
+      - name: Build the app
+        run: scripts/install-app.sh --build-only --with-daemon "$(swift build -c release --show-bin-path)"
+      - name: Zip
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent .build/app/Build/Products/Release/minirun.app "minirun-$VERSION.zip"
+          shasum -a 256 "minirun-$VERSION.zip" | tee "minirun-$VERSION.zip.sha256"
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "minirun $VERSION for macOS 14 or later on Apple silicon."
+            echo
+            echo "This build is ad-hoc signed and not notarized, so macOS blocks it at first. After unzipping:"
+            echo
+            echo '    mv minirun.app /Applications/'
+            echo '    xattr -dr com.apple.quarantine /Applications/minirun.app'
+            echo '    open /Applications/minirun.app'
+            echo
+            echo "(or open it once, then allow it under System Settings → Privacy & Security → Open Anyway)."
+            echo "The app sets up minirun serve and walks you through the Worker. After that it installs new"
+            echo "releases by itself (Settings → General → Install updates automatically)."
+          } > notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --clobber
+          else
+            gh release create "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --title "minirun $VERSION" --notes-file notes.md
+          fi

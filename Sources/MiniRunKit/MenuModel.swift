@@ -82,6 +82,17 @@ public struct MenuSnapshot: Equatable, Sendable {
     /// The end of minirun's log, shown while the daemon isn't running.
     public var logTail: String?
     public var notice: Notice?
+    /// The relay as the daemon reports it, for the setup and settings windows.
+    public var relay: ServeStatus.Relay?
+    /// The running daemon's version.
+    public var daemonVersion: String?
+
+    /// The Worker runs different code from the `bundled` one this app carries. Unknown (false)
+    /// until the Worker says what it runs, which Workers deployed before this check don't.
+    public func workerOutdated(bundled: String?) -> Bool {
+        guard let bundled, let running = relay?.workerBundle, relay?.state == .connected else { return false }
+        return running != bundled
+    }
 
     /// What a status poll found.
     public enum Poll: Equatable, Sendable {
@@ -112,7 +123,7 @@ public struct MenuSnapshot: Equatable, Sendable {
             } else {
                 snapshot.headline = "minirun isn't installed"
                 snapshot.problem = "There's no LaunchAgent for minirun serve."
-                snapshot.fix = "Run ./scripts/install.sh from the minirun repository."
+                snapshot.fix = "Install the app with ./scripts/install.sh from the minirun repository; it sets up minirun serve when it opens."
             }
             return snapshot
         case .answered(let response):
@@ -132,6 +143,8 @@ public struct MenuSnapshot: Equatable, Sendable {
 
     static func apply(_ status: ServeStatus, to snapshot: inout MenuSnapshot, now: Date) {
         let relay = status.relay
+        snapshot.relay = relay
+        snapshot.daemonVersion = status.version
         let host = relay.host ?? "the relay"
         switch relay.state {
         case .connected:
@@ -172,12 +185,12 @@ public struct MenuSnapshot: Equatable, Sendable {
     /// What to do about a relay problem.
     static func fix(for problem: String) -> String {
         if problem.contains("agent token") {
-            return "Run `minirun worker deploy` to give the Mac and the Worker the same token."
+            return "Choose Update Worker in Settings → Cloudflare (or run `minirun worker deploy`) to give the Mac and the Worker the same token."
         }
         if problem.contains("No relay configured") {
-            return "Run `minirun worker deploy` to set up the Worker."
+            return "Choose Set Up minirun… below (or run `minirun worker deploy`) to set up the Worker."
         }
-        return "minirun keeps retrying. Check this Mac's internet connection and that the Worker is deployed (`minirun worker status`)."
+        return "minirun keeps retrying. Check this Mac's internet connection and that the Worker is deployed (Settings → Cloudflare, or `minirun worker status`)."
     }
 }
 
@@ -203,6 +216,8 @@ public actor MenuModel {
         public var logTail: @Sendable () -> String?
         public var agentInstalled: @Sendable () -> Bool
         public var kickstart: @Sendable (_ restart: Bool) async throws -> Void
+        /// Posts a notification (the app checks whether they're turned on).
+        public var notify: @Sendable (AppNotification) -> Void
         public var now: @Sendable () -> Date
         /// Waits between polls. Throws when the wait is cancelled.
         public var sleep: @Sendable (TimeInterval) async throws -> Void
@@ -210,6 +225,7 @@ public actor MenuModel {
         public init(send: @escaping @Sendable (ControlProtocol.Request) async throws -> ControlProtocol.Response,
                     connectorURL: @escaping @Sendable () -> String?, logTail: @escaping @Sendable () -> String?,
                     agentInstalled: @escaping @Sendable () -> Bool, kickstart: @escaping @Sendable (Bool) async throws -> Void,
+                    notify: @escaping @Sendable (AppNotification) -> Void = { _ in },
                     now: @escaping @Sendable () -> Date = { Date() },
                     sleep: @escaping @Sendable (TimeInterval) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }) {
             self.send = send
@@ -217,12 +233,13 @@ public actor MenuModel {
             self.logTail = logTail
             self.agentInstalled = agentInstalled
             self.kickstart = kickstart
+            self.notify = notify
             self.now = now
             self.sleep = sleep
         }
 
         /// The real control socket, settings files and launchd.
-        public static func live() -> Environment {
+        public static func live(notify: @escaping @Sendable (AppNotification) -> Void = { _ in }) -> Environment {
             Environment(
                 send: { request in
                     // The socket calls block, so keep them off the shared threads.
@@ -231,7 +248,8 @@ public actor MenuModel {
                 connectorURL: { MenuModel.connectorURL(worker: WorkerSettings.load(), config: MiniRunConfig.load()) },
                 logTail: { LaunchAgent.tail(lines: 15) },
                 agentInstalled: { LaunchAgent.isInstalled },
-                kickstart: { restart in try await LaunchAgent.kickstart(restart: restart) }
+                kickstart: { restart in try await LaunchAgent.kickstart(restart: restart) },
+                notify: notify
             )
         }
     }
@@ -244,6 +262,7 @@ public actor MenuModel {
     private var loop: Task<Void, Never>?
     private var poll: MenuSnapshot.Poll = .pending
     private var notice: MenuSnapshot.Notice?
+    private var rules = NotificationRules()
     public private(set) var menuOpen = false
     public private(set) var snapshot: MenuSnapshot
 
@@ -292,6 +311,9 @@ public actor MenuModel {
             poll = .answered(try await environment.send(ControlProtocol.Request(command: "status")))
         } catch {
             poll = .notRunning(error.localizedDescription)
+        }
+        if case .answered(let response) = poll {
+            for notification in rules.notifications(for: response.status, now: environment.now()) { environment.notify(notification) }
         }
         publish()
     }

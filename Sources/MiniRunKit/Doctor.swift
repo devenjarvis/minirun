@@ -142,29 +142,3 @@ public struct Doctor: Sendable {
         }.joined(separator: "\n")
     }
 }
-
-/// The LaunchAgent that runs `minirun serve` (written by scripts/install.sh).
-public enum LaunchAgent {
-    public static let label = "dev.minirun.agent"
-    public static var plistPath: String { MiniRunConfig.home + "/Library/LaunchAgents/\(label).plist" }
-    public static var logPath: String { MiniRunConfig.home + "/Library/Logs/minirun/minirun.log" }
-    public static var isInstalled: Bool { FileManager.default.fileExists(atPath: plistPath) }
-
-    /// The `launchctl` arguments that start the daemon, or restart it if `restart` is set.
-    public static func kickstartArguments(uid: UInt32, restart: Bool) -> [String] {
-        ["kickstart"] + (restart ? ["-k"] : []) + ["gui/\(uid)/\(label)"]
-    }
-
-    /// Starts (or restarts) `minirun serve` through launchd. Throws with launchctl's output if it fails.
-    public static func kickstart(restart: Bool) async throws {
-        guard isInstalled else {
-            throw ToolError("minirun serve isn't installed (no \(plistPath)). Run ./scripts/install.sh from the minirun repository.")
-        }
-        try await Shell.check("/bin/launchctl", kickstartArguments(uid: UInt32(getuid()), restart: restart), timeout: 30, what: "launchctl kickstart")
-    }
-
-    /// The last `lines` lines of a log file, or nil if it can't be read.
-    public static func tail(_ path: String = logPath, lines: Int = 20) -> String? {
-        JobStore.logTail(path, lines: lines)
-    }
-}

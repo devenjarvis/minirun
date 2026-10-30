@@ -129,10 +129,15 @@ describe("minirun worker", () => {
       type: "hello", version: 1, host: { name: "Test Mac" },
       tools: [{ name: "screenshot", description: "Take a screenshot", inputSchema: { type: "object", properties: {} } }],
     }));
-    // Give the Durable Object a moment to store the hello.
-    await new Promise((r) => setTimeout(r, 50));
-
     // Pretend to be the Mac: answer any call.
+    const welcome = new Promise<{ bundle: string | null }>((resolve) => {
+      agent.addEventListener("message", (event) => {
+        if (typeof event.data === "string" && event.data.includes('"welcome"')) resolve(JSON.parse(event.data));
+      });
+    });
+    // Wrangler-style deploys (the tests included) have no MINIRUN_BUNDLE.
+    expect(await welcome).toEqual({ type: "welcome", bundle: null });
+
     agent.addEventListener("message", (event) => {
       if (typeof event.data !== "string" || event.data === "pong") return;
       const message = JSON.parse(event.data);

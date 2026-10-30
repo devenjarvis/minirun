@@ -24,9 +24,10 @@ hand.
 | `minirun serve` (Swift daemon) | Built with `swift build`, copied to `~/.minirun/bin` with 4 FBSimulatorControl frameworks, run by a hand-written LaunchAgent (`dev.minirun.agent`) | **Keep it as a separate process.** Bundle it inside the app; the app writes the LaunchAgent |
 | `MiniRunKit` | Plain Swift: config, status model, control-socket protocol, simulator picker. Tests run on Linux | **The app links this directly.** It never needs FBSimulatorControl |
 | Control socket (`~/.config/minirun/control.sock`) | `status`, `reload_config`, simulator, job and workspace commands, `doctor` (Phase 0, done) | The app's only link to the daemon |
+| Install | `install.sh` builds everything into `/Applications/minirun.app` and runs `minirun agent install` (Phase 3, done) | The app repoints the LaunchAgent at its own helper when it opens |
 | `ServeStatus` | Relay state, simulators (reservation, busy, booting, viewer link), jobs | The menu shows this almost as-is |
 | Config | `config.json`, reloaded live by `reload_config`, `minirun reload` or SIGHUP (Phase 0, done) | The app edits it, then asks for a reload |
-| `minirun doctor` | `Doctor` in MiniRunKit returns structured checks; the CLI prints them (Phase 0, done) | Shown as a checklist (Phase 4) |
+| `minirun doctor` | `Doctor` in MiniRunKit returns structured checks; the CLI prints them (Phase 0, done) | Settings → Diagnostics and the setup window (Phase 4, done) |
 | Worker deploy | `worker/setup.sh`: `npm ci`, `wrangler login` in a browser, `wrangler deploy`, `wrangler secret put`. Writes the password and token in plain text to `worker.env` | Swift Cloudflare API client (Phase 2) |
 | Frameworks | `build-frameworks.sh` builds idb from source (5–10 min, needs XcodeGen) | Unchanged for source installs. Release zips include them |
 | GitHub runner | `scripts/github-runner.sh` (install/status/uninstall) | Wrap it in Settings later |
@@ -208,7 +209,24 @@ for Worker development only.
   throwaway script name (`minirun-ci`) and checks `/login`.
 - The existing `wrangler dev` e2e test keeps covering the relay itself.
 
-### Phase 3: the app owns the install
+### Phase 3: the app owns the install — done
+
+Built as planned, except:
+- `scripts/install-app.sh --with-daemon BIN_DIR` assembles the bundle (Helpers, Frameworks,
+  Resources/worker), signs the frameworks, the helper and then the app, and runs
+  `Contents/Helpers/minirun version` once so a broken rpath fails the build. CI and releases build
+  the app this way.
+- The plist is written by Swift (`LaunchAgent.plist(program:)` in MiniRunKit), through a new
+  `minirun agent install|uninstall`. `install.sh` calls it, so the plist has one source.
+- `LaunchAgent.plan` decides what the app does at launch: install the agent if there's none, keep
+  it if it already runs this helper, and repoint it if it runs `~/.minirun/bin/minirun`, a copy
+  that's gone, or (when this app is in an Applications folder) any other copy. A build run from
+  Xcode or `.build/` never takes over a working install. The app leaves `~/.minirun/bin` on disk
+  and says it can be deleted; `install.sh` deletes it.
+- `install.sh --no-app` keeps the old `~/.minirun/bin` layout, for Macs that only serve CI.
+- "Install command line tool…" is in Settings → General. It runs `ln -sf` through AppleScript's
+  `with administrator privileges`.
+
 
 - `install.sh` becomes "build the app":
   1. Build the frameworks (unchanged) and the daemon.
@@ -225,7 +243,24 @@ for Worker development only.
   admin prompt.
 - `install.sh --uninstall` removes the app, the LaunchAgent and the symlink.
 
-### Phase 4: settings and first-run setup
+### Phase 4: settings and first-run setup — done
+
+Built as planned, except:
+- `WorkerManager` (MiniRunKit) holds deploy, status, rotate and forget-token; `minirun worker`
+  and the app both use it. Rotation sets just the one secret with `PUT …/secrets`.
+- Phase 0 item 4 is in: the Worker answers `hello` with `{type: "welcome", bundle: MINIRUN_BUNDLE}`
+  and `ServeStatus.relay.workerBundle` carries it, so the menu says "the Worker is out of date"
+  without an API token. `relay.lastCallAt` (the last call from Claude, not the viewer) is how the
+  setup window sees "Claude is connected"; the Worker's `/status` isn't used.
+- The pure parts are in MiniRunKit and tested on Linux: `SettingsForm` (validation, and saving
+  onto a fresh read of config.json so a token written meanwhile isn't lost), the device picker's
+  choices, `WorkspaceInventory.stale`, `Diagnostics.report` (no secrets), `Setup` (when to show the
+  window, the deploy checklist) and `AppDoctor` (the daemon's `doctor`, or the helper's
+  `doctor --json` when the daemon isn't running).
+- Fixes that are commands ("sudo xcodebuild -license accept", `gh auth login`) open in Terminal.
+- The token link is the dashboard's API Tokens page plus the template steps, not a prefilled
+  template URL: Cloudflare's permission keys for those URLs aren't documented consistently.
+
 
 **Settings window** (a SwiftUI `Settings` scene). Each field maps to a `MiniRunConfig` key, and
 saving sends `reload_config`.
@@ -256,7 +291,31 @@ saving sends `reload_config`.
    private repositories.
 5. **Headless Mac mini tips:** auto-login and never sleep, with links to the right settings panes.
 
-### Phase 5: lightweight releases (optional, unsigned)
+### Phase 5: lightweight releases (optional, unsigned) — done
+
+Built as planned: `.github/workflows/release.yml` runs on `v*` tags (or by hand with a tag),
+checks the tag matches `MiniRun.version`, builds with the frameworks cache, and attaches
+`minirun-<version>.zip` and its SHA-256 to the release. The helper is built for the runner's
+architecture, so release builds are Apple silicon only. `MiniRun.version` moved to MiniRunKit
+(now 0.2.0) so the app can compare it, and a test keeps `MARKETING_VERSION` in step.
+`UpdateCheck` asks GitHub's latest-release API and ignores drafts and pre-releases.
+
+**Automatic updates (added after the plan, to leave the Mac alone).** This reverses the "no
+auto-updating unsigned code" call below: the Mac is meant to run without visits, and the
+releases come from this repository's own workflow. Safeguards in place of a signature:
+- The zip must match its SHA-256: GitHub's asset `digest`, else the `.sha256` asset.
+- The unzipped app must have bundle id `dev.minirun.menu`, the release's version, a valid
+  (ad-hoc) signature, and a helper that starts and reports that version. The new copy is checked
+  again after it is moved into `/Applications`; if it fails there, the old copy goes back.
+- It only installs while no job runs and no simulator is busy (`Updater.decide`), then restarts
+  `minirun serve` (`launchctl kickstart -k`) and relaunches the app.
+- After an update, the app redeploys the Worker if it runs other code, using the saved API token
+  (once per launch; failures are notified, not retried in a loop).
+- On by default and checked every 6 hours. The app turns Open at login on once, at its first
+  launch from `/Applications`. Both can be switched off in Settings → General.
+The logic is in `Updater` (MiniRunKit, tested on Linux); the download and swap are in
+`App/Sources/AppUpdater.swift`. Still manual: pushing the release tag.
+
 
 - A `release.yml` workflow on tags. It builds the app on `macos-26`, using the existing
   frameworks cache, ad-hoc signs it, zips it, and attaches the zip to a GitHub Release.
@@ -264,10 +323,22 @@ saving sends `reload_config`.
   `xattr -dr com.apple.quarantine /Applications/minirun.app`, or allow it under System Settings →
   Privacy & Security → Open Anyway. Building from source stays the recommended path.
 - No Homebrew cask and no Sparkle for now: Homebrew is moving away from casks that fail
-  Gatekeeper, and auto-updating unsigned code is not worth the risk. Instead, the menu shows "A
-  newer version is available" by checking the latest GitHub release tag, and links to it.
+  Gatekeeper. (The original plan also ruled out auto-updating unsigned code; see "Automatic
+  updates" above for why the app now does it, and how.)
 
-### Phase 6: polish
+### Phase 6: polish — partly done
+
+Done: notifications (relay disconnected for 5 minutes, once per outage; a job failed; nothing
+replayed from the first poll), with a switch in Settings → General; and the live view in an app
+window (a WKWebView on the viewer URL, which keeps its login cookie).
+
+Not done yet:
+- Notifying when a simulator is shut down at the cap: the status doesn't report that event.
+- The GitHub runners tab: `github-runner.sh` lives in the repository, not the app bundle, so the
+  app would need to carry it (or a Swift port of it).
+- "Delete stale simulator copies": the daemon doesn't track copies yet
+  (`docs/simulator-lifecycle-followups.md`, item 2).
+
 
 - Notifications, all optional: relay disconnected for more than 5 minutes, a build or test job
   failed, and a simulator was shut down at the cap.
@@ -293,10 +364,10 @@ saving sends `reload_config`.
 | 0 Daemon groundwork | M | Partly (`minirun status`/`doctor` improve) |
 | 1 Menu bar MVP | M | **Yes**: status and control for the existing install |
 | 2 Swift Worker deploy | M–L | **Yes**: no node on the Mac; `minirun worker deploy` |
-| 3 App owns the install | M | Yes: one `install.sh` produces `/Applications/minirun.app` |
-| 4 Settings + first run | M | Yes: no terminal after install |
-| 5 Unsigned releases | S | Yes: download instead of build |
-| 6 Polish | S each | — |
+| 3 App owns the install (done) | M | Yes: one `install.sh` produces `/Applications/minirun.app` |
+| 4 Settings + first run (done) | M | Yes: no terminal after install |
+| 5 Unsigned releases (done) | S | Yes: download instead of build |
+| 6 Polish (partly done) | S each | — |
 
 Phases 0+1 and Phase 2 don't depend on each other and can be worked on in parallel. Phase 4's
 Cloudflare screens need Phase 2.

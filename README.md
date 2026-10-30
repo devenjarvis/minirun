@@ -55,13 +55,26 @@ That script:
 
 1. Installs `xcodegen` and `gh` with Homebrew if missing.
 2. Builds the FBSimulatorControl frameworks from AXe's pinned idb fork (a few minutes, once).
-3. Builds `minirun` and installs it to `~/.minirun/bin`.
+3. Builds `minirun` and the menu bar app, and installs them as `/Applications/minirun.app`. The
+   app carries minirun itself (`minirun.app/Contents/Helpers/minirun`), the simulator frameworks
+   and the prebuilt Worker. See [The menu bar app](#the-menu-bar-app).
 4. Deploys the Worker to your Cloudflare account with `minirun worker deploy` (see
    [The Worker](#the-worker)). It asks for a Cloudflare API token, creates a KV namespace,
-   uploads the prebuilt Worker, and generates a password and an agent token.
-5. Installs a LaunchAgent so `minirun serve` starts at login and restarts if it crashes.
-6. Builds the menu bar app and installs it as `/Applications/minirun.app` (skip with `--no-app`;
-   see [The menu bar app](#the-menu-bar-app)).
+   uploads the prebuilt Worker, and generates a password and an agent token. Skip this with
+   `--no-worker` and the app's setup window does it instead.
+5. Installs a LaunchAgent (`minirun agent install`) so `minirun serve` starts at login and
+   restarts if it crashes.
+
+An older install in `~/.minirun/bin` is moved into the app; settings in `~/.config/minirun` and
+workspaces are kept. `--no-app` installs to `~/.minirun/bin` without the app, as before.
+`./scripts/install.sh --uninstall` removes the app, the LaunchAgent and the `minirun` command.
+
+**Without building:** download `minirun-<version>.zip` from
+[Releases](https://github.com/devenjarvis/minirun/releases), move `minirun.app` to
+`/Applications`, run `xattr -dr com.apple.quarantine /Applications/minirun.app` (the build is
+ad-hoc signed, not notarized), and open it. It sets up `minirun serve` and opens a setup window
+that checks Xcode, deploys the Worker and shows how to connect Claude. You still need Xcode.
+Building from source is the recommended way.
 
 Add `--github-runner owner/repo` to also run that repository's GitHub Actions jobs on the Mac
 (see [Run CI on your Mac](#run-ci-on-your-mac-optional)).
@@ -159,8 +172,9 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 | Jobs | `get_job`, `job_log`, `list_jobs` |
 | Host | `host_info`, `mac_status` (served by the Worker) |
 
-Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
-`minirun call tap '{"label":"General"}'`.
+Try any tool locally: `minirun call describe_ui` or `minirun call tap '{"label":"General"}'`. The
+`minirun` command is `/Applications/minirun.app/Contents/Helpers/minirun`; Settings → General →
+Install Command Line Tool links it into `/usr/local/bin`.
 
 See what the running `minirun serve` is doing with `minirun status`: the relay connection, the booted
 simulators and who each is reserved for, and recent jobs. `minirun status --json` gives the same as
@@ -178,15 +192,54 @@ running jobs beside it. The menu shows:
 - Booted simulators: who each is reserved for, whether it's booting or busy, and when it was last
   used. Each has Watch live, Show in Simulator, Release reservation and Shut down.
 - Running and recent jobs, with Log and Cancel.
-- Live view, Copy connector URL, Copy password, Restart service and Quit.
+- Live view (in a window), Copy connector URL, Copy password, Restart service, Settings… and Quit.
 - When `minirun serve` isn't running, a Start button and the end of its log.
+- A note when the Worker runs older code than the app, or a newer release is on GitHub.
 
-The app only watches and steers `minirun serve`, which keeps running under launchd: quitting the
-app doesn't disconnect Claude. It talks to the daemon over the control socket and never loads the
-simulator frameworks. Build and install it on its own with `./scripts/install-app.sh` (needs
-`xcodegen`). There's no Apple Developer ID behind it, so it's ad-hoc signed and not notarized. A
-copy you build yourself runs without Gatekeeper prompts. To open it at login, add it under System
-Settings → General → Login Items.
+**Setup window.** It opens by itself while there's no Worker in the settings, and from the menu's
+Set Up minirun…: it checks Xcode, the simulator runtime and the frameworks; takes a Cloudflare
+API token, an account and (if needed) a workers.dev subdomain, and deploys the Worker with a live
+checklist; shows the connector URL and password and waits for Claude's first call; offers
+`gh auth login` for private repositories; and links the System Settings panes a headless Mac
+mini needs (automatic login, no sleep).
+
+**Settings (⌘,):**
+
+- **General:** open at login, keep the Mac awake, notifications (relay down for 5 minutes, a job
+  failed), install the `minirun` command, automatic updates.
+- **Cloudflare:** the Worker's URL and account, bundled versus deployed version, Update Worker,
+  rotate the password or agent token, and forget the saved API token.
+- **Simulators:** the default device, idle shutdown minutes and the most simulators to keep booted.
+- **Workspaces:** the workspace folder, and the checkouts with size and last use. Delete one, or all
+  older than N days (never one a job is using).
+- **Security:** `run_command`, behind a warning.
+- **Diagnostics:** `minirun doctor` as a checklist, with fixes you can run in Terminal; Open log;
+  Copy diagnostics (versions, state and settings without secrets); Reveal config in Finder.
+
+**Automatic updates.** An app in `/Applications` keeps itself current, so the Mac needs no
+visits: every 6 hours it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
+When it finds one, it waits until no job is running and nobody is using a simulator. Then it
+downloads `minirun-<version>.zip`, checks it against the SHA-256 GitHub reports for it (or the
+`.sha256` file next to it), and checks the unzipped app: the bundle id, the version, the
+signature, and that its `minirun` starts. Then it swaps `/Applications/minirun.app`, restarts
+`minirun serve` from the new copy and relaunches. If the new copy doesn't start, the old one is
+put back. Next it updates the Worker with the saved Cloudflare API token, if the Worker runs
+older code. The app turns on Open at login the first time it runs, so it comes back after a
+restart. Turn automatic updates off in Settings → General; the menu then offers Install instead.
+Releases aren't signed, so you're trusting whoever can push tags to this repository's GitHub
+releases.
+
+Saving writes `~/.config/minirun/config.json` and asks the daemon to reload it, so changes apply
+without a restart.
+
+The app watches and steers `minirun serve`, which runs separately under launchd: quitting the app
+doesn't disconnect Claude. When the app opens, it makes sure the LaunchAgent runs its own copy of
+minirun (a copy outside `/Applications`, such as an Xcode build, never takes over a working
+install). It talks to the daemon over the control socket and never loads the simulator frameworks.
+Build and install it on its own with `./scripts/install-app.sh` (needs `xcodegen`; add
+`--with-daemon "$(swift build --show-bin-path)"` to bundle minirun). There's no Apple Developer
+ID behind it, so it's ad-hoc signed and not notarized. A copy you build yourself runs without
+Gatekeeper prompts.
 
 ## Configuration
 
@@ -304,7 +357,7 @@ day within the free 100k requests. The viewer stops streaming when its tab is hi
 swift test                       # MiniRunKit unit tests (any platform)
 ./scripts/build-frameworks.sh    # macOS: FBSimulatorControl into Vendor/
 swift build && ./scripts/smoke-test.sh   # macOS: boots a simulator and drives a fixture app
-./scripts/install-app.sh --build-only    # macOS: build the menu bar app (cd App && xcodegen to open it in Xcode)
+./scripts/install-app.sh --build-only --with-daemon "$(swift build --show-bin-path)"   # macOS: the app (cd App && xcodegen for Xcode)
 cd worker && npm ci && npm test  # Worker tests (OAuth flow, relay, viewer) in workerd
 cd worker && npm run bundle      # rebuild worker/dist after changing the Worker; commit it
 ```
@@ -312,6 +365,10 @@ cd worker && npm run bundle      # rebuild worker/dist after changing the Worker
 `worker/dist` is the prebuilt Worker that `minirun worker deploy` uploads, along with a manifest
 generated from `wrangler.jsonc`. CI fails if it doesn't match the source. `worker/setup.sh` still
 deploys with wrangler, for working on the Worker itself.
+
+Releases: bump `MiniRun.version` (`Sources/MiniRunKit/Version.swift`) and `MARKETING_VERSION` in
+`App/project.yml`, then push a tag like `v0.2.0`. The Release workflow builds the app and attaches
+`minirun-<version>.zip` to a GitHub Release.
 
 CI runs all of the above on GitHub's macOS runners. If a run fails, the logs are pushed to the
 `ci-logs` branch.

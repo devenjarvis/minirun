@@ -79,7 +79,9 @@ jobs:
       - name: Unit tests
         run: scripts/ci-step.sh swift-test swift test
       - name: Build the menu bar app
-        run: scripts/ci-step.sh menu-app scripts/install-app.sh --build-only
+        # With the daemon, frameworks and Worker inside, as install.sh and releases build it. The
+        # script runs the bundled helper once, which fails if it can't find its frameworks.
+        run: scripts/ci-step.sh menu-app scripts/install-app.sh --build-only --with-daemon "$(swift build --show-bin-path)"
       # The smoke test clones its simulators from a template that has already booted once, which
       # skips the 6-7 minute first boot. Cached, so most runs don't make one at all.
       - name: Simulator template key

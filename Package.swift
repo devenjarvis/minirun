@@ -42,8 +42,14 @@ targets += [
         path: "Sources/minirun",
         swiftSettings: [.unsafeFlags(privateHeaderFlags)],
         linkerSettings: [
-            // Frameworks are installed next to the binary (see scripts/install.sh).
-            .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path", "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks", "-Xlinker", "-headerpad_max_install_names"]),
+            // Frameworks sit next to the binary (`install.sh --no-app`, `swift build`), or in
+            // Contents/Frameworks when the binary is the app's helper (Contents/Helpers/minirun).
+            .unsafeFlags([
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path",
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/Frameworks",
+                "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                "-Xlinker", "-headerpad_max_install_names",
+            ]),
         ]
     ),
 ]

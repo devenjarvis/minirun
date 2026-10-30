@@ -8,6 +8,8 @@ export interface Env {
   OAUTH_PROVIDER: OAuthHelpers;
   OWNER_PASSWORD: string;
   AGENT_TOKEN: string;
+  /** SHA-256 of the deployed code, set by `minirun worker deploy`. Unset when deployed with wrangler. */
+  MINIRUN_BUNDLE?: string;
 }
 
 declare global {

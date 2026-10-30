@@ -11,6 +11,7 @@ Usage:
   minirun setup --relay URL --token T   Save relay settings to ~/.config/minirun/config.json
         [--device "iPhone 17 Pro"] [--allow-shell] [--workspaces DIR]
   minirun worker deploy                 Deploy or update the Cloudflare Worker (see `minirun worker help`)
+  minirun agent install|uninstall       Run `minirun serve` from this binary at login (a LaunchAgent)
   minirun status [--json]               Show what the running `minirun serve` is doing
   minirun reload                        Make the running `minirun serve` re-read config.json
   minirun doctor [--json]               Check Xcode, simulators and the relay settings
@@ -59,6 +60,20 @@ func main() async {
     case "worker":
         let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
         do { try await WorkerCommand.live(executable: executable).run(Array(args.dropFirst())) } catch { fail(error.localizedDescription) }
+
+    case "agent":
+        let executable = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath().path
+        switch args.dropFirst().first {
+        case "install":
+            do { try await LaunchAgent.install(program: executable) } catch { fail(error.localizedDescription) }
+            print("Installed \(LaunchAgent.plistPath): launchd runs \(executable) serve now and at every login.")
+        case "uninstall":
+            await LaunchAgent.uninstall()
+            print("Removed \(LaunchAgent.plistPath) and stopped minirun serve.")
+        default:
+            print(LaunchAgent.installedProgram().map { "The LaunchAgent runs \($0.isEmpty ? "(unreadable plist)" : $0) serve." } ?? "No LaunchAgent installed.")
+            print("Usage: minirun agent install|uninstall")
+        }
 
     case "status":
         let response: ControlProtocol.Response

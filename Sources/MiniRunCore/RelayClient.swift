@@ -122,6 +122,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("minirun/\(MiniRun.version)", forHTTPHeaderField: "User-Agent")
         setState(.connecting, host: url.host)
+        stateLock.withLock { state.workerBundle = nil }
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = 32 * 1024 * 1024
         socket = task
@@ -187,7 +188,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private func handle(_ incoming: RelayProtocol.Incoming) {
         switch incoming {
         case .call(let id, let tool, let arguments):
-            if let id { calls.start(id) }
+            if let id {
+                calls.start(id)
+                stateLock.withLock { state.lastCallAt = Date() }
+            }
             Task {
                 let result = await registry.call(tool, arguments: arguments)
                 if let id {
@@ -226,6 +230,8 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             guard let phase = SimulatorDriver.TouchPhase(rawValue: phase) else { break }
             let log = self.log
             Task { await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) }
+        case .welcome(let bundle):
+            stateLock.withLock { state.workerBundle = bundle }
         case .unknown:
             break
         }
@@ -277,8 +283,4 @@ actor TouchQueue {
         pending.removeAll()
         await SimulatorDriver.shared.releaseTouches()
     }
-}
-
-public enum MiniRun {
-    public static let version = "0.1.0"
 }

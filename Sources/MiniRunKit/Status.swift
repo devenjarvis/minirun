@@ -15,13 +15,21 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         public var problem: String?
         /// The live view link for the browser.
         public var viewerURL: String?
+        /// The hash of the code the Worker runs (its MINIRUN_BUNDLE), from its reply to hello.
+        /// Nil until it replies, and from Workers too old to say.
+        public var workerBundle: String?
+        /// When Claude last called a tool through the relay (not counting the viewer's input).
+        public var lastCallAt: Date?
 
-        public init(state: State, host: String? = nil, since: Date = Date(), problem: String? = nil, viewerURL: String? = nil) {
+        public init(state: State, host: String? = nil, since: Date = Date(), problem: String? = nil, viewerURL: String? = nil,
+                    workerBundle: String? = nil, lastCallAt: Date? = nil) {
             self.state = state
             self.host = host
             self.since = since
             self.problem = problem
             self.viewerURL = viewerURL
+            self.workerBundle = workerBundle
+            self.lastCallAt = lastCallAt
         }
     }
 

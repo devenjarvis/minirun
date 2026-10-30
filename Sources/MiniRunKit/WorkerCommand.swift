@@ -74,59 +74,46 @@ public struct WorkerCommand: Sendable {
             guard let password = WorkerSettings.load().ownerPassword else { throw ToolError("No password saved yet. Run `minirun worker deploy`.") }
             output(password)
         case "forget-token":
-            var settings = WorkerSettings.load()
-            settings.apiToken = nil
-            try settings.save()
+            try WorkerManager.forgetToken()
             output("Deleted the saved Cloudflare API token. `minirun worker deploy` will ask for one again.")
         default:
             output(WorkerCommand.usage)
         }
     }
 
-    func deploy(_ args: [String]) async throws {
-        var settings = WorkerSettings.load()
-        var config = MiniRunConfig.load()
-        let bundle = try loadBundle()
+    var manager: WorkerManager {
+        var manager = WorkerManager(transport: transport, loadBundle: loadBundle, reloadServe: restartServe)
+        manager.verifyDelays = verifyDelays
+        return manager
+    }
 
+    func deploy(_ args: [String]) async throws {
+        let settings = WorkerSettings.load()
         let fromEnvironment = environment["MINIRUN_CLOUDFLARE_TOKEN"].flatMap { $0.isEmpty ? nil : $0 }
         guard let apiToken = fromEnvironment ?? settings.apiToken ?? askForToken() else {
             throw ToolError("No Cloudflare API token. Set MINIRUN_CLOUDFLARE_TOKEN, or run `minirun worker deploy` in a terminal.\n\n\(WorkerCommand.tokenHelp)")
         }
 
         let options = WorkerDeployer.Options(
-            accountID: Self.option("--account", in: args) ?? settings.accountID,
+            accountID: Self.option("--account", in: args),
             subdomain: Self.option("--subdomain", in: args),
             newPassword: args.contains("--new-password"),
             newToken: args.contains("--new-token")
         )
-        let deployer = WorkerDeployer(api: CloudflareAPI(token: apiToken, transport: transport), bundle: bundle)
         let output = self.output
-        let result = try await deployer.deploy(options, password: settings.ownerPassword, token: config.agentToken) { output("==> \($0)") }
+        let deployment = try await manager.deploy(apiToken: apiToken, options: options) { output("==> \($0)") }
+        let result = deployment.result
 
-        settings.accountID = result.accountID
-        settings.scriptName = bundle.manifest.name
-        settings.workerURL = result.workerURL
-        settings.ownerPassword = result.ownerPassword
-        settings.apiToken = apiToken
-        try settings.save()
-        try updateLegacyEnvFile(result)
-
-        let relayChanged = config.relayURL != result.relayURL || config.agentToken != result.agentToken
-        config.relayURL = result.relayURL
-        config.agentToken = result.agentToken
-        try config.save()
-
-        output("==> Checking that the Worker answers")
-        if await answers(URL(string: result.workerURL + "/login")!) {
+        if deployment.answering {
             output("\(result.workerURL) is up.")
         } else {
             output("warning: \(result.workerURL) isn't answering yet. A new workers.dev subdomain can take a few minutes to start working.")
         }
-        if relayChanged, let restarted = await restartServe() { output(restarted) }
+        if let message = deployment.serveMessage { output(message) }
 
         output("""
 
-        minirun's Worker is \(result.created ? "deployed" : "up to date") (\(bundle.manifest.bundleHash.prefix(12))).
+        minirun's Worker is \(result.created ? "deployed" : "up to date") (\(deployment.bundleHash.prefix(12))).
 
           Claude connector:  \(result.workerURL)/mcp
           Live viewer:       \(result.workerURL)/
@@ -138,36 +125,24 @@ public struct WorkerCommand: Sendable {
     }
 
     func status() async throws {
-        let settings = WorkerSettings.load()
-        let bundle = try? loadBundle()
-        guard let url = settings.workerURL else {
+        let token = environment["MINIRUN_CLOUDFLARE_TOKEN"].flatMap { $0.isEmpty ? nil : $0 }
+        let status = try await manager.status(apiToken: token)
+        guard let url = status.workerURL else {
             output("No Worker deployed from this Mac yet. Run `minirun worker deploy`.")
             return
         }
         output("Worker:   \(url)")
-        output("Account:  \(settings.accountID ?? "unknown (deployed by worker/setup.sh)")")
-        output("Bundled:  \(bundle.map { String($0.manifest.bundleHash.prefix(12)) } ?? "not found")")
-
-        let token = environment["MINIRUN_CLOUDFLARE_TOKEN"].flatMap { $0.isEmpty ? nil : $0 } ?? settings.apiToken
-        guard let token, let account = settings.accountID, let script = settings.scriptName ?? bundle?.manifest.name else {
+        output("Account:  \(status.accountID ?? "unknown (deployed by worker/setup.sh)")")
+        output("Bundled:  \(status.bundled.map { String($0.prefix(12)) } ?? "not found")")
+        switch status.deployed {
+        case .unknown:
             output("Deployed: unknown (no saved API token; run `minirun worker deploy` to adopt this Worker)")
-            return
+        case .missing:
+            output("Deployed: nothing — the Worker doesn't exist. Run `minirun worker deploy`.")
+        case .bundle(let hash):
+            output("Deployed: \(hash.map { String($0.prefix(12)) } ?? "unknown (deployed with wrangler)")")
+            if status.outOfDate { output("The Worker is out of date. Update it with `minirun worker deploy`.") }
         }
-        let bindings = try await CloudflareAPI(token: token, transport: transport).scriptBindings(account: account, script: script)
-        guard let bindings else {
-            output("Deployed: nothing — the Worker \(script) doesn't exist. Run `minirun worker deploy`.")
-            return
-        }
-        let deployed = WorkerCommand.deployedBundle(bindings)
-        output("Deployed: \(deployed.map { String($0.prefix(12)) } ?? "unknown (deployed with wrangler)")")
-        if let bundle, deployed != bundle.manifest.bundleHash {
-            output("The Worker is out of date. Update it with `minirun worker deploy`.")
-        }
-    }
-
-    /// The MINIRUN_BUNDLE variable of a deployed Worker: the hash of the code it runs.
-    static func deployedBundle(_ bindings: [JSONValue]) -> String? {
-        bindings.first { $0["name"]?.stringValue == WorkerDeployer.bundleVariable }?["text"]?.stringValue
     }
 
     func askForToken() -> String? {
@@ -175,25 +150,6 @@ public struct WorkerCommand: Sendable {
         output(WorkerCommand.tokenHelp)
         let token = readSecret("Cloudflare API token: ")?.trimmingCharacters(in: .whitespacesAndNewlines)
         return token?.isEmpty == false ? token : nil
-    }
-
-    /// Keeps the old worker.env (which worker/setup.sh reads) in step, if there is one.
-    func updateLegacyEnvFile(_ result: WorkerDeployer.Result) throws {
-        let url = WorkerSettings.legacyURL
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        let text = "WORKER_URL='\(result.workerURL)'\nOWNER_PASSWORD='\(result.ownerPassword)'\nAGENT_TOKEN='\(result.agentToken)'\n"
-        try Data(text.utf8).write(to: url)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
-    }
-
-    func answers(_ url: URL) async -> Bool {
-        for delay in verifyDelays {
-            if delay > 0 { try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000)) }
-            var request = URLRequest(url: url)
-            request.timeoutInterval = 15
-            if let (status, _) = try? await transport.send(request), status == 200 { return true }
-        }
-        return false
     }
 
     static func option(_ name: String, in args: [String]) -> String? {
@@ -219,7 +175,7 @@ public struct WorkerCommand: Sendable {
 
     /// Points the running `minirun serve` at the new relay settings: asks it to reload its config
     /// over the control socket, and restarts the LaunchAgent if it doesn't answer.
-    static func reloadServe() async -> String? {
+    public static func reloadServe() async -> String? {
         if let response = try? ControlProtocol.send(ControlProtocol.Request(command: "reload_config")) {
             if response.ok { return "minirun serve reloaded its settings and is reconnecting to the new Worker." }
             if response.controlVersion != nil {
