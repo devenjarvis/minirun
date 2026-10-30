@@ -128,7 +128,9 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 - **Each piece of work gets its own simulator.** `build_and_run` without `device` uses the simulator
   reserved for its repo + ref. If there isn't one, it takes an unreserved booted simulator or
   boots a separate one, creating a copy such as "iPhone 17 Pro (minirun 2)" if every simulator of
-  that model is busy. `boot_simulator {label: "you/app@feature-a"}` does the same up front.
+  that model is busy. If a shut-down "iPhone 17 Pro (minirun template)" of the same runtime
+  exists, the copy is cloned from it, which skips the minutes-long first boot.
+  `boot_simulator {label: "you/app@feature-a"}` does the same up front.
   Reservations are saved in `~/.config/minirun/simulators.json` and end when the simulator shuts down.
 - **Idle simulators shut down.** A simulator nobody has used for `idleShutdownMinutes` (30 by
   default) is shut down and its reservation released. Running builds and tests, and an open live

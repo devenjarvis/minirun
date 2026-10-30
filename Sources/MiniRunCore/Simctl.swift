@@ -23,6 +23,14 @@ enum Simctl {
         return udid
     }
 
+    /// Clones a shut-down simulator, data and all, under a new name. Returns the copy's UDID.
+    static func clone(_ source: Device, name: String) async throws -> String {
+        let result = try await run(["clone", source.udid, name], timeout: 120, what: "Cloning \(source.name) as \(name)")
+        let udid = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !udid.isEmpty else { throw ToolError("simctl clone didn't return a UDID.") }
+        return udid
+    }
+
     static func boot(_ udid: String) async throws {
         let result = try await Shell.run("/usr/bin/xcrun", ["simctl", "boot", udid], timeout: 120)
         // "Unable to boot device in current state: Booted" is fine.
