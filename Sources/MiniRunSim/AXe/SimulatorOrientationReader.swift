@@ -34,6 +34,12 @@ struct SimulatorOrientationReader {
         }
     }
 
+    /// The same probe for a simulator already in hand, skipping the simulator-set lookup.
+    static func currentOrientation(simulator: FBSimulator, logger: AxeLogger) -> SimulatorOrientation? {
+        guard let device = sendObject(simulator, selector: "device") else { return nil }
+        return readOrientation(from: device, logger: logger)
+    }
+
     private static func readOrientation(from device: AnyObject, logger: AxeLogger) -> SimulatorOrientation? {
         guard let screenClass = NSClassFromString("SimulatorKit.SimDeviceScreen") as? NSObject.Type else {
             logger.info().log("Orientation probe: SimulatorKit.SimDeviceScreen unavailable")

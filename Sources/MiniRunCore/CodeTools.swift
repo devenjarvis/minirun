@@ -133,6 +133,8 @@ extension ToolRegistry {
                 await self.claims.noteApp(sim.udid, bundleID: bundle)
                 let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
                 let pid = try await Simctl.launch(sim.udid, bundleID: bundle, arguments: args.strings("launch_arguments"), environment: env)
+                // The new app may be landscape-only, which changes how taps map to the screen.
+                await SimulatorDriver.shared.forgetCoordinateMapping(udid: sim.udid)
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 let summary = [self.describe(output, log: log), "Installed and launched \(bundle) on \(sim.name) (pid \(pid)).", note, self.deviceFooter(sim)]
                 var content: [ToolContent] = [.text(summary.compactMap { $0 }.joined(separator: "\n"))]

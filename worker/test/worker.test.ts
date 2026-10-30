@@ -314,6 +314,17 @@ describe("minirun worker", () => {
     b.send(JSON.stringify({ type: "input", tool: "tap", arguments: { x: 1, y: 2, device: "SIM-A" } }));
     expect(JSON.parse(await inputCall).arguments).toEqual({ x: 1, y: 2, device: "SIM-B" });
 
+    // Live touches go to the viewer's simulator too, and a viewer that leaves mid-touch has its
+    // finger lifted.
+    const touchDown = nextMessage(agent, (d) => d.includes('"touch"'));
+    b.send(JSON.stringify({ type: "touch", phase: "down", x: 5, y: 6, device: "SIM-A" }));
+    expect(JSON.parse(await touchDown)).toEqual({ type: "touch", device: "SIM-B", phase: "down", x: 5, y: 6 });
+    const touchMove = nextMessage(agent, (d) => d.includes('"touch"'));
+    b.send(JSON.stringify({ type: "touch", phase: "wiggle", x: 1, y: 1 }));
+    b.send(JSON.stringify({ type: "touch", phase: "move", x: 7, y: Number.NaN }));
+    b.send(JSON.stringify({ type: "touch", phase: "move", x: 7, y: 8 }));
+    expect(JSON.parse(await touchMove)).toMatchObject({ phase: "move", x: 7, y: 8 });
+
     // Switching simulators re-plans the streams.
     const switched = nextMessage(agent, (d) => d.includes('"set"') && !d.includes('"SIM-B"'));
     b.send(JSON.stringify({ type: "stream", device: "SIM-A", fps: 6, quality: 45, scale: 0.33 }));
@@ -325,9 +336,33 @@ describe("minirun worker", () => {
     expect(JSON.parse(await listed).devices[0].reserved_for).toBe("you/app@a");
 
     const stop = nextMessage(agent, (d) => d.includes('"stop"'));
+    const lifted = nextMessage(agent, (d) => d.includes('"touch"'));
     a.close();
     b.close();
+    expect(JSON.parse(await lifted)).toEqual({ type: "touch", phase: "up", device: "SIM-B", x: 7, y: 8 });
     expect(JSON.parse(await stop).action).toBe("stop");
+    agent.close();
+  });
+
+  it("tells viewers whether the Mac takes live touches", async () => {
+    const form = new FormData();
+    form.set("password", "test-password");
+    const login = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
+    const agent = (await connectAgent()) as WebSocket;
+    agent.send(JSON.stringify({ type: "hello", version: 3, host: { name: "Test Mac" }, tools: [] }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const response = await SELF.fetch(`${ORIGIN}/viewer/ws`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+    const viewer = response.webSocket!;
+    const greeting = nextMessage(viewer, (d) => d.includes('"status"'));
+    viewer.accept();
+    expect(JSON.parse(await greeting).touch).toBe(false);
+
+    const upgraded = nextMessage(viewer, (d) => d.includes('"status"'));
+    agent.send(JSON.stringify({ type: "hello", version: 4, host: { name: "Test Mac" }, tools: [] }));
+    expect(JSON.parse(await upgraded).touch).toBe(true);
+    viewer.close();
     agent.close();
   });
 

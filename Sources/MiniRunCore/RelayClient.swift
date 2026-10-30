@@ -12,6 +12,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var socket: URLSessionWebSocketTask?
     private var streamer: FrameStreamer!
     private var streamControl: Task<Void, Never>?
+    private let touches = TouchQueue()
+    /// When the last keep-alive ping went out, to time the round trip to the relay.
+    private var pingSentAt: Date?
+    private var pingsTimed = 0
     private let log: @Sendable (String) -> Void
     private let stateLock = NSLock()
     private var state: ServeStatus.Relay
@@ -61,6 +65,8 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             await connectOnce()
             await streamControl?.value
             await streamer.stop()
+            // A finger left down on the simulator would block everything else.
+            await touches.releaseAll()
             // Reset the backoff after a connection that lasted a while.
             if Date().timeIntervalSince(connectedAt) > 60 { backoff = 1 }
             log("Relay disconnected; reconnecting in \(Int(backoff))s")
@@ -90,9 +96,15 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         log("Connected to relay \(url.host ?? "")")
         setState(.connected)
 
-        let keepAlive = Task { [weak task] in
+        // The relay answers pings without running any code, so a ping's round trip is the network
+        // distance to wherever Cloudflare placed it. The first few are logged.
+        pingsTimed = 0
+        let keepAlive = Task { [weak self, weak task] in
+            var first = true
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 20_000_000_000)
+                if !first { try? await Task.sleep(nanoseconds: 20_000_000_000) }
+                first = false
+                self?.pingSentAt = Date()
                 try? await task?.send(.string("ping"))
             }
         }
@@ -113,7 +125,14 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             }
             switch message {
             case .string(let text):
-                if text == "pong" { continue }
+                if text == "pong" {
+                    if let sent = pingSentAt, pingsTimed < 3 {
+                        pingsTimed += 1
+                        log("Relay round trip: \(Int(Date().timeIntervalSince(sent) * 1000))ms")
+                    }
+                    pingSentAt = nil
+                    continue
+                }
                 handle(RelayProtocol.decode(text))
             case .data:
                 continue
@@ -161,6 +180,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
                     await send(.string(RelayProtocol.result(id: id, result: result).encodedString()))
                 }
             }
+        case .touch(let udid, let phase, let x, let y):
+            guard let phase = SimulatorDriver.TouchPhase(rawValue: phase) else { break }
+            let log = self.log
+            Task { await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) }
         case .unknown:
             break
         }
@@ -176,6 +199,41 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             "os": .string(ProcessInfo.processInfo.operatingSystemVersionString),
             "minirun": .string(MiniRun.version),
         ]
+    }
+}
+
+/// Delivers a viewer's live touches to the simulator one at a time, in order. When moves pile up
+/// (the simulator is slower than the finger), only the latest of a run of moves is sent.
+actor TouchQueue {
+    struct Event: Sendable {
+        let udid: String
+        let phase: SimulatorDriver.TouchPhase
+        let x: Double
+        let y: Double
+    }
+
+    private var pending: [Event] = []
+    private var draining = false
+
+    func add(_ event: Event, log: @escaping @Sendable (String) -> Void) async {
+        pending.append(event)
+        guard !draining else { return }
+        draining = true
+        while !pending.isEmpty {
+            let next = pending.removeFirst()
+            if next.phase == .move, let following = pending.first, following.phase == .move, following.udid == next.udid { continue }
+            do {
+                try await SimulatorDriver.shared.touch(udid: next.udid, phase: next.phase, x: next.x, y: next.y)
+            } catch {
+                log("Live touch failed: \(error.localizedDescription)")
+            }
+        }
+        draining = false
+    }
+
+    func releaseAll() async {
+        pending.removeAll()
+        await SimulatorDriver.shared.releaseTouches()
     }
 }
 

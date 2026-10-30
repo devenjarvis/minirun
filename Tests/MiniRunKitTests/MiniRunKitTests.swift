@@ -61,6 +61,29 @@ final class RelayProtocolTests: XCTestCase {
         XCTAssertEqual(H264.annexB(lengthPrefixed: Data()), Data())
     }
 
+    func testSPSWithoutReordering() throws {
+        // A VideoToolbox Constrained Baseline SPS (698x1016, one reference frame, no VUI).
+        let sps = Data([0x27, 0x42, 0xc0, 0x1f, 0xab, 0x40, 0x58, 0x04, 0x0f, 0x24, 0xa8])
+        let rewritten = [UInt8](H264.withoutReordering(sps: sps))
+        XCTAssertEqual(Array(rewritten.prefix(4)), [0x27, 0x42, 0xc0, 0x1f], "header, profile and level unchanged")
+
+        var r = H264.BitReader(H264.unescape(Array(rewritten.dropFirst(4))))
+        // sps id, log2_max_frame_num, poc type, log2_max_poc_lsb, refs, gaps, width, height
+        XCTAssertEqual([r.ue(), r.ue(), r.ue(), r.ue(), r.ue(), r.bit(), r.ue(), r.ue()], [0, 1, 0, 2, 1, 0, 43, 63])
+        XCTAssertEqual([r.bit(), r.bit(), r.bit()], [1, 1, 1], "frame_mbs_only, direct_8x8, cropping")
+        XCTAssertEqual([r.ue(), r.ue(), r.ue(), r.ue()], [0, 3, 0, 4], "crop offsets kept")
+        XCTAssertEqual(r.bit(), 1, "now has a VUI")
+        XCTAssertEqual(r.bits(8), 0)
+        XCTAssertEqual([r.bit(), r.bit()], [1, 1], "bitstream_restriction, mv over boundaries")
+        XCTAssertEqual([r.ue(), r.ue(), r.ue(), r.ue(), r.ue(), r.ue()], [0, 0, 15, 15, 0, 1], "no reordering, one frame buffered")
+        XCTAssertEqual(r.bit(), 1, "stop bit")
+
+        XCTAssertEqual(H264.withoutReordering(sps: Data(rewritten)), Data(rewritten), "already has a VUI")
+        XCTAssertEqual(H264.withoutReordering(sps: Data([0x28, 0xce, 0x3c, 0x80])), Data([0x28, 0xce, 0x3c, 0x80]), "not an SPS")
+        XCTAssertEqual(H264.escape([0, 0, 1, 0, 0, 0]), [0, 0, 3, 1, 0, 0, 3, 0])
+        XCTAssertEqual(H264.unescape([0, 0, 3, 1, 0, 0, 3, 0]), [0, 0, 1, 0, 0, 0])
+    }
+
     func testBitrate() {
         let smooth = H264.bitrate(width: 602, height: 1310, fps: 30, quality: 55)
         XCTAssertGreaterThan(smooth, 1_000_000)
@@ -94,6 +117,11 @@ final class RelayProtocolTests: XCTestCase {
         )
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"keyframe","key":"SIM-A"}"#), .keyframe(key: "SIM-A"))
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"pending","ids":["a","b"]}"#), .pending(ids: ["a", "b"]))
+        XCTAssertEqual(
+            RelayProtocol.decode(#"{"type":"touch","device":"SIM-A","phase":"move","x":12.5,"y":40}"#),
+            .touch(udid: "SIM-A", phase: "move", x: 12.5, y: 40)
+        )
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"touch","phase":"down","x":1,"y":2}"#), .unknown(#"{"type":"touch","phase":"down","x":1,"y":2}"#), "no device")
         if case .unknown = RelayProtocol.decode("garbage") {} else { XCTFail("expected unknown") }
     }
 

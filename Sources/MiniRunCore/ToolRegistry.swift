@@ -22,6 +22,8 @@ public final class ToolRegistry: @unchecked Sendable {
     let boots = SimulatorBoots()
     /// Simulators with a job running or a viewer watching, which idle shutdown leaves alone.
     let activity = SimulatorActivity()
+    /// The simulators from the last `simctl list`, so a call naming a booted one by UDID can skip it.
+    let knownDevices = KnownDevices()
     /// One sync/build at a time per checkout.
     let checkouts = KeyedLock()
     private(set) var tools: [String: Tool] = [:]
@@ -56,6 +58,13 @@ public final class ToolRegistry: @unchecked Sendable {
     /// The simulator a tool call acts on: `device` if given, else the only booted one.
     /// Fails with a list of booted simulators rather than guessing when several are running.
     func device(_ args: ToolArguments, boot: Bool = true) async throws -> XcodeParsing.SimDevice {
+        // An exact UDID that's booted (not still booting) needs no picking: skip simctl, which
+        // costs ~100ms on every tap from the live view.
+        if let query = args.string("device"), let known = await knownDevices[query],
+           await SimulatorDriver.shared.isBooted(udid: known.udid), await boots.task(known.udid) == nil {
+            await claims.touch(known.udid)
+            return known.booted
+        }
         let (all, current) = try await simulators()
         let choice = SimulatorPicker.target(
             query: args.string("device"), workspace: nil, devices: all,
@@ -92,6 +101,7 @@ public final class ToolRegistry: @unchecked Sendable {
         // Read the boots first: one that finishes in between then shows as booted either way.
         let booting = await boots.booting
         let all = try await Simctl.devices().map { booting.contains($0.udid) ? $0.booted : $0 }
+        await knownDevices.update(all)
         let current = await claims.snapshot(booted: Set(all.filter(\.isBooted).map(\.udid)))
         return (all, current)
     }
@@ -259,6 +269,17 @@ public final class ToolRegistry: @unchecked Sendable {
             note += abs(Double(shot.width) - size.width) < 2 ? " — image pixels equal points, so use them directly for tap/swipe." : "."
         }
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
+    }
+}
+
+/// The simulators `simctl` listed last, by UDID.
+actor KnownDevices {
+    private var devices: [String: XcodeParsing.SimDevice] = [:]
+
+    subscript(udid: String) -> XcodeParsing.SimDevice? { devices[udid.uppercased()] }
+
+    func update(_ list: [XcodeParsing.SimDevice]) {
+        devices = Dictionary(list.map { ($0.udid.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
     }
 }
 
