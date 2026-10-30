@@ -69,11 +69,37 @@ jobs:
         run: scripts/ci-step.sh swift-build swift build
       - name: Unit tests
         run: scripts/ci-step.sh swift-test swift test
+      # The smoke test clones its simulators from a template that has already booted once, which
+      # skips the 6-7 minute first boot. Cached, so most runs don't make one at all.
+      - name: Simulator template key
+        id: template
+        run: echo "key=sim-template-v1-${{ steps.xcode.outputs.version }}-$(scripts/sim-template.sh key)" >> "$GITHUB_OUTPUT"
+      - name: Restore simulator template
+        id: template-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/sim-template
+          key: ${{ steps.template.outputs.key }}
+      - name: Install simulator template
+        if: steps.template-cache.outputs.cache-hit == 'true'
+        run: scripts/sim-template.sh restore ~/sim-template
       - name: Simulator smoke test
-        # Leaves its first simulator booted so the relay test below doesn't wait minutes for another first boot.
+        # Leaves its first simulator booted so the relay test below doesn't wait for another boot.
         env:
           MINIRUN_SMOKE_KEEP: "1"
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
+      - name: Stage simulator template
+        id: template-stage
+        if: always() && steps.template-cache.outputs.cache-hit != 'true'
+        run: |
+          scripts/sim-template.sh save ~/sim-template
+          [[ -d ~/sim-template ]] && echo "staged=true" >> "$GITHUB_OUTPUT" || true
+      - name: Save simulator template
+        if: always() && steps.template-stage.outputs.staged == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/sim-template
+          key: ${{ steps.template.outputs.key }}
       - name: Relay end-to-end test (wrangler dev + minirun serve)
         run: |
           (cd worker && npm ci)

@@ -20,23 +20,25 @@ should be a config setting.
 
 **Tests:** picker cases in `SimulatorPickerTests` (Linux).
 
-## 2. Create copies faster with `simctl clone`, and delete stale copies
+## 2. Make templates for `simctl clone`, and delete stale copies
 
-**Today:** when every simulator of a model is in use, minirun runs `simctl create` and then cold
-boots the new device (`ToolRegistry.realize`, `Sources/MiniRunCore/Simctl.swift`). The first boot
-runs a data migration that can take several minutes. The "(minirun N)" copies are never deleted,
-so they pile up in `~/Library/Developer/CoreSimulator/Devices`.
+**Today:** when every simulator of a model is in use, minirun makes a copy (`ToolRegistry.realize`).
+If a shut-down template of that model and runtime exists (named like
+"iPhone 17 Pro (minirun template)", see `SimulatorPicker.template`), it runs `simctl clone`, which
+copies the template's data and skips the first-boot data migration. Otherwise it runs
+`simctl create` and the first boot takes several minutes. Only the smoke test makes templates
+(`scripts/sim-template.sh`). The "(minirun N)" copies are never deleted, so they pile up in
+`~/Library/Developer/CoreSimulator/Devices`.
 
 **Change:**
-- Keep one shut-down template per model and runtime that has already booted once. Make copies with
-  `simctl clone <template> <name>`. That copies the device's data directory, so the first-boot
-  migration is skipped. Create the template the first time a copy is needed, then reuse it.
-- Delete copies (names containing `SimulatorPicker.cloneMarker`) that have been shut down for
-  more than a few days, or keep at most N of them, with `simctl delete`. This could run in the
-  idle shutdown loop (`ToolRegistry.shutDownIdleSimulators`).
+- Make the template the first time a copy of a model is needed: create it, boot it once, shut it
+  down, then clone it. Do it outside the allocation lock, and not alongside another first boot
+  (two at once timed out `simctl` calls on GitHub's runners).
+- Delete copies (names containing `SimulatorPicker.cloneMarker`, but not templates) that have been
+  shut down for more than a few days, or keep at most N of them, with `simctl delete`. This could
+  run in the idle shutdown loop (`ToolRegistry.shutDownIdleSimulators`).
 
-**Tests:** the choice of which copies to delete can be a pure function in MiniRunKit. Clone timing
-needs a Mac: compare the smoke test's boot time for a copy before and after.
+**Tests:** the choice of which copies to delete can be a pure function in MiniRunKit.
 
 ## 3. Clean up when a simulator changes hands
 
