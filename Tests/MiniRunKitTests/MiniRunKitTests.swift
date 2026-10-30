@@ -458,6 +458,16 @@ final class SimulatorPickerTests: XCTestCase {
 private actor EventLog {
     var events: [String] = []
     func add(_ event: String) { events.append(event) }
+
+    /// Waits up to `seconds` for `event` to be logged; false if it never was.
+    func waitFor(_ event: String, seconds: Double = 5) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while !events.contains(event) {
+            guard Date() < deadline else { return false }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        return true
+    }
 }
 
 final class WorkspaceTests: XCTestCase {
@@ -487,12 +497,15 @@ final class WorkspaceTests: XCTestCase {
     func testKeyedLockSerializesPerKey() async throws {
         let lock = KeyedLock()
         let log = EventLog()
+        // "a" stays held until "other" has run, so if other keys waited this would time out
+        // instead of depending on how quickly a busy CI runner schedules tasks.
         async let first: Void = lock.withLock("a") {
             await log.add("first start")
-            try await Task.sleep(nanoseconds: 100_000_000)
+            _ = await log.waitFor("other")
             await log.add("first end")
         }
-        try await Task.sleep(nanoseconds: 20_000_000)
+        let firstHoldsTheLock = await log.waitFor("first start")
+        XCTAssertTrue(firstHoldsTheLock)
         async let second: Void = lock.withLock("a") { await log.add("second") }
         async let other: Void = lock.withLock("b") { await log.add("other") }
         _ = try await (first, second, other)
