@@ -69,11 +69,25 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         configURL.deletingLastPathComponent().appendingPathComponent("control.sock")
     }
 
+    /// The saved settings, or the defaults if the file is missing or can't be read.
     public static func load() -> MiniRunConfig {
-        guard let data = try? Data(contentsOf: configURL), let config = try? JSONDecoder().decode(MiniRunConfig.self, from: data) else {
-            return MiniRunConfig()
+        (try? read()) ?? MiniRunConfig()
+    }
+
+    /// The saved settings. Unlike `load()`, a broken file is an error rather than the defaults,
+    /// so a reload never swaps working settings for empty ones.
+    public static func read(from url: URL = configURL) throws -> MiniRunConfig {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            throw ToolError("Couldn't read \(url.path): \(error.localizedDescription)")
         }
-        return config
+        do {
+            return try JSONDecoder().decode(MiniRunConfig.self, from: data)
+        } catch {
+            throw ToolError("\(url.path) isn't valid settings JSON: \(error.localizedDescription)")
+        }
     }
 
     public func save() throws {

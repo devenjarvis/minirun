@@ -4,7 +4,7 @@ import Foundation
 /// Claude's request times out. The caller waits up to `wait_seconds`; if the job is still going it
 /// gets a job id back and polls with `get_job`.
 public actor JobStore {
-    public enum Status: String, Sendable { case running, succeeded, failed }
+    public enum Status: String, Sendable { case running, succeeded, failed, cancelled }
 
     public struct Job: Sendable {
         public let id: String
@@ -19,6 +19,8 @@ public actor JobStore {
     private var jobs: [String: Job] = [:]
     private struct Waiter { let token: UUID; let continuation: CheckedContinuation<Void, Never> }
     private var waiters: [String: [Waiter]] = [:]
+    /// The work of each running job, so it can be cancelled.
+    private var tasks: [String: Task<Void, Never>] = [:]
     private var order: [String] = []
     private let maxJobs = 50
 
@@ -30,7 +32,7 @@ public actor JobStore {
         jobs[id] = Job(id: id, title: title, startedAt: Date(), status: .running, logPath: logPath)
         order.append(id)
         trim()
-        Task {
+        tasks[id] = Task {
             let result: ToolResult
             do {
                 result = try await work()
@@ -43,7 +45,9 @@ public actor JobStore {
     }
 
     private func finish(_ id: String, result: ToolResult) {
-        guard var job = jobs[id] else { return }
+        tasks[id] = nil
+        // A cancelled job already counts as finished.
+        guard var job = jobs[id], job.status == .running else { return }
         job.status = result.isError ? .failed : .succeeded
         job.result = result
         job.finishedAt = Date()
@@ -56,6 +60,21 @@ public actor JobStore {
             order.removeFirst()
             jobs.removeValue(forKey: oldest)
         }
+    }
+
+    /// Cancels a running job: its task is cancelled, which stops the commands it runs (see
+    /// `Shell.run`). The job counts as finished at once, so waiters don't wait for it to unwind.
+    @discardableResult
+    public func cancel(_ id: String) throws -> Job {
+        guard var job = jobs[id] else { throw ToolError("No job with id \(id).") }
+        guard job.status == .running else { throw ToolError("\(job.id) (\(job.title)) already \(job.status.rawValue).") }
+        tasks.removeValue(forKey: id)?.cancel()
+        job.status = .cancelled
+        job.finishedAt = Date()
+        job.result = .error("Cancelled on the Mac.")
+        jobs[id] = job
+        for waiter in waiters.removeValue(forKey: id) ?? [] { waiter.continuation.resume() }
+        return job
     }
 
     public func job(_ id: String) -> Job? { jobs[id] }

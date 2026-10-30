@@ -78,12 +78,7 @@ extension ToolRegistry {
             properties: device,
             required: ["device"]
         )) { [self] args in
-            let sim = try await self.device(args, boot: false)
-            try await Simctl.shutdown(sim.udid)
-            await claims.release(sim.udid)
-            await SimulatorDriver.shared.reset(udid: sim.udid)
-            await geometry.invalidate(udid: sim.udid)
-            return .text("Shut down \(sim.name).")
+            .text(try await self.shutDownSimulator(self.device(args, boot: false)))
         }
 
         register(ToolDefinition(
@@ -296,6 +291,16 @@ extension ToolRegistry {
     }
 
     /// Common tail for input tools: a short note, plus a screenshot if asked.
+    /// Shuts a simulator down and drops its reservation. The shutdown_simulator tool and the menu
+    /// bar app's Shut down both come here.
+    func shutDownSimulator(_ sim: XcodeParsing.SimDevice) async throws -> String {
+        try await Simctl.shutdown(sim.udid)
+        await claims.release(sim.udid)
+        await SimulatorDriver.shared.reset(udid: sim.udid)
+        await geometry.invalidate(udid: sim.udid)
+        return "Shut down \(sim.name)."
+    }
+
     func afterAction(_ note: String, udid: String, args: ToolArguments) async throws -> ToolResult {
         guard args.bool("screenshot") == true else { return .text(note) }
         try await Task.sleep(nanoseconds: 600_000_000) // let animations settle

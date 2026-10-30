@@ -201,7 +201,7 @@ public enum SimulatorPicker {
         return base + cloneMarker + "\(number))"
     }
 
-    static func ago(_ date: Date, now: Date) -> String {
+    public static func ago(_ date: Date, now: Date) -> String {
         let seconds = Int(now.timeIntervalSince(date))
         if seconds < 60 { return "just now" }
         if seconds < 3600 { return "\(seconds / 60) min ago" }

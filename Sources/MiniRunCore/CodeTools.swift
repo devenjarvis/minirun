@@ -183,7 +183,7 @@ extension ToolRegistry {
             required: ["command"]
         )) { [self] args in
             guard config.allowShell else {
-                throw ToolError("run_command is disabled on this Mac. To enable it, set \"allowShell\": true in ~/.config/minirun/config.json and restart minirun.")
+                throw ToolError("run_command is disabled on this Mac. To enable it, set \"allowShell\": true in ~/.config/minirun/config.json and run `minirun reload` (or turn it on from the menu bar app).")
             }
             let command = try args.requireString("command")
             let dir = try Workspace.directory(
@@ -192,8 +192,16 @@ extension ToolRegistry {
             )
             let timeout = TimeInterval(args.int("timeout_seconds") ?? 900)
             let log = newLogURL("command")
-            return await runAsJob(args, title: "$ \(command.prefix(60))", log: log) {
-                let result = try await Shell.run("/bin/zsh", ["-lc", command], cwd: dir, timeout: timeout, logURL: log)
+            return await runAsJob(args, title: "$ \(command.prefix(60))", log: log) { [self] in
+                await commandFolders.begin(dir)
+                let result: ShellResult
+                do {
+                    result = try await Shell.run("/bin/zsh", ["-lc", command], cwd: dir, timeout: timeout, logURL: log)
+                } catch {
+                    await commandFolders.end(dir)
+                    throw error
+                }
+                await commandFolders.end(dir)
                 let status = result.timedOut ? "timed out" : "exit \(result.exitCode)"
                 return ToolResult([.text("\(status)\n\(result.tail(8000))")], isError: !result.succeeded)
             }

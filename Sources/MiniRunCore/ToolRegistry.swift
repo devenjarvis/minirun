@@ -11,7 +11,10 @@ public final class ToolRegistry: @unchecked Sendable {
         public let handler: Handler
     }
 
-    public let config: MiniRunConfig
+    /// The settings, which `reload_config` can change while minirun runs.
+    public let liveConfig: LiveConfig
+    /// The settings as of now. Read it at each use rather than keeping a copy, so reloads apply.
+    public var config: MiniRunConfig { liveConfig.current }
     public let jobs = JobStore()
     let geometry = ScreenGeometryCache()
     /// Which booted simulator is reserved for which repo and branch.
@@ -26,12 +29,18 @@ public final class ToolRegistry: @unchecked Sendable {
     let knownDevices = KnownDevices()
     /// One sync/build at a time per checkout.
     let checkouts = KeyedLock()
+    /// Folders run_command is running in, so a checkout isn't deleted under it.
+    let commandFolders = SimulatorActivity()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL
 
-    public init(config: MiniRunConfig) {
-        self.config = config
+    public convenience init(config: MiniRunConfig) {
+        self.init(config: LiveConfig(config))
+    }
+
+    public init(config: LiveConfig) {
+        liveConfig = config
         logsDirectory = URL(fileURLWithPath: MiniRunConfig.home + "/Library/Logs/minirun/jobs", isDirectory: true)
         try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         registerSimulatorTools()
@@ -173,12 +182,13 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     /// Checks every minute for simulators nobody has used in `idleShutdownMinutes` and shuts them
-    /// down (see `IdleSimulators.plan`). Runs until cancelled; returns at once if turned off.
+    /// down (see `IdleSimulators.plan`). Runs until cancelled. While `idleShutdownMinutes` is 0 it
+    /// does nothing, but keeps checking in case a reload turns it on.
     public func shutDownIdleSimulators(log: @escaping @Sendable (String) -> Void) async {
-        guard config.idleShutdownMinutes > 0 else { return }
-        log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes")
+        if config.idleShutdownMinutes > 0 { log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes") }
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
+            guard config.idleShutdownMinutes > 0 else { continue }
             do {
                 try await shutDownIdleSimulatorsOnce(log: log)
             } catch {

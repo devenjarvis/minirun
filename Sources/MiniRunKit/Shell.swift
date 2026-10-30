@@ -12,6 +12,14 @@ public struct ShellResult: Sendable {
     public let timedOut: Bool
     public let duration: TimeInterval
 
+    public init(exitCode: Int32, stdout: String, stderr: String = "", timedOut: Bool = false, duration: TimeInterval = 0) {
+        self.exitCode = exitCode
+        self.stdout = stdout
+        self.stderr = stderr
+        self.timedOut = timedOut
+        self.duration = duration
+    }
+
     public var succeeded: Bool { exitCode == 0 && !timedOut }
 
     /// Combined output, trimmed to the last `limit` characters.
@@ -23,7 +31,7 @@ public struct ShellResult: Sendable {
 
 public enum Shell {
     /// Runs a program and waits for it. Output is captured in memory and, if `logURL` is set,
-    /// also appended to that file as it arrives.
+    /// also appended to that file as it arrives. Cancelling the calling task stops the program.
     public static func run(
         _ executable: String,
         _ arguments: [String],
@@ -84,24 +92,17 @@ public enum Shell {
                     continuation.resume(throwing: error)
                     return
                 }
+                // Cancelled before the program started: onCancel found nothing to stop.
+                if Task.isCancelled { stop(process) }
                 // Watchdog: terminate, then kill, if the deadline passes.
-                let pid = process.processIdentifier
                 DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                     guard process.isRunning else { return }
                     exit.markTimedOut()
-                    // Stop direct children too (e.g. the command a shell is running).
-                    let pkill = Process()
-                    pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-                    pkill.arguments = ["-TERM", "-P", String(pid)]
-                    try? pkill.run()
-                    process.terminate()
-                    DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
-                        if process.isRunning { kill(pid, SIGKILL) }
-                    }
+                    stop(process)
                 }
             }
         } onCancel: {
-            if process.isRunning { process.terminate() }
+            stop(process)
         }
 
         // Let the readability handlers drain what's buffered. Don't block on EOF: a child the
@@ -125,6 +126,28 @@ public enum Shell {
             timedOut: exit.timedOut,
             duration: Date().timeIntervalSince(started)
         )
+    }
+
+    /// Terminates a running program and its direct children (e.g. the command a shell is
+    /// running), then kills it if it's still there 5 seconds later. Returns at once; the work
+    /// happens on another thread.
+    static func stop(_ process: Process) {
+        DispatchQueue.global().async {
+            guard process.isRunning else { return }
+            let pid = process.processIdentifier
+            // Pause the program while its children go: a shell would otherwise run its next
+            // command, and once it exits its children belong to launchd where -P can't find them.
+            kill(pid, SIGSTOP)
+            let pkill = Process()
+            pkill.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+            pkill.arguments = ["-TERM", "-P", String(pid)]
+            if (try? pkill.run()) != nil { pkill.waitUntilExit() }
+            process.terminate()
+            kill(pid, SIGCONT)
+            DispatchQueue.global().asyncAfter(deadline: .now() + 5) {
+                if process.isRunning { kill(pid, SIGKILL) }
+            }
+        }
     }
 
     /// Convenience: run and throw a readable error unless it succeeds.

@@ -631,8 +631,9 @@ final class ControlSocketTests: XCTestCase {
     func testStatusRoundTripsOverTheSocket() async throws {
         let path = directory + "/control.sock"
         let status = sample()
+        let commands = FakeControlCommands(status: status)
         let server = ControlServer(path: path) { line in
-            await ControlProtocol.respond(to: line) { status }
+            await ControlProtocol.respond(to: line, commands: commands)
         }
         try server.start()
         defer { server.stop() }

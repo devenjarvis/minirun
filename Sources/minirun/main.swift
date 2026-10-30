@@ -12,7 +12,8 @@ Usage:
         [--device "iPhone 17 Pro"] [--allow-shell] [--workspaces DIR]
   minirun worker deploy                 Deploy or update the Cloudflare Worker (see `minirun worker help`)
   minirun status [--json]               Show what the running `minirun serve` is doing
-  minirun doctor                        Check Xcode, simulators and the relay settings
+  minirun reload                        Make the running `minirun serve` re-read config.json
+  minirun doctor [--json]               Check Xcode, simulators and the relay settings
   minirun tools                         Print the MCP tool definitions as JSON
   minirun call TOOL ['{"json":"args"}'] Run one tool locally (images are saved to /tmp)
   minirun version
@@ -51,6 +52,9 @@ func main() async {
         if args.contains("--no-shell") { config.allowShell = false }
         do { try config.save() } catch { fail("Could not save config: \(error.localizedDescription)") }
         print("Saved \(MiniRunConfig.configURL.path)")
+        if let response = try? ControlProtocol.send(ControlProtocol.Request(command: "reload_config")), response.ok, let message = response.message {
+            print("minirun serve: \(message)")
+        }
 
     case "worker":
         let executable = Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])
@@ -59,15 +63,41 @@ func main() async {
     case "status":
         let response: ControlProtocol.Response
         do {
-            response = try serveStatus()
+            response = try ControlProtocol.send(ControlProtocol.Request(command: "status"))
         } catch {
-            fail("minirun serve isn't answering (\(error.localizedDescription))\nStart it with: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent")
+            fail(notAnswering(error))
         }
         guard response.ok, let status = response.status else { fail(response.error ?? "minirun serve sent no status.") }
         print(args.contains("--json") ? ControlProtocol.encode(status) : status.summary())
 
+    case "reload":
+        let response: ControlProtocol.Response
+        do {
+            response = try ControlProtocol.send(ControlProtocol.Request(command: "reload_config"))
+        } catch {
+            fail(notAnswering(error))
+        }
+        guard response.ok else {
+            fail(response.controlVersion == nil
+                 ? "This minirun serve is too old to reload its settings. Restart it: \(Doctor.kickstart)"
+                 : response.error ?? "minirun serve couldn't reload its settings.")
+        }
+        print(response.message ?? "Reloaded.")
+
     case "doctor":
-        await doctor(config)
+        let doctor = Doctor(
+            loadFrameworks: {
+                do {
+                    try await SimulatorDriver.shared.prepare()
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            },
+            serveStatus: { try? ControlProtocol.send(ControlProtocol.Request(command: "status")).status }
+        )
+        let checks = await doctor.checks(config: config)
+        print(args.contains("--json") ? ControlProtocol.encode(checks) : Doctor.format(checks))
 
     case "tools":
         let registry = ToolRegistry(config: config)
@@ -106,48 +136,8 @@ func main() async {
     }
 }
 
-/// Asks the running `minirun serve` for its status over the control socket.
-func serveStatus() throws -> ControlProtocol.Response {
-    let line = try ControlSocket.request(MiniRunConfig.controlSocketURL.path, ControlProtocol.encode(ControlProtocol.Request(command: "status")))
-    return try ControlProtocol.decode(ControlProtocol.Response.self, from: line)
-}
-
-@MainActor
-func doctor(_ config: MiniRunConfig) async {
-    func check(_ label: String, _ ok: Bool, _ detail: String) { print("\(ok ? "✓" : "✗") \(label): \(detail)") }
-
-    let xcode = try? await Shell.run("/usr/bin/xcrun", ["xcodebuild", "-version"], timeout: 60)
-    check("Xcode", xcode?.succeeded == true, xcode?.stdout.split(separator: "\n").first.map(String.init) ?? "not found — install Xcode and run `sudo xcode-select -s /Applications/Xcode.app`")
-
-    do {
-        try await SimulatorDriver.shared.prepare()
-        check("Simulator frameworks", true, "loaded")
-    } catch {
-        check("Simulator frameworks", false, error.localizedDescription)
-    }
-
-    if let list = try? await Shell.run("/usr/bin/xcrun", ["simctl", "list", "devices", "--json"], timeout: 60),
-       let devices = try? XcodeParsing.parseDevices(Data(list.stdout.utf8)) {
-        let ios = devices.filter { $0.isAvailable && $0.runtime.contains("iOS") }
-        let booted = ios.filter(\.isBooted).map(\.name)
-        check("Simulators", !ios.isEmpty, "\(ios.count) iOS simulators" + (booted.isEmpty ? "" : ", booted: \(booted.joined(separator: ", "))"))
-    } else {
-        check("Simulators", false, "simctl failed")
-    }
-
-    if let status = try? serveStatus().status {
-        let relay = status.relay.state == .connected ? "connected to the relay" : "\(status.relay.state.rawValue)" + (status.relay.problem.map { ": \($0)" } ?? "")
-        check("minirun serve", status.relay.state == .connected, "running (pid \(status.pid)), \(relay)")
-    } else {
-        check("minirun serve", false, "not running — launchctl kickstart -k gui/$(id -u)/dev.minirun.agent")
-    }
-    check("Relay URL", config.relayURL != nil, config.relayURL ?? "not set — run minirun worker deploy")
-    check("Agent token", config.agentToken?.isEmpty == false, config.agentToken == nil ? "not set" : "set")
-    check("Workspaces", true, config.workspaceRoot)
-    check("run_command", true, config.allowShell ? "enabled" : "disabled")
-
-    let gh = try? await Shell.run("gh", ["auth", "status"], timeout: 20)
-    check("GitHub auth (for private repos)", gh?.succeeded == true, gh?.succeeded == true ? "gh is logged in" : "optional: run `gh auth login && gh auth setup-git`")
+func notAnswering(_ error: Error) -> String {
+    "minirun serve isn't answering (\(error.localizedDescription))\nStart it with: \(Doctor.kickstart)"
 }
 
 await main()

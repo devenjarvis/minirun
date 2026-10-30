@@ -6,6 +6,7 @@
 #
 #   ./scripts/install.sh            build, deploy or update the Worker, install and start
 #   ./scripts/install.sh --no-worker   skip the Worker (run `minirun worker deploy` yourself)
+#   ./scripts/install.sh --no-app      skip the menu bar app (scripts/install-app.sh)
 #   ./scripts/install.sh --uninstall
 #
 # Optionally also registers this Mac as a self-hosted GitHub Actions runner (see scripts/github-runner.sh):
@@ -17,12 +18,13 @@ LABEL="dev.minirun.agent"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/minirun/minirun.log"
 
-UNINSTALL=false NO_WORKER=false ALLOW_PUBLIC=false
+UNINSTALL=false NO_WORKER=false NO_APP=false ALLOW_PUBLIC=false
 GITHUB_RUNNERS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --uninstall) UNINSTALL=true ;;
     --no-worker) NO_WORKER=true ;;
+    --no-app) NO_APP=true ;;
     --github-runner)
       [[ -n "${2:-}" ]] || { echo "--github-runner needs a repository: --github-runner owner/repo"; exit 1; }
       GITHUB_RUNNERS+=("$2"); shift ;;
@@ -36,6 +38,7 @@ if $UNINSTALL; then
   launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
   rm -f "$PLIST"
   rm -rf "$PREFIX/bin" "$PREFIX/worker"
+  "$ROOT/scripts/install-app.sh" --uninstall
   echo "minirun removed (config in ~/.config/minirun and workspaces in ~/minirun were kept)."
   if compgen -G "$PREFIX/github-runner/*/" >/dev/null; then
     echo "GitHub runners are still installed; remove each with: $ROOT/scripts/github-runner.sh uninstall owner/repo"
@@ -119,6 +122,11 @@ sleep 3
 step "Checking"
 "$PREFIX/bin/minirun" doctor || true
 tail -n 5 "$LOG" || true
+
+if ! $NO_APP; then
+  step "Installing the menu bar app"
+  "$ROOT/scripts/install-app.sh" || echo "warning: the menu bar app didn't build. minirun itself is installed; retry with $ROOT/scripts/install-app.sh"
+fi
 
 for repo in ${GITHUB_RUNNERS[@]+"${GITHUB_RUNNERS[@]}"}; do
   step "Setting up a GitHub Actions runner for $repo"

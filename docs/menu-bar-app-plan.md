@@ -23,10 +23,10 @@ hand.
 | --- | --- | --- |
 | `minirun serve` (Swift daemon) | Built with `swift build`, copied to `~/.minirun/bin` with 4 FBSimulatorControl frameworks, run by a hand-written LaunchAgent (`dev.minirun.agent`) | **Keep it as a separate process.** Bundle it inside the app; the app writes the LaunchAgent |
 | `MiniRunKit` | Plain Swift: config, status model, control-socket protocol, simulator picker. Tests run on Linux | **The app links this directly.** It never needs FBSimulatorControl |
-| Control socket (`~/.config/minirun/control.sock`) | One command, `status`. Its doc comments already mention "the menu bar app" | Add more commands (Phase 0) |
+| Control socket (`~/.config/minirun/control.sock`) | `status`, `reload_config`, simulator, job and workspace commands, `doctor` (Phase 0, done) | The app's only link to the daemon |
 | `ServeStatus` | Relay state, simulators (reservation, busy, booting, viewer link), jobs | The menu shows this almost as-is |
-| Config | `config.json`, read **once** at startup; `ToolRegistry.config` is a `let` | Needs reloading (Phase 0) |
-| `minirun doctor` | Lives in `Sources/minirun/main.swift` and prints to stdout | Move it into a library so the app can show the same checks |
+| Config | `config.json`, reloaded live by `reload_config`, `minirun reload` or SIGHUP (Phase 0, done) | The app edits it, then asks for a reload |
+| `minirun doctor` | `Doctor` in MiniRunKit returns structured checks; the CLI prints them (Phase 0, done) | Shown as a checklist (Phase 4) |
 | Worker deploy | `worker/setup.sh`: `npm ci`, `wrangler login` in a browser, `wrangler deploy`, `wrangler secret put`. Writes the password and token in plain text to `worker.env` | Swift Cloudflare API client (Phase 2) |
 | Frameworks | `build-frameworks.sh` builds idb from source (5–10 min, needs XcodeGen) | Unchanged for source installs. Release zips include them |
 | GitHub runner | `scripts/github-runner.sh` (install/status/uninstall) | Wrap it in Settings later |
@@ -64,7 +64,27 @@ The app talks to the daemon only over the control socket. It edits `config.json`
 
 Each phase can ship as one or more PRs, and each leaves the product working.
 
-### Phase 0: daemon groundwork (mostly Linux-testable)
+### Phase 0: daemon groundwork (mostly Linux-testable) — done
+
+Built as planned, except:
+- `controlVersion` is 2. A daemon from before it sends none, which the app reads as 1 (status only).
+- `DoctorCheck` and the checks live in MiniRunKit (`Doctor.swift`), not MiniRunCore. The parts that
+  need macOS (running programs, loading the simulator frameworks, asking the daemon) are passed in,
+  so the checks are tested on Linux. Checks also carry a `title` and an `optional` flag (GitHub auth
+  is optional).
+- `ToolRegistry.config` is now a computed property over a `LiveConfig` (a locked box with
+  observers). Observers make `RelayClient` reconnect and take or drop the sleep assertion. Idle
+  shutdown re-reads `idleShutdownMinutes` every minute, so it can be turned on without a restart.
+- `cancel_job` marks the job cancelled at once and cancels its task; `Shell.run` stops the program
+  and its children when its task is cancelled.
+- A checkout counts as busy while a sync or build holds its lock or `run_command` runs inside it.
+  `delete_workspace` takes the checkout's lock while it deletes, so a build can't start mid-delete,
+  and only deletes folders exactly two levels under `workspaceRoot`.
+- Also added: `minirun reload`, `minirun doctor --json`, and `minirun setup` asks a running daemon
+  to reload.
+- Not done: item 4 (the Worker reporting its version in its reply to `hello`). It's left for
+  Phase 4, where the app first needs it.
+
 
 1. **More control commands** in `ControlProtocol`. Keep it one request line and one response line:
    - `reload_config`: re-read `config.json`. Reports which changes took effect now and which
@@ -87,7 +107,21 @@ Each phase can ship as one or more PRs, and each leaves the product working.
 Tests: protocol encoding and decoding, config diffing (what reloads and what reconnects), the
 workspace listing, and doctor result shapes. All of this lives in MiniRunKit, so it runs on Linux CI.
 
-### Phase 1: menu bar app MVP (works with today's script install)
+### Phase 1: menu bar app MVP (works with today's script install) — done
+
+Built as planned, except:
+- `App/project.yml` compiles `Sources/MiniRunKit` into a static library target instead of
+  depending on the package product. On macOS the root package also declares the FBSimulatorControl
+  binary targets, which exist only after `build-frameworks.sh`, so depending on the package would
+  make the app need the frameworks to build. The app still links nothing else.
+- The app is `minirun.app` (target `minirun-menu`, bundle id `dev.minirun.menu`).
+- The view model is `MenuSnapshot` (pure: one poll in, what the menu shows out) and `MenuModel` (an
+  actor that polls and runs actions) in MiniRunKit, tested on Linux. The SwiftUI side is a thin
+  `@Observable` wrapper plus the AppKit bits (pasteboard, opening links, Simulator.app).
+- No Settings… item yet (Phase 4). "Open at login" is left to System Settings → Login Items.
+- `scripts/install-app.sh` builds, ad-hoc signs and installs `/Applications/minirun.app`;
+  `install.sh` runs it (skip with `--no-app`), and the macOS CI job builds the app.
+
 
 A new `App/` folder with an XcodeGen `project.yml`. The repo already uses XcodeGen, and the
 `.xcodeproj` stays gitignored. One target, `minirun-menu`, depends on the local `MiniRunKit`
@@ -114,8 +148,8 @@ Built as `minirun worker deploy|status|password|forget-token` (`Sources/MiniRunK
   URL, owner password and API token. The agent token stays in `config.json`.
 - The deployed version is a `MINIRUN_BUNDLE` text variable holding the bundle's SHA-256. It is read
   back from the script settings, so `minirun worker status` can say whether the Worker is current.
-- Until `reload_config` exists (Phase 0), a changed relay URL or agent token restarts the
-  LaunchAgent instead.
+- A changed relay URL or agent token is applied with `reload_config`; the LaunchAgent is restarted
+  only if the daemon doesn't answer (or is too old to reload).
 - Not yet checked against the live API: it follows the calls wrangler 4.155 makes, and is tested
   against recorded responses.
 

@@ -60,6 +60,8 @@ That script:
    [The Worker](#the-worker)). It asks for a Cloudflare API token, creates a KV namespace,
    uploads the prebuilt Worker, and generates a password and an agent token.
 5. Installs a LaunchAgent so `minirun serve` starts at login and restarts if it crashes.
+6. Builds the menu bar app and installs it as `/Applications/minirun.app` (skip with `--no-app`;
+   see [The menu bar app](#the-menu-bar-app)).
 
 Add `--github-runner owner/repo` to also run that repository's GitHub Actions jobs on the Mac
 (see [Run CI on your Mac](#run-ci-on-your-mac-optional)).
@@ -163,6 +165,28 @@ Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
 See what the running `minirun serve` is doing with `minirun status`: the relay connection, the booted
 simulators and who each is reserved for, and recent jobs. `minirun status --json` gives the same as
 JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that only your user can open.
+`minirun doctor` checks Xcode, the simulators, the daemon and the settings, and says how to fix
+each problem (`--json` for scripts).
+
+## The menu bar app
+
+`/Applications/minirun.app` puts minirun in the menu bar. The icon shows whether the Mac is
+connected to the relay, still connecting, has a problem, or isn't running, with the number of
+running jobs beside it. The menu shows:
+
+- The relay connection and how long it's been up, or what went wrong and how to fix it.
+- Booted simulators: who each is reserved for, whether it's booting or busy, and when it was last
+  used. Each has Watch live, Show in Simulator, Release reservation and Shut down.
+- Running and recent jobs, with Log and Cancel.
+- Live view, Copy connector URL, Copy password, Restart service and Quit.
+- When `minirun serve` isn't running, a Start button and the end of its log.
+
+The app only watches and steers `minirun serve`, which keeps running under launchd: quitting the
+app doesn't disconnect Claude. It talks to the daemon over the control socket and never loads the
+simulator frameworks. Build and install it on its own with `./scripts/install-app.sh` (needs
+`xcodegen`). There's no Apple Developer ID behind it, so it's ad-hoc signed and not notarized. A
+copy you build yourself runs without Gatekeeper prompts. To open it at login, add it under System
+Settings → General → Login Items.
 
 ## Configuration
 
@@ -179,7 +203,8 @@ JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that 
 | `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
 | `maxBootedSimulators` | `4` | How many simulators minirun runs at once. Past this, a call that needs another one fails and lists the running ones |
 
-After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
+After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a
+new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
 
 ## Security
 
@@ -192,7 +217,7 @@ After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
 - `run_command` is off by default. Turning it on lets anyone holding a connector token run shell
   commands on your Mac, so keep the password private.
 - Rotate secrets with `minirun worker deploy --new-password` or `--new-token`. A new token is
-  saved on the Mac and `minirun serve` restarts to use it.
+  saved on the Mac and `minirun serve` reloads its settings and reconnects with it.
 - The saved Cloudflare API token can deploy and change Workers on your account. Delete it with
   `minirun worker forget-token` if you'd rather paste it for each update.
 - The optional GitHub runner runs pull request code on the Mac as your user. Read
@@ -279,6 +304,7 @@ day within the free 100k requests. The viewer stops streaming when its tab is hi
 swift test                       # MiniRunKit unit tests (any platform)
 ./scripts/build-frameworks.sh    # macOS: FBSimulatorControl into Vendor/
 swift build && ./scripts/smoke-test.sh   # macOS: boots a simulator and drives a fixture app
+./scripts/install-app.sh --build-only    # macOS: build the menu bar app (cd App && xcodegen to open it in Xcode)
 cd worker && npm ci && npm test  # Worker tests (OAuth flow, relay, viewer) in workerd
 cd worker && npm run bundle      # rebuild worker/dist after changing the Worker; commit it
 ```
