@@ -81,8 +81,33 @@ public enum XcodeParsing {
         if let preferredName, let preferred = available.first(where: { $0.name == preferredName && $0.runtime.contains("iOS") }) {
             return preferred
         }
-        return available.first(where: { $0.runtime.contains("iOS") && $0.name.hasPrefix("iPhone") && !$0.name.contains("SE") })
-            ?? available.first(where: { $0.runtime.contains("iOS") })
+        return defaultiPhones(available).first ?? available.first(where: { $0.runtime.contains("iOS") })
+    }
+
+    /// The iPhones to use when nobody named one, best first: the newest generation, its Pro first.
+    /// Leaves out the SE, and the Duo, a foldable whose app can be on either of its two screens.
+    public static func defaultiPhones(_ devices: [SimDevice]) -> [SimDevice] {
+        let phones = devices.enumerated().filter { _, device in
+            device.runtime.contains("iOS") && device.name.hasPrefix("iPhone")
+                && !device.name.contains("SE") && !device.name.contains("Duo")
+        }
+        // Ties keep the given order (booted, then newest runtime).
+        return phones.sorted { a, b in
+            let rankA = modelRank(a.element.name), rankB = modelRank(b.element.name)
+            return rankA != rankB ? rankA > rankB : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// Generation number, then Pro > plain > Pro Max > anything else ("iPhone 18 Pro" ranks highest
+    /// of the 18s). Names without a number, like "iPhone Air", rank below every numbered model.
+    static func modelRank(_ name: String) -> (generation: Int, variant: Int) {
+        let base = SimulatorPicker.baseName(name)
+        let words = base.split(separator: " ").dropFirst() // drop "iPhone"
+        guard let first = words.first, let generation = Int(first.prefix(while: \.isNumber)) else { return (0, 0) }
+        let variant = (String(first.drop(while: \.isNumber)) + " " + words.dropFirst().joined(separator: " "))
+            .trimmingCharacters(in: .whitespaces)
+        let order = ["Pro", "", "Pro Max"]
+        return (generation, order.firstIndex(of: variant).map { order.count - $0 } ?? 0)
     }
 
     // MARK: xcodebuild

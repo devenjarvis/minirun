@@ -136,7 +136,7 @@ public enum SimulatorPicker {
             kind = available.filter { isModel($0.name, query) }
             guard !kind.isEmpty else { return .failure("No simulator is named \"\(query)\". Call list_simulators to see the installed ones.") }
         } else {
-            let iPhones = ios.filter { $0.name.hasPrefix("iPhone") && !$0.name.contains("SE") }
+            let iPhones = XcodeParsing.defaultiPhones(ios)
             let preferred = preferredName.map { name in ios.filter { isModel($0.name, name) } } ?? []
             kind = preferred + (iPhones.isEmpty ? ios : iPhones)
         }

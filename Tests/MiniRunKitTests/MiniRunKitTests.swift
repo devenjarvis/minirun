@@ -133,6 +133,26 @@ final class XcodeParsingTests: XCTestCase {
         XCTAssertNil(XcodeParsing.pickDevice(none, query: "booted"))
     }
 
+    func testDefaultiPhoneSkipsDuoAndPrefersNewestPro() throws {
+        // The Duo alone on the newest runtime sorts first, but it's a foldable: never the default.
+        let json = """
+        {"devices":{
+          "com.apple.CoreSimulator.SimRuntime.iOS-27-1":[{"udid":"DUO","name":"iPhone Duo","state":"Shutdown","isAvailable":true}],
+          "com.apple.CoreSimulator.SimRuntime.iOS-27-0":[
+            {"udid":"17","name":"iPhone 17","state":"Shutdown","isAvailable":true},
+            {"udid":"17e","name":"iPhone 17e","state":"Shutdown","isAvailable":true},
+            {"udid":"AIR","name":"iPhone Air","state":"Shutdown","isAvailable":true},
+            {"udid":"18PM","name":"iPhone 18 Pro Max","state":"Shutdown","isAvailable":true},
+            {"udid":"18P","name":"iPhone 18 Pro","state":"Shutdown","isAvailable":true}]
+        }}
+        """
+        let devices = try XcodeParsing.parseDevices(Data(json.utf8))
+        XCTAssertEqual(devices.first?.udid, "DUO")
+        XCTAssertEqual(XcodeParsing.defaultiPhones(devices).map(\.udid), ["18P", "18PM", "17", "17e", "AIR"])
+        XCTAssertEqual(XcodeParsing.pickDevice(devices, query: nil)?.udid, "18P")
+        XCTAssertEqual(XcodeParsing.defaultiPhones(devices.filter { $0.udid == "DUO" }), [], "asking for the Duo by name still works; it's only never the default")
+    }
+
     func testParseIssues() {
         let log = """
         CompileSwift normal arm64 /src/App/ContentView.swift
@@ -257,6 +277,13 @@ final class SimulatorPickerTests: XCTestCase {
 
     func claim(_ label: String?, minutesAgo: Double = 1) -> SimulatorClaim {
         SimulatorClaim(label: label, updatedAt: now.addingTimeInterval(-minutesAgo * 60))
+    }
+
+    func testFreshSkipsTheDuo() {
+        let duo = Device(udid: "DUO", name: "iPhone Duo", state: "Shutdown", runtime: "com.apple.CoreSimulator.SimRuntime.iOS-27-1", isAvailable: true)
+        let devices = [duo, device("17", "iPhone 17"), device("18P", "iPhone 18 Pro")]
+        XCTAssertEqual(udid(SimulatorPicker.fresh(query: nil, label: "you/app@x", devices: devices, claims: [:], preferredName: nil)), "18P")
+        XCTAssertEqual(udid(SimulatorPicker.fresh(query: "iPhone Duo", label: "you/app@x", devices: devices, claims: [:], preferredName: nil)), "DUO", "still there by name")
     }
 
     func udid(_ choice: SimulatorPicker.Choice) -> String? {

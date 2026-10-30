@@ -138,7 +138,7 @@ Try any tool locally: `~/.minirun/bin/minirun call describe_ui` or
 | `relayURL` | — | `wss://minirun.<you>.workers.dev/agent` |
 | `agentToken` | — | Must match the Worker's `AGENT_TOKEN` secret |
 | `workspaceRoot` | `~/minirun/workspaces` | Where repositories are cloned, one folder per repo + ref |
-| `defaultDevice` | newest iPhone | Simulator model to boot when a session needs one, e.g. `"iPhone 17 Pro"` |
+| `defaultDevice` | newest iPhone (its Pro model; never the SE or the foldable Duo) | Simulator model to boot when a session needs one, e.g. `"iPhone 18 Pro"` |
 | `allowShell` | `false` | Enables `run_command`: arbitrary shell commands on your Mac |
 | `preventSleep` | `true` | Blocks idle sleep while serving |
 | `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
