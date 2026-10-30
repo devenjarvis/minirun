@@ -38,9 +38,15 @@ jobs:
       - run: ../scripts/ci-step.sh worker-test npm test
 
   mac:
-    name: macOS build + simulator smoke test
+    name: macOS smoke test (${{ matrix.part }})
     runs-on: macos-26
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Separate runners: a second simulator's boot next to a running one is slow on GitHub's
+        # runners, so the second-session checks don't wait behind the app checks.
+        part: [app, sessions]
     steps:
       - uses: actions/checkout@v5
       - name: Xcode version
@@ -72,6 +78,7 @@ jobs:
       - name: Build minirun
         run: scripts/ci-step.sh swift-build swift build
       - name: Unit tests
+        if: matrix.part == 'app'
         run: scripts/ci-step.sh swift-test swift test
       # The smoke test clones its simulators from a template that has already booted once, which
       # skips the 6-7 minute first boot. Cached, so most runs don't make one at all.
@@ -91,10 +98,10 @@ jobs:
         # Leaves its first simulator booted so the relay test below doesn't wait for another boot.
         env:
           MINIRUN_SMOKE_KEEP: "1"
-        run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
+        run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh ${{ matrix.part }}
       - name: Stage simulator template
         id: template-stage
-        if: always() && steps.template-cache.outputs.cache-hit != 'true'
+        if: always() && matrix.part == 'app' && steps.template-cache.outputs.cache-hit != 'true'
         run: |
           scripts/sim-template.sh save ~/sim-template
           [[ -d ~/sim-template ]] && echo "staged=true" >> "$GITHUB_OUTPUT" || true
@@ -105,11 +112,12 @@ jobs:
           path: ~/sim-template
           key: ${{ steps.template.outputs.key }}
       - name: Relay end-to-end test (wrangler dev + minirun serve)
+        if: matrix.part == 'app'
         run: |
           (cd worker && npm ci)
           scripts/ci-step.sh e2e-relay ./scripts/e2e-relay.sh
       - name: Publish screenshots
-        if: success() && github.ref == 'refs/heads/main'
+        if: success() && matrix.part == 'app' && github.ref == 'refs/heads/main'
         run: scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
       - name: Publish logs on failure
         if: failure()
@@ -117,7 +125,7 @@ jobs:
           mkdir -p ci-logs/minirun ci-logs/tmp
           cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
           cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
-          scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
+          scripts/publish-ci-logs.sh "mac-${{ matrix.part }}-${{ github.run_id }}"
       - name: Clean up simulators
         if: always()
         run: |

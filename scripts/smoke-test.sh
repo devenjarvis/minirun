@@ -1,7 +1,12 @@
 #!/bin/bash
 # End-to-end check on a real Mac: boots a simulator, builds the fixture app, launches it, and drives
 # it through the same tools Claude uses. Run after `swift build`.
+#   scripts/smoke-test.sh [all|app|sessions]
+# `app` drives the fixture app; `sessions` checks that a second session gets its own simulator. CI
+# runs them as separate jobs, since a second simulator's boot is slow on GitHub's runners.
 set -euo pipefail
+PART="${1:-all}"
+[[ "$PART" =~ ^(all|app|sessions)$ ]] || { echo "usage: $0 [all|app|sessions]" >&2; exit 2; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${MINIRUN_BIN:-$ROOT/.build/debug/minirun}"
 export MINIRUN_CONFIG="${MINIRUN_CONFIG:-$(mktemp -d)/config.json}"
@@ -34,6 +39,8 @@ run screenshot "{\"device\":\"$UDID\"}" | expect "image saved"
 
 # No `xcodegen generate` here: build_and_run generates HelloApp.xcodeproj from project.yml itself.
 rm -rf "$ROOT/Tests/Fixtures/HelloApp/HelloApp.xcodeproj"
+
+if [[ "$PART" != sessions ]]; then
 run build_and_run "{\"device\":\"$UDID\",\"path\":\"$ROOT/Tests/Fixtures/HelloApp\",\"scheme\":\"HelloApp\",\"wait_seconds\":600}" | tee /tmp/minirun-build.txt | expect "Installed and launched"
 
 sleep 2
@@ -55,9 +62,12 @@ run swipe "{\"device\":\"$UDID\",\"direction\":\"up\"}" | expect "Swiped"
 run press_button "{\"device\":\"$UDID\",\"button\":\"home\"}" | expect "Pressed"
 run app_logs "{\"device\":\"$UDID\",\"bundle_id\":\"dev.minirun.HelloApp\",\"seconds\":120}" > /dev/null
 run terminate_app "{\"device\":\"$UDID\",\"bundle_id\":\"dev.minirun.HelloApp\"}" | expect "Terminated"
+fi
 
 # A second session on the same Mac: it gets its own simulator, nothing guesses between the two,
-# and builds find the simulator reserved for their workspace.
+# and a build finds the simulator meant for it: after the app part, the one reserved for its
+# workspace; on its own, the only booted one that isn't reserved for other work.
+if [[ "$PART" != app ]]; then
 run boot_simulator '{"device":"minirun-smoke","label":"smoke/second"}' | tee /tmp/minirun-boot2.txt | expect "Created minirun-smoke (minirun 2) from the template"
 UDID2=$(sed -n 's/^Simulator: .*, UDID \([0-9A-Fa-f-]*\)\..*/\1/p' /tmp/minirun-boot2.txt | head -1)
 [[ -n "$UDID2" && "$UDID2" != "$UDID" ]] || { echo "FAILED: no second simulator UDID" >&2; exit 1; }
@@ -67,4 +77,5 @@ echo "$out" | expect "simulators are booted"
 run list_simulators '{"include_shutdown":false}' | expect "smoke/second"
 run build_and_run "{\"path\":\"$ROOT/Tests/Fixtures/HelloApp\",\"scheme\":\"HelloApp\",\"wait_seconds\":600}" | expect "UDID $UDID"
 run shutdown_simulator "{\"device\":\"$UDID2\"}" | expect "Shut down"
-echo "Smoke test passed."
+fi
+echo "Smoke test passed ($PART)."
