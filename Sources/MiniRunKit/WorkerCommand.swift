@@ -175,7 +175,7 @@ public struct WorkerCommand: Sendable {
 
     /// Points the running `minirun serve` at the new relay settings: asks it to reload its config
     /// over the control socket, and restarts the LaunchAgent if it doesn't answer.
-    static func reloadServe() async -> String? {
+    public static func reloadServe() async -> String? {
         if let response = try? ControlProtocol.send(ControlProtocol.Request(command: "reload_config")) {
             if response.ok { return "minirun serve reloaded its settings and is reconnecting to the new Worker." }
             if response.controlVersion != nil {

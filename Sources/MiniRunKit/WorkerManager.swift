@@ -196,3 +196,38 @@ public struct WorkerManager: Sendable {
         return false
     }
 }
+
+extension WorkerManager {
+    /// The real Cloudflare API, with the Worker bundle in `bundleDirectory` (the app's
+    /// Resources/worker), and a running `minirun serve` reloaded after changes.
+    public static func live(bundleDirectory: URL?) -> WorkerManager {
+        WorkerManager(
+            transport: URLSessionTransport(),
+            loadBundle: {
+                guard let bundleDirectory else {
+                    throw ToolError("This copy of the app doesn't carry the Worker. Build it with ./scripts/install.sh.")
+                }
+                return try WorkerBundle(directory: bundleDirectory)
+            },
+            reloadServe: { await WorkerCommand.reloadServe() }
+        )
+    }
+}
+
+/// The doctor checks for the app: from the running `minirun serve`, or by running the app's
+/// helper (`minirun doctor --json`) when the daemon isn't answering.
+public enum AppDoctor {
+    public static func checks(helper: String?, send: @Sendable (ControlProtocol.Request) async throws -> ControlProtocol.Response) async throws -> [DoctorCheck] {
+        if let response = try? await send(ControlProtocol.Request(command: "doctor")), response.ok, let checks = response.doctor {
+            return checks
+        }
+        guard let helper else {
+            throw ToolError("minirun serve isn't answering, and this copy of the app has no minirun helper to check with.")
+        }
+        let result = try await Shell.run(helper, ["doctor", "--json"], environment: ["PATH": LaunchAgent.path], timeout: 180)
+        guard let checks = try? ControlProtocol.decode([DoctorCheck].self, from: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw ToolError("minirun doctor didn't answer: \(result.tail(500))")
+        }
+        return checks
+    }
+}

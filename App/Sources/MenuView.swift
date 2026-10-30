@@ -1,9 +1,11 @@
+import AppKit
 import MiniRunKit
 import SwiftUI
 
 /// The window that drops down from the menu bar icon.
 struct MenuView: View {
     let store: MenuStore
+    @Environment(\.openWindow) private var openWindow
 
     private var snapshot: MenuSnapshot { store.snapshot }
 
@@ -21,7 +23,10 @@ struct MenuView: View {
         }
         .padding(14)
         .frame(width: 380)
-        .onAppear { store.menuShown(true) }
+        .onAppear {
+            store.menuShown(true)
+            Task { await store.launched() }
+        }
         .onDisappear { store.menuShown(false) }
     }
 
@@ -41,6 +46,34 @@ struct MenuView: View {
             if snapshot.daemonOutdated {
                 Text("minirun serve is older than this app, so only its status works here. Restart it to pick up the new version.")
                     .font(.callout).foregroundStyle(.orange)
+            }
+            if store.needsSetup {
+                Button {
+                    openWindow(id: WindowID.setup)
+                    NSApp.activate(ignoringOtherApps: true)
+                } label: {
+                    Label("Set Up minirun…", systemImage: "wand.and.stars")
+                }
+                .controlSize(.large)
+            }
+            if store.workerOutdated {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("The Worker runs an older version than this app.").font(.callout).foregroundStyle(.orange)
+                    Spacer()
+                    SettingsLink { Text("Update…") }
+                        .buttonStyle(.borderless)
+                        .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
+                        .help("Settings → Cloudflare → Update Worker")
+                }
+            }
+            if let update = store.update {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("minirun \(update.version) is available.").font(.callout)
+                    Spacer()
+                    Button("Get it") { store.open(update.url) }
+                        .buttonStyle(.borderless)
+                        .help("Opens the release on GitHub. Builds aren't signed; see the README.")
+                }
             }
             if let notice = snapshot.notice {
                 HStack(alignment: .firstTextBaseline) {
@@ -138,9 +171,12 @@ struct MenuView: View {
                 Text(flash).font(.callout).foregroundStyle(.secondary)
             }
             HStack {
-                Button { store.open(snapshot.viewerURL) } label: { Label("Live view", systemImage: "play.rectangle") }
+                Button {
+                    openWindow(id: WindowID.liveView)
+                    NSApp.activate(ignoringOtherApps: true)
+                } label: { Label("Live view", systemImage: "play.rectangle") }
                     .disabled(snapshot.viewerURL == nil)
-                    .help("Open the live view in your browser")
+                    .help("Watch the simulators in a window")
                 Button { store.copyConnectorURL() } label: { Label("Connector URL", systemImage: "link") }
                     .help("Copy the URL to add as a custom connector in Claude")
                 Button { store.copyPassword() } label: { Label("Password", systemImage: "key") }
@@ -151,6 +187,9 @@ struct MenuView: View {
                     .disabled(!snapshot.canStart)
                     .help("Restart minirun serve. Claude's calls in progress are retried after it reconnects.")
                 Spacer()
+                SettingsLink { Label("Settings…", systemImage: "gearshape") }
+                    .keyboardShortcut(",")
+                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
                 Button("Quit") { store.quit() }
                     .keyboardShortcut("q")
                     .help("Quit the menu bar app. minirun serve keeps running.")
