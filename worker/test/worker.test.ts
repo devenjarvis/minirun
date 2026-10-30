@@ -157,6 +157,40 @@ describe("minirun worker", () => {
     agent.close();
   });
 
+  it("keeps a call across a reconnect, and fails it if minirun restarted", async () => {
+    const tools = [{ name: "shutdown_simulator", description: "Shut down", inputSchema: { type: "object", properties: {} } }];
+    const first = (await connectAgent()) as WebSocket;
+    first.send(JSON.stringify({ type: "hello", version: 3, instance: "run-1", host: { name: "Test Mac" }, tools }));
+    await new Promise((r) => setTimeout(r, 50));
+    const token = await getAccessToken();
+
+    // The connection drops mid-call; the same run of minirun reconnects and hands over the result.
+    let received = nextMessage(first, (d) => d.includes('"call"'));
+    let call = rpc(token, "tools/call", { name: "shutdown_simulator", arguments: {} });
+    const { id } = JSON.parse(await received);
+    first.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const second = (await connectAgent()) as WebSocket;
+    const asked = nextMessage(second, (d) => d.includes('"pending"'));
+    second.send(JSON.stringify({ type: "hello", version: 3, instance: "run-1", host: { name: "Test Mac" }, tools }));
+    expect(JSON.parse(await asked).ids).toEqual([id]);
+    second.send(JSON.stringify({ type: "result", id, result: { content: [{ type: "text", text: "Shut down" }], isError: false } }));
+    expect((await call).result.content[0].text).toBe("Shut down");
+
+    // A restarted minirun no longer has the call, so it fails right away and says so.
+    received = nextMessage(second, (d) => d.includes('"call"'));
+    call = rpc(token, "tools/call", { name: "shutdown_simulator", arguments: {} }, 2);
+    await received;
+    second.close();
+    await new Promise((r) => setTimeout(r, 50));
+    const third = (await connectAgent()) as WebSocket;
+    third.send(JSON.stringify({ type: "hello", version: 3, instance: "run-2", host: { name: "Test Mac" }, tools }));
+    const failed = (await call).result;
+    expect(failed.isError).toBe(true);
+    expect(failed.content[0].text).toContain("restarted while running shutdown_simulator");
+    third.close();
+  });
+
   it("serves the viewer only after login, and relays frames and input", async () => {
     const anonymous = await SELF.fetch(`${ORIGIN}/`, { redirect: "manual" });
     expect(anonymous.status).toBe(302);

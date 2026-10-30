@@ -18,6 +18,8 @@ interface Hello {
   version: number;
   host: Record<string, string>;
   tools: ToolDefinition[];
+  /** Random per run of `minirun serve`, so a reconnect can be told apart from a restart. */
+  instance?: string;
 }
 
 type Codec = "jpeg" | "h264";
@@ -46,6 +48,7 @@ export interface SimulatorInfo {
 }
 
 interface Pending {
+  tool: string;
   resolve: (result: ToolResult) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -68,6 +71,12 @@ const KEYFRAME_INTERVAL_MS = 500;
 /** Longest a tool call may take. Mac jobs return within their wait_seconds (max 600). */
 const CALL_TIMEOUT_MS = 11 * 60 * 1000;
 
+/**
+ * How long calls wait for the Mac to reconnect after its connection drops. The Mac keeps running
+ * them meanwhile and hands over their results once it's back.
+ */
+const RECONNECT_GRACE_MS = 60 * 1000;
+
 const DEFAULT_STREAM: StreamSettings = { fps: 12, quality: 60, scale: 0.5, codec: "jpeg" };
 
 const decoder = new TextDecoder();
@@ -87,6 +96,8 @@ export function streamKey(value: unknown): string | null {
  */
 export class MacRelay extends DurableObject<Env> {
   private pending = new Map<string, Pending>();
+  /** Fails the pending calls if the Mac doesn't reconnect in time. */
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Per-viewer flow control: last frame sent, last frame acknowledged, and whether the viewer
    * must wait for an H.264 keyframe (it just joined, or missed a frame).
@@ -155,7 +166,7 @@ export class MacRelay extends DurableObject<Env> {
         this.pending.delete(id);
         resolve({ isError: true, content: [{ type: "text", text: `${tool} didn't answer within ${CALL_TIMEOUT_MS / 60000} minutes.` }] });
       }, CALL_TIMEOUT_MS);
-      this.pending.set(id, { resolve, timer });
+      this.pending.set(id, { tool, resolve, timer });
     });
     agent.send(JSON.stringify({ type: "call", id, tool, arguments: args ?? {} }));
     return result;
@@ -277,9 +288,12 @@ export class MacRelay extends DurableObject<Env> {
     }
     switch (message.type) {
       case "hello": {
-        await this.ctx.storage.put("hello", message as unknown as Hello);
-        this.broadcast(JSON.stringify({ type: "status", online: true, host: (message as unknown as Hello).host }));
+        const hello = message as unknown as Hello;
+        const previous = await this.ctx.storage.get<Hello>("hello");
+        await this.ctx.storage.put("hello", hello);
+        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host }));
         this.syncStreams();
+        this.recoverPending(hello.instance !== undefined && hello.instance === previous?.instance);
         break;
       }
       case "result": {
@@ -430,16 +444,44 @@ export class MacRelay extends DurableObject<Env> {
     if (role === "agent") {
       // Only report offline if this wasn't replaced by a newer connection.
       if (this.ctx.getWebSockets("agent").every((other) => other === ws)) {
-        for (const [id, pending] of this.pending) {
-          clearTimeout(pending.timer);
-          pending.resolve({ isError: true, content: [{ type: "text", text: "The Mac disconnected while running this. Try again once it reconnects." }] });
-          this.pending.delete(id);
-        }
+        if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          this.failPending((tool) =>
+            `The Mac lost its connection while running ${tool} and hasn't reconnected. It may have finished anyway: ` +
+            "check (e.g. list_jobs, list_simulators) before trying again.");
+        }, RECONNECT_GRACE_MS);
         this.broadcast(JSON.stringify({ type: "status", online: false }));
       }
     } else {
       this.viewerFrames.delete(ws);
       this.syncStreams(ws);
+    }
+  }
+
+  /**
+   * Picks up the calls that were in flight when the Mac reconnects. The same run of minirun still
+   * has them (running, or with a result it couldn't send), so it's asked to answer them; a
+   * restarted one lost them, as did a Mac too old to say which run it is.
+   */
+  private recoverPending(sameInstance: boolean) {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.pending.size === 0) return;
+    if (sameInstance) {
+      this.agent()?.send(JSON.stringify({ type: "pending", ids: [...this.pending.keys()] }));
+    } else {
+      this.failPending((tool) =>
+        `minirun on the Mac restarted while running ${tool}, so it may not have finished. ` +
+        "Check (e.g. list_jobs, list_simulators) before trying again.");
+    }
+  }
+
+  private failPending(message: (tool: string) => string) {
+    for (const [id, pending] of this.pending) {
+      clearTimeout(pending.timer);
+      pending.resolve({ isError: true, content: [{ type: "text", text: message(pending.tool) }] });
+      this.pending.delete(id);
     }
   }
 }

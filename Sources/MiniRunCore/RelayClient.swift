@@ -15,6 +15,9 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private let log: @Sendable (String) -> Void
     private let stateLock = NSLock()
     private var state: ServeStatus.Relay
+    /// Tells the relay this is the same run of minirun when it reconnects.
+    private let instance = UUID().uuidString
+    private let calls = CallLedger()
 
     public init(url: URL, token: String, registry: ToolRegistry, log: @escaping @Sendable (String) -> Void) {
         self.url = url
@@ -76,7 +79,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         socket = task
         task.resume()
 
-        let hello = RelayProtocol.hello(host: Self.hostInfo(), tools: registry.definitions)
+        let hello = RelayProtocol.hello(host: Self.hostInfo(), tools: registry.definitions, instance: instance)
         do {
             try await task.send(.string(hello.encodedString()))
         } catch {
@@ -123,9 +126,12 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private func handle(_ incoming: RelayProtocol.Incoming) {
         switch incoming {
         case .call(let id, let tool, let arguments):
+            if let id { calls.start(id) }
             Task {
                 let result = await registry.call(tool, arguments: arguments)
                 if let id {
+                    // Kept in case this send is lost to a dropped connection (see .pending).
+                    calls.finish(id, result: result)
                     await send(.string(RelayProtocol.result(id: id, result: result).encodedString()))
                 } else if result.isError {
                     log("Viewer action \(tool) failed: \(result.content.first.map { "\($0)" } ?? "")")
@@ -143,6 +149,18 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             Task { await streamer.ack(sequence, key: key) }
         case .keyframe(let key):
             Task { await streamer.requestKeyframe(key: key) }
+        case .pending(let ids):
+            Task {
+                for id in ids {
+                    let result: ToolResult
+                    switch calls.state(of: id) {
+                    case .running: continue // Its result goes out when it finishes.
+                    case .finished(let finished): result = finished
+                    case .unknown: result = .error("The Mac never got this call (the connection dropped), so it didn't run. Try again.")
+                    }
+                    await send(.string(RelayProtocol.result(id: id, result: result).encodedString()))
+                }
+            }
         case .unknown:
             break
         }

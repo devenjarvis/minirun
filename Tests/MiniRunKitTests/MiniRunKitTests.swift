@@ -93,6 +93,7 @@ final class RelayProtocolTests: XCTestCase {
             "unknown codecs fall back to JPEG"
         )
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"keyframe","key":"SIM-A"}"#), .keyframe(key: "SIM-A"))
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"pending","ids":["a","b"]}"#), .pending(ids: ["a", "b"]))
         if case .unknown = RelayProtocol.decode("garbage") {} else { XCTFail("expected unknown") }
     }
 
@@ -102,6 +103,20 @@ final class RelayProtocolTests: XCTestCase {
         XCTAssertEqual(message["result"]?["content"]?.arrayValue?.count, 2)
         XCTAssertEqual(message["result"]?["content"]?.arrayValue?[1]["data"]?.stringValue, "AQI=")
         XCTAssertEqual(message["result"]?["isError"], false)
+    }
+
+    func testCallLedger() {
+        let ledger = CallLedger(keep: 60)
+        let start = Date()
+        XCTAssertEqual(ledger.state(of: "a"), .unknown)
+        ledger.start("a")
+        XCTAssertEqual(ledger.state(of: "a"), .running)
+        ledger.finish("a", result: .text("done"), now: start)
+        XCTAssertEqual(ledger.state(of: "a", now: start.addingTimeInterval(59)), .finished(.text("done")))
+        XCTAssertEqual(ledger.state(of: "a", now: start.addingTimeInterval(61)), .unknown)
+        // Finishing another call forgets the old results.
+        ledger.finish("b", result: .text("b"), now: start.addingTimeInterval(61))
+        XCTAssertEqual(ledger.state(of: "a", now: start), .unknown)
     }
 }
 
