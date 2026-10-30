@@ -37,6 +37,10 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     private let queue = DispatchQueue(label: "dev.minirun.framebuffer")
     private let lock = NSLock()
     private var surface: IOSurface?
+    /// The simulator reported damage that no `waitForChange` has picked up yet.
+    private var changePending = false
+    private var changeWaiter: (id: Int, continuation: CheckedContinuation<Void, Never>)?
+    private var waiterCount = 0
 
     // Only touched by encode() and close(), which the caller doesn't overlap.
     private var session: VTCompressionSession?
@@ -66,9 +70,47 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         lock.lock()
         self.surface = surface
         lock.unlock()
+        signalChange()
     }
 
-    public func didReceiveDamageRect() {}
+    public func didReceiveDamageRect() {
+        signalChange()
+    }
+
+    private func signalChange() {
+        lock.lock()
+        let waiter = changeWaiter
+        changeWaiter = nil
+        if waiter == nil { changePending = true }
+        lock.unlock()
+        waiter?.continuation.resume()
+    }
+
+    /// Returns when the simulator reports that the screen changed (or already has since the last
+    /// call), or after `timeout`. Only the main screen's framebuffer reports changes; for the other
+    /// sources this always waits for the timeout, which makes it a plain polling interval.
+    public func waitForChange(timeout: TimeInterval) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if changePending {
+                changePending = false
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            waiterCount += 1
+            let id = waiterCount
+            changeWaiter = (id, continuation)
+            lock.unlock()
+            queue.asyncAfter(deadline: .now() + timeout) { [self] in
+                lock.lock()
+                let waiter = changeWaiter?.id == id ? changeWaiter : nil
+                if waiter != nil { changeWaiter = nil }
+                lock.unlock()
+                waiter?.continuation.resume()
+            }
+        }
+    }
 
     // MARK: Encoding
 

@@ -106,8 +106,41 @@ struct HIDInteractor {
     }
 
     static func performHIDEvent(_ event: FBSimulatorHIDEvent, for simulatorUDID: String, logger: AxeLogger) async throws {
+        let session = try await cachedSession(for: simulatorUDID, logger: logger)
+        do {
+            try await performHIDEvent(event, in: session, logger: logger)
+        } catch {
+            sessions[simulatorUDID] = nil
+            throw error
+        }
+    }
+
+    /// Sends one event with no stabilization delay, for live touches that arrive in a stream.
+    static func sendImmediately(_ event: FBSimulatorHIDEvent, for simulatorUDID: String, logger: AxeLogger) async throws {
+        let session = try await cachedSession(for: simulatorUDID, logger: logger)
+        do {
+            try await session.hid.send(event: event, logger: logger)
+        } catch {
+            sessions[simulatorUDID] = nil
+            throw error
+        }
+    }
+
+    // minirun: sessions are reused while the simulator's boot is the same one, so each event
+    // skips makeSession's simulator-set lookup and readiness checks (one process scan instead).
+    private static var sessions: [String: (session: Session, boot: HIDBrokerBootIdentity)] = [:]
+
+    static func cachedSession(for simulatorUDID: String, logger: AxeLogger) async throws -> Session {
+        if let cached = sessions[simulatorUDID],
+           (try? HIDBroker.currentBootIdentity(simulatorUDID: simulatorUDID)) == cached.boot {
+            return cached.session
+        }
+        sessions[simulatorUDID] = nil
         let session = try await makeSession(for: simulatorUDID, logger: logger)
-        try await performHIDEvent(event, in: session, logger: logger)
+        if let boot = try? HIDBroker.currentBootIdentity(simulatorUDID: simulatorUDID) {
+            sessions[simulatorUDID] = (session, boot)
+        }
+        return session
     }
 
     static func makeCompositeDragEvent(
@@ -192,8 +225,13 @@ struct HIDInteractor {
         for simulatorUDID: String,
         logger: AxeLogger
     ) async throws {
-        let session = try await makeSession(for: simulatorUDID, logger: logger)
-        try await performPhysicalTap(at: point, preDelay: preDelay, postDelay: postDelay, in: session, logger: logger)
+        let session = try await cachedSession(for: simulatorUDID, logger: logger)
+        do {
+            try await performPhysicalTap(at: point, preDelay: preDelay, postDelay: postDelay, in: session, logger: logger)
+        } catch {
+            sessions[simulatorUDID] = nil
+            throw error
+        }
     }
 
     static func performPhysicalTap(
@@ -250,6 +288,12 @@ struct HIDInteractor {
     }
 
     static func clearHIDConnections(for simulatorUDID: String? = nil) {
-        if let simulatorUDID { hidConnections[simulatorUDID] = nil } else { hidConnections.removeAll() }
+        if let simulatorUDID {
+            hidConnections[simulatorUDID] = nil
+            sessions[simulatorUDID] = nil
+        } else {
+            hidConnections.removeAll()
+            sessions.removeAll()
+        }
     }
 }

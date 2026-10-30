@@ -9,7 +9,8 @@ import Foundation
 /// then Annex B NAL units, where flags bit 0 marks a keyframe (which starts with SPS and PPS).
 /// A stream's key is the simulator UDID viewers asked for, or "" for "whichever is booted".
 public enum RelayProtocol {
-    public static let version = 3
+    /// 4 added live touches (`touch` messages).
+    public static let version = 4
 
     public enum FrameKind: UInt8, Sendable {
         case jpeg = 1
@@ -138,6 +139,8 @@ public enum RelayProtocol {
         case ack(sequence: UInt32, key: String)
         /// A viewer of stream `key` needs a keyframe to start (or resume) decoding H.264.
         case keyframe(key: String)
+        /// One step of a live touch from a viewer, in points: phase is "down", "move" or "up".
+        case touch(udid: String, phase: String, x: Double, y: Double)
         case unknown(String)
     }
 
@@ -164,6 +167,10 @@ public enum RelayProtocol {
             return .ack(sequence: UInt32(clamping: message["seq"]?.intValue ?? 0), key: message["key"]?.stringValue ?? "")
         case "keyframe":
             return .keyframe(key: message["key"]?.stringValue ?? "")
+        case "touch":
+            guard let udid = message["device"]?.stringValue, let phase = message["phase"]?.stringValue,
+                  let x = message["x"]?.doubleValue, let y = message["y"]?.doubleValue else { return .unknown(text) }
+            return .touch(udid: udid, phase: phase, x: x, y: y)
         default:
             return .unknown(text)
         }

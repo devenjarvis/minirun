@@ -46,9 +46,24 @@ public final class SimulatorDriver {
         public var errorDescription: String? { message }
     }
 
+    public enum TouchPhase: String, Sendable {
+        case down, move, up
+    }
+
     private let logger = AxeLogger()
     private var didSetup = false
     private var simulatorSet: FBSimulatorSet?
+
+    /// How UI points map to the HID's portrait space, per simulator. Working it out reads the
+    /// whole accessibility tree (most of a second), so it's kept until the orientation changes,
+    /// an app launches (`forgetCoordinateMapping`), or `mappingLifetime` passes. The lifetime is
+    /// long because each refresh stalls the touch that triggers it.
+    private var mappings: [String: (mapping: CoordinateMapping, orientation: SimulatorOrientation?, at: Date)] = [:]
+    private static let mappingLifetime: TimeInterval = 600
+    /// Without the orientation probe there's nothing to notice a rotation by, so recheck sooner.
+    private static let unprobedMappingLifetime: TimeInterval = 2
+    /// Where each simulator's live touch is held down, in HID points, so it can be released.
+    private var heldTouches: [String: (x: Double, y: Double)] = [:]
 
     private init() {}
 
@@ -79,6 +94,11 @@ public final class SimulatorDriver {
             throw DriverError(message: "Simulator \(simulator.name) (\(udid)) is not booted. Call boot_simulator first.")
         }
         return simulator
+    }
+
+    /// Whether the simulator is booted, from FBSimulatorControl's in-process state (no simctl).
+    public func isBooted(udid: String) async -> Bool {
+        (try? await simulator(udid)) != nil
     }
 
     // MARK: Screen
@@ -158,10 +178,54 @@ public final class SimulatorDriver {
 
     // MARK: Input (coordinates are in points, in the current UI orientation)
 
+    /// Translates points in the current UI orientation to the HID's portrait space.
+    private func physicalPoints(_ points: [(x: Double, y: Double)], udid: String, simulator: FBSimulator) async throws -> [(x: Double, y: Double)] {
+        let orientation = SimulatorOrientationReader.currentOrientation(simulator: simulator, logger: logger)
+        let lifetime = orientation == nil ? Self.unprobedMappingLifetime : Self.mappingLifetime
+        let mapping: CoordinateMapping
+        if let cached = mappings[udid], cached.orientation == orientation, Date().timeIntervalSince(cached.at) < lifetime {
+            mapping = cached.mapping
+        } else {
+            mapping = try await OrientationAwareCoordinates.detectMapping(for: udid, logger: logger)
+            mappings[udid] = (mapping, orientation, Date())
+        }
+        return points.map { OrientationAwareCoordinates.applyMapping(mapping, to: $0, logger: logger) }
+    }
+
+    /// Drops the cached coordinate mapping, e.g. after launching an app that may be landscape-only.
+    public func forgetCoordinateMapping(udid: String) {
+        mappings[udid] = nil
+    }
+
+    /// One step of a live touch from the viewer: down, then any moves, then up. Each is sent as
+    /// it arrives, so a drag tracks the finger instead of being replayed after it lifts.
+    public func touch(udid: String, phase: TouchPhase, x: Double, y: Double) async throws {
+        // A move or up with nothing held is left over from a touch that already failed.
+        if phase != .down && heldTouches[udid] == nil { return }
+        let target = try await simulator(udid)
+        let point = try await physicalPoints([(x, y)], udid: udid, simulator: target)[0]
+        heldTouches[udid] = phase == .up ? nil : point
+        do {
+            // The HID treats another touch-down at a new point as the finger moving there.
+            try await HIDInteractor.sendImmediately(.touch(direction: phase == .up ? .up : .down, x: point.x, y: point.y), for: udid, logger: logger)
+        } catch {
+            heldTouches[udid] = nil
+            throw error
+        }
+    }
+
+    /// Lifts any live touch still held, e.g. when the viewer that started it goes away.
+    public func releaseTouches() async {
+        for (udid, point) in heldTouches {
+            try? await HIDInteractor.sendImmediately(.touch(direction: .up, x: point.x, y: point.y), for: udid, logger: logger)
+        }
+        heldTouches.removeAll()
+    }
+
     /// Taps a point, or an element found by accessibility id/label/value. Returns the point tapped.
     @discardableResult
     public func tap(udid: String, x: Double? = nil, y: Double? = nil, query: ElementQuery? = nil, wait: TimeInterval = 0) async throws -> (x: Double, y: Double) {
-        _ = try await simulator(udid)
+        let target = try await simulator(udid)
         let resolution: TapResolution
         if let query {
             resolution = try await AccessibilityPoller.resolveWithPolling(
@@ -177,7 +241,7 @@ public final class SimulatorDriver {
             throw DriverError(message: "Give either x and y, or an element id/label/value to tap.")
         }
 
-        let physical = try await OrientationAwareCoordinates.translate(point: resolution.point, for: udid, logger: logger)
+        let physical = try await physicalPoints([resolution.point], udid: udid, simulator: target)[0]
         if resolution.isSwitchLikeControl {
             try await HIDInteractor.performPhysicalTap(at: physical, preDelay: nil, postDelay: nil, for: udid, logger: logger)
         } else {
@@ -187,8 +251,8 @@ public final class SimulatorDriver {
     }
 
     public func swipe(udid: String, from start: (x: Double, y: Double), to end: (x: Double, y: Double), duration: TimeInterval = 0.4) async throws {
-        _ = try await simulator(udid)
-        let points = try await OrientationAwareCoordinates.translateBatch(points: [start, end], for: udid, logger: logger)
+        let target = try await simulator(udid)
+        let points = try await physicalPoints([start, end], udid: udid, simulator: target)
         let delta = max(5.0, hypot(points[1].x - points[0].x, points[1].y - points[0].y) / 20.0)
         let event = FBSimulatorHIDEvent.swipe(
             points[0].x,
@@ -203,8 +267,8 @@ public final class SimulatorDriver {
 
     /// Long press / drag primitive: touch down at `start`, move to `end` over `duration`, release.
     public func drag(udid: String, from start: (x: Double, y: Double), to end: (x: Double, y: Double), duration: TimeInterval, hold: TimeInterval) async throws {
-        _ = try await simulator(udid)
-        let points = try await OrientationAwareCoordinates.translateBatch(points: [start, end], for: udid, logger: logger)
+        let target = try await simulator(udid)
+        let points = try await physicalPoints([start, end], udid: udid, simulator: target)
         let event = try HIDInteractor.makeCompositeDragEvent(
             from: points[0],
             to: points[1],
@@ -258,6 +322,13 @@ public final class SimulatorDriver {
     /// simulators' connections alone.
     public func reset(udid: String? = nil) {
         HIDInteractor.clearHIDConnections(for: udid)
+        if let udid {
+            mappings[udid] = nil
+            heldTouches[udid] = nil
+        } else {
+            mappings.removeAll()
+            heldTouches.removeAll()
+        }
         simulatorSet = nil
     }
 }
