@@ -408,6 +408,19 @@ final class SimulatorPickerTests: XCTestCase {
         XCTAssertEqual(udid(SimulatorPicker.fresh(query: "A", label: nil, devices: devices, claims: claims, preferredName: nil)), "A", "UDID wins")
     }
 
+    func testTemplateForCopies() {
+        let like = device("A", "iPhone 17 Pro", booted: true)
+        let template = device("T", "iPhone 17 Pro (minirun template)")
+        let otherRuntime = Device(udid: "R", name: "iPhone 17 Pro (minirun template)", state: "Shutdown", runtime: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", isAvailable: true, deviceType: proType)
+        let otherModel = Device(udid: "M", name: "iPhone 17 (minirun template)", state: "Shutdown", runtime: runtime, isAvailable: true, deviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17")
+        XCTAssertTrue(SimulatorPicker.isTemplate(template))
+        XCTAssertFalse(SimulatorPicker.isTemplate(device("P2", "iPhone 17 Pro (minirun 2)")))
+        XCTAssertEqual(SimulatorPicker.template(for: like, in: [like, otherRuntime, otherModel, template])?.udid, "T")
+        XCTAssertNil(SimulatorPicker.template(for: like, in: [like, otherRuntime, otherModel]), "same model and runtime only")
+        XCTAssertNil(SimulatorPicker.template(for: like, in: [device("T", "iPhone 17 Pro (minirun template)", booted: true)]), "a booted template can't be cloned")
+        XCTAssertNil(SimulatorPicker.template(for: like, in: [device("B", "iPhone 17 Pro")]), "plain simulators aren't templates")
+    }
+
     func testBootRespectsTheLimit() {
         let devices = [device("A", "iPhone 17 Pro", booted: true), device("B", "iPhone 17 Pro", booted: true), device("C", "iPhone 17 Pro")]
         let claims = ["A": claim("you/app@a"), "B": claim("you/app@b")]

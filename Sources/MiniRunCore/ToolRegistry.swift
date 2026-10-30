@@ -100,8 +100,9 @@ public final class ToolRegistry: @unchecked Sendable {
     func simulators() async throws -> (devices: [XcodeParsing.SimDevice], claims: [String: SimulatorClaim]) {
         // Read the boots first: one that finishes in between then shows as booted either way.
         let booting = await boots.booting
-        let all = try await Simctl.devices().map { booting.contains($0.udid) ? $0.booted : $0 }
-        await knownDevices.update(all)
+        let listed = try await Simctl.devices().map { booting.contains($0.udid) ? $0.booted : $0 }
+        await knownDevices.update(listed)
+        let all = listed.filter { !SimulatorPicker.isTemplate($0) }
         let current = await claims.snapshot(booted: Set(all.filter(\.isBooted).map(\.udid)))
         return (all, current)
     }
@@ -132,9 +133,16 @@ public final class ToolRegistry: @unchecked Sendable {
             let started = await startBoot(device.udid)
             return Allocation(device: device.booted, note: note, boot: started)
         case .create(let name, let like, let note):
-            let udid = try await Simctl.create(name: name, like: like)
+            let udid: String
+            var created = "Created \(name)"
+            if let template = SimulatorPicker.template(for: like, in: await knownDevices.all) {
+                udid = try await Simctl.clone(template, name: name)
+                created += " from the template \(template.name)"
+            } else {
+                udid = try await Simctl.create(name: name, like: like)
+            }
             let device = XcodeParsing.SimDevice(udid: udid, name: name, state: "Booted", runtime: like.runtime, isAvailable: true, deviceType: like.deviceType)
-            let fullNote = [note, "Created \(name) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " ")
+            let fullNote = [note, "\(created) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " ")
             let started = await startBoot(udid)
             return Allocation(device: device, note: fullNote, boot: started)
         }
@@ -272,13 +280,15 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 }
 
-/// The simulators `simctl` listed last, by UDID.
+/// The simulators `simctl` listed last, templates included, by UDID.
 actor KnownDevices {
     private var devices: [String: XcodeParsing.SimDevice] = [:]
+    private(set) var all: [XcodeParsing.SimDevice] = []
 
     subscript(udid: String) -> XcodeParsing.SimDevice? { devices[udid.uppercased()] }
 
     func update(_ list: [XcodeParsing.SimDevice]) {
+        all = list
         devices = Dictionary(list.map { ($0.udid.uppercased(), $0) }, uniquingKeysWith: { a, _ in a })
     }
 }

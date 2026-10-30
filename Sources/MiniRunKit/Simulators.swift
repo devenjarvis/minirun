@@ -35,6 +35,18 @@ public enum SimulatorPicker {
     /// Simulators minirun creates are named like "iPhone 17 Pro (minirun 2)".
     public static let cloneMarker = " (minirun "
 
+    /// A shut-down simulator named like "iPhone 17 Pro (minirun template)" that has booted once.
+    /// New copies are cloned from it, which skips the several-minute data migration of a first
+    /// boot. Templates are never handed out themselves.
+    public static let templateMarker = " (minirun template)"
+
+    public static func isTemplate(_ device: Device) -> Bool { device.name.hasSuffix(templateMarker) }
+
+    /// The template to clone a copy of `like` from: a shut-down template of the same model and runtime.
+    public static func template(for like: Device, in devices: [Device]) -> Device? {
+        devices.first { isTemplate($0) && $0.isAvailable && !$0.isBooted && $0.deviceType != nil && $0.deviceType == like.deviceType && $0.runtime == like.runtime }
+    }
+
     /// Picks the simulator for a tool call.
     ///
     /// - Parameters:
