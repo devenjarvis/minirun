@@ -31,7 +31,8 @@ echo "Created $UDID ($TYPE, $RUNTIME)"
 run boot_simulator "{\"device\":\"$UDID\"}" | expect "Booted"
 run screenshot "{\"device\":\"$UDID\"}" | expect "image saved"
 
-(cd "$ROOT/Tests/Fixtures/HelloApp" && xcodegen generate --quiet)
+# No `xcodegen generate` here: build_and_run generates HelloApp.xcodeproj from project.yml itself.
+rm -rf "$ROOT/Tests/Fixtures/HelloApp/HelloApp.xcodeproj"
 run build_and_run "{\"device\":\"$UDID\",\"path\":\"$ROOT/Tests/Fixtures/HelloApp\",\"scheme\":\"HelloApp\",\"wait_seconds\":600}" | tee /tmp/minirun-build.txt | expect "Installed and launched"
 
 sleep 2

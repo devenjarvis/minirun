@@ -50,10 +50,13 @@ public enum RelayProtocol {
 
     // MARK: Mac -> relay
 
-    public static func hello(host: [String: JSONValue], tools: [ToolDefinition]) -> JSONValue {
+    /// `instance` is random per run of `minirun serve`, so the relay can tell a reconnect (which
+    /// still has the calls in flight) from a restart (which lost them).
+    public static func hello(host: [String: JSONValue], tools: [ToolDefinition], instance: String) -> JSONValue {
         [
             "type": "hello",
             "version": JSONValue(version),
+            "instance": .string(instance),
             "host": .object(host),
             "tools": .array(tools.map(\.json)),
         ]
@@ -139,6 +142,8 @@ public enum RelayProtocol {
         case ack(sequence: UInt32, key: String)
         /// A viewer of stream `key` needs a keyframe to start (or resume) decoding H.264.
         case keyframe(key: String)
+        /// After a reconnect: calls the relay is still waiting on. Answer the finished ones.
+        case pending(ids: [String])
         /// One step of a live touch from a viewer, in points: phase is "down", "move" or "up".
         case touch(udid: String, phase: String, x: Double, y: Double)
         case unknown(String)
@@ -167,6 +172,8 @@ public enum RelayProtocol {
             return .ack(sequence: UInt32(clamping: message["seq"]?.intValue ?? 0), key: message["key"]?.stringValue ?? "")
         case "keyframe":
             return .keyframe(key: message["key"]?.stringValue ?? "")
+        case "pending":
+            return .pending(ids: (message["ids"]?.arrayValue ?? []).compactMap(\.stringValue))
         case "touch":
             guard let udid = message["device"]?.stringValue, let phase = message["phase"]?.stringValue,
                   let x = message["x"]?.doubleValue, let y = message["y"]?.doubleValue else { return .unknown(text) }
