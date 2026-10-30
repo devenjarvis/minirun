@@ -1,0 +1,30 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 33 iOS simulators
+✗ minirun serve: not running — launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set — run minirun setup
+✗ Agent token: not set
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+✗ GitHub auth (for private repos): optional: run `gh auth login && gh auth setup-git`
+Created BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D (com.apple.CoreSimulator.SimDeviceType.iPhone-11-Pro, com.apple.CoreSimulator.SimRuntime.iOS-26-5)
++ minirun call boot_simulator {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call screenshot {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call build_and_run {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600}
++ minirun call describe_ui {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call tap {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","id":"tapButton"}
++ minirun call describe_ui {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call tap {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","id":"nameField"}
++ minirun call type_text {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","text":"Claude"}
++ minirun call describe_ui {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call screenshot {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D"}
++ minirun call swipe {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","direction":"up"}
++ minirun call press_button {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","button":"home"}
++ minirun call app_logs {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","bundle_id":"dev.minirun.HelloApp","seconds":120}
++ minirun call terminate_app {"device":"BDE81B82-9CE2-40F8-BE37-4AEA2CF8729D","bundle_id":"dev.minirun.HelloApp"}
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"}
++ minirun call boot_simulator {"label":"smoke/second"}
+FAILED: expected output to contain: E2E2B1C3-2F6C-40C6-951C-66CF4DFD8A0A
+--- output was:
+[job_07e65161] boot simulator for smoke/second: failed in 69s
+simctl list timed out after 60s:

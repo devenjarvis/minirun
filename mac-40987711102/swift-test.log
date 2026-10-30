@@ -1,0 +1,122 @@
+[0/1] Planning build
+Building for debugging...
+[0/8] /Users/runner/work/minirun/minirun/.build/arm64-apple-macosx/debug/minirunPackageTests.derived/runner.swift
+[0/10] Write sources
+[3/9] Write swift-version-7974D3F7F03D5E95.txt
+[4/10] Linking minirun
+[5/10] Applying minirun
+[7/10] Compiling MiniRunKitTests MiniRunKitTests.swift
+[8/10] Emitting module MiniRunKitTests
+[9/12] Compiling minirunPackageTests runner.swift
+[10/12] Emitting module minirunPackageTests
+[10/12] Write Objects.LinkFileList
+[11/12] Linking minirunPackageTests
+Build complete! (18.84s)
+Test Suite 'All tests' started at 2026-10-30 01:47:09.988.
+Test Suite 'minirunPackageTests.xctest' started at 2026-10-30 01:47:09.996.
+Test Suite 'ConfigTests' started at 2026-10-30 01:47:09.996.
+Test Case '-[MiniRunKitTests.ConfigTests testDecodesPartialConfig]' started.
+Test Case '-[MiniRunKitTests.ConfigTests testDecodesPartialConfig]' passed (0.005 seconds).
+Test Case '-[MiniRunKitTests.ConfigTests testResolveRepo]' started.
+Test Case '-[MiniRunKitTests.ConfigTests testResolveRepo]' passed (0.002 seconds).
+Test Suite 'ConfigTests' passed at 2026-10-30 01:47:10.005.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.007 (0.009) seconds
+Test Suite 'ControlSocketTests' started at 2026-10-30 01:47:10.005.
+Test Case '-[MiniRunKitTests.ControlSocketTests testConcurrentRequests]' started.
+Test Case '-[MiniRunKitTests.ControlSocketTests testConcurrentRequests]' passed (0.317 seconds).
+Test Case '-[MiniRunKitTests.ControlSocketTests testOneServerPerPathAndLeftoverSocketsAreReplaced]' started.
+Test Case '-[MiniRunKitTests.ControlSocketTests testOneServerPerPathAndLeftoverSocketsAreReplaced]' passed (0.007 seconds).
+Test Case '-[MiniRunKitTests.ControlSocketTests testSocketPathLimit]' started.
+Test Case '-[MiniRunKitTests.ControlSocketTests testSocketPathLimit]' passed (0.002 seconds).
+Test Case '-[MiniRunKitTests.ControlSocketTests testStatusRoundTripsOverTheSocket]' started.
+Test Case '-[MiniRunKitTests.ControlSocketTests testStatusRoundTripsOverTheSocket]' passed (0.013 seconds).
+Test Case '-[MiniRunKitTests.ControlSocketTests testSummary]' started.
+Test Case '-[MiniRunKitTests.ControlSocketTests testSummary]' passed (0.001 seconds).
+Test Suite 'ControlSocketTests' passed at 2026-10-30 01:47:10.348.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.341 (0.343) seconds
+Test Suite 'JSONValueTests' started at 2026-10-30 01:47:10.348.
+Test Case '-[MiniRunKitTests.JSONValueTests testArguments]' started.
+Test Case '-[MiniRunKitTests.JSONValueTests testArguments]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.JSONValueTests testRoundTrip]' started.
+Test Case '-[MiniRunKitTests.JSONValueTests testRoundTrip]' passed (0.000 seconds).
+Test Suite 'JSONValueTests' passed at 2026-10-30 01:47:10.349.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RelayProtocolTests' started at 2026-10-30 01:47:10.349.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testAnnexB]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testAnnexB]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testBitrate]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testBitrate]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testDecodeMessages]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testDecodeMessages]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testFrameEncoding]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testFrameEncoding]' passed (0.006 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testResultShape]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testResultShape]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.RelayProtocolTests testSPSWithoutReordering]' started.
+Test Case '-[MiniRunKitTests.RelayProtocolTests testSPSWithoutReordering]' passed (0.001 seconds).
+Test Suite 'RelayProtocolTests' passed at 2026-10-30 01:47:10.359.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+Test Suite 'ShellAndJobTests' started at 2026-10-30 01:47:10.359.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testJobWaitsAndTimesOut]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testJobWaitsAndTimesOut]' passed (2.026 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellCapturesOutput]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellCapturesOutput]' passed (0.143 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellStdin]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellStdin]' passed (0.083 seconds).
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellTimeout]' started.
+Test Case '-[MiniRunKitTests.ShellAndJobTests testShellTimeout]' passed (0.585 seconds).
+Test Suite 'ShellAndJobTests' passed at 2026-10-30 01:47:13.198.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 2.837 (2.839) seconds
+Test Suite 'SimulatorPickerTests' started at 2026-10-30 01:47:13.198.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testActivityCountsOverlappingWork]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testActivityCountsOverlappingWork]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootGivesEachSessionItsOwnSimulator]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootGivesEachSessionItsOwnSimulator]' passed (0.005 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootRespectsTheLimit]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootRespectsTheLimit]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootsRunOnceAndReportFailures]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBootsRunOnceAndReportFailures]' passed (0.107 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBuildsFindTheirOwnSimulator]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testBuildsFindTheirOwnSimulator]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testClaimStorePersistsAndPrunes]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testClaimStorePersistsAndPrunes]' passed (0.008 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testClaimStoreSavesUseTimesAndUnreserves]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testClaimStoreSavesUseTimesAndUnreserves]' passed (0.002 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testFreshSkipsTheDuo]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testFreshSkipsTheDuo]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testIdleSimulatorsShutDownButOneStaysWarm]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testIdleSimulatorsShutDownButOneStaysWarm]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testPlainToolsNeverGuessBetweenBootedSimulators]' started.
+Test Case '-[MiniRunKitTests.SimulatorPickerTests testPlainToolsNeverGuessBetweenBootedSimulators]' passed (0.001 seconds).
+Test Suite 'SimulatorPickerTests' passed at 2026-10-30 01:47:13.329.
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.128 (0.131) seconds
+Test Suite 'WorkspaceTests' started at 2026-10-30 01:47:13.329.
+Test Case '-[MiniRunKitTests.WorkspaceTests testDirectoriesPerRef]' started.
+Test Case '-[MiniRunKitTests.WorkspaceTests testDirectoriesPerRef]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.WorkspaceTests testKeyedLockSerializesPerKey]' started.
+Test Case '-[MiniRunKitTests.WorkspaceTests testKeyedLockSerializesPerKey]' passed (0.036 seconds).
+Test Case '-[MiniRunKitTests.WorkspaceTests testViewerURL]' started.
+Test Case '-[MiniRunKitTests.WorkspaceTests testViewerURL]' passed (0.001 seconds).
+Test Suite 'WorkspaceTests' passed at 2026-10-30 01:47:13.368.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.038 (0.039) seconds
+Test Suite 'XcodeParsingTests' started at 2026-10-30 01:47:13.368.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testAccessibilitySummary]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testAccessibilitySummary]' passed (0.001 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testDefaultiPhoneSkipsDuoAndPrefersNewestPro]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testDefaultiPhoneSkipsDuoAndPrefersNewestPro]' passed (0.002 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseAndPickDevices]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseAndPickDevices]' passed (0.002 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseIssues]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testParseIssues]' passed (0.000 seconds).
+Test Case '-[MiniRunKitTests.XcodeParsingTests testSchemesAndProduct]' started.
+Test Case '-[MiniRunKitTests.XcodeParsingTests testSchemesAndProduct]' passed (0.000 seconds).
+Test Suite 'XcodeParsingTests' passed at 2026-10-30 01:47:13.375.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+Test Suite 'minirunPackageTests.xctest' passed at 2026-10-30 01:47:13.375.
+	 Executed 37 tests, with 0 failures (0 unexpected) in 3.367 (3.379) seconds
+Test Suite 'All tests' passed at 2026-10-30 01:47:13.375.
+	 Executed 37 tests, with 0 failures (0 unexpected) in 3.367 (3.387) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
