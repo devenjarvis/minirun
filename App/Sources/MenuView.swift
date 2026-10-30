@@ -18,6 +18,7 @@ struct MenuView: View {
             } else if snapshot.canStart {
                 notRunning
             }
+            RunnersMenuSection(store: store.runners, menu: store)
             Divider()
             footer
         }

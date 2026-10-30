@@ -5,18 +5,23 @@
 #
 #   ./scripts/github-runner.sh install owner/repo [--allow-public]
 #   ./scripts/github-runner.sh uninstall owner/repo
+#   ./scripts/github-runner.sh start|stop owner/repo
 #   ./scripts/github-runner.sh status
 #
 # Needs `gh` logged in as someone with admin access to the repository. Registration tokens are
 # fetched with gh, live about an hour, and are never written to disk or printed.
+# The menu bar app carries this script (Settings → GitHub Runners) and runs the same commands.
+# Exit codes: 1 for errors, 3 when install refuses a public repository without --allow-public.
 set -euo pipefail
 RUNNERS="$HOME/.minirun/github-runner"
 LABEL_EXTRA="minirun"   # the runner adds self-hosted, macOS and ARM64 itself
 export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
 
-step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
+step() {
+  if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then printf '\n\033[1m==> %s\033[0m\n' "$*"; else printf '\n==> %s\n' "$*"; fi
+}
 die() { echo "error: $*" >&2; exit 1; }
-usage() { sed -n '6,8s/^#   //p' "${BASH_SOURCE[0]}"; exit "${1:-1}"; }
+usage() { sed -n '6,9s/^#   //p' "${BASH_SOURCE[0]}"; exit "${1:-1}"; }
 
 check_repo_arg() {
   [[ "${1:-}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || die "expected owner/repo, got '${1:-}'"
@@ -95,7 +100,7 @@ cmd_install() {
   echo "Visibility: $visibility"
   if [[ "$visibility" == public ]]; then
     warn_public "$repo"
-    $allow_public || die "refusing to register a runner for a public repository. Re-run with --allow-public once fork PR approval is set."
+    $allow_public || { echo "error: refusing to register a runner for a public repository. Re-run with --allow-public once fork PR approval is set." >&2; exit 3; }
     local policy
     policy="$(gh api "repos/$repo/actions/permissions/fork-pr-contributor-approval" --jq .approval_policy 2>/dev/null || true)"
     if [[ -n "$policy" && "$policy" != all_external_contributors ]]; then
@@ -213,6 +218,34 @@ cmd_uninstall() {
   echo "Runner for $repo removed."
 }
 
+# Starts or stops an installed runner's LaunchAgent. A stopped runner shows as offline on GitHub
+# and takes no jobs; it stays registered, and starts again at the next login unless uninstalled.
+cmd_service() {
+  local action="$1" repo="${2:-}"
+  check_repo_arg "$repo"
+  check_mac
+  local dir
+  dir="$(runner_dir "$repo")"
+  [[ -f "$dir/.runner" ]] || die "no runner is installed for $repo. Add one with: $0 install $repo"
+  service_label "$dir" >/dev/null || die "the runner for $repo has no LaunchAgent. Re-run: $0 install $repo"
+  case "$action" in
+    start)
+      case "$(service_state "$dir")" in
+        running) echo "The runner for $repo is already running." ; return 0 ;;
+        "not loaded") (cd "$dir" && ./svc.sh start) || die "the runner service didn't start. Check $dir/_diag." ;;
+        *) launchctl kickstart "gui/$(id -u)/$(service_label "$dir")" || die "the runner service didn't start. Check $dir/_diag." ;;
+      esac
+      sleep 2 ;;
+    stop)
+      if [[ "$(service_state "$dir")" == "not loaded" ]]; then
+        echo "The runner for $repo is already stopped."
+        return 0
+      fi
+      (cd "$dir" && ./svc.sh stop) || die "the runner service didn't stop." ;;
+  esac
+  echo "Service: $(service_state "$dir")"
+}
+
 cmd_status() {
   local found=false dir repo name gh_status
   for dir in "$RUNNERS"/*/; do
@@ -235,6 +268,7 @@ cmd_status() {
 case "${1:-}" in
   install) shift; cmd_install "$@" ;;
   uninstall) shift; cmd_uninstall "$@" ;;
+  start|stop) cmd_service "$@" ;;
   status) cmd_status ;;
   -h|--help) usage 0 ;;
   *) usage ;;

@@ -6,6 +6,7 @@
 #   minirun.app/Contents/Helpers/minirun        the CLI and `minirun serve`, run by the LaunchAgent
 #   minirun.app/Contents/Frameworks/FB*.framework   the simulator frameworks the helper loads
 #   minirun.app/Contents/Resources/worker/      the prebuilt Worker that `minirun worker deploy` uploads
+#   minirun.app/Contents/Resources/github-runner.sh   what Settings → GitHub Runners runs
 #
 #   ./scripts/install-app.sh [--with-daemon BIN_DIR]   build, install and open
 #   ./scripts/install-app.sh --build-only [--with-daemon BIN_DIR]   just build (CI and releases use this)
@@ -67,6 +68,8 @@ if [[ -n "$DAEMON_DIR" ]]; then
   # Proves the helper finds its frameworks inside the bundle (dyld fails at launch otherwise).
   "$APP/Contents/Helpers/minirun" version >/dev/null || { echo "The bundled minirun doesn't start; see the error above."; exit 1; }
 fi
+# Settings → GitHub Runners runs the same script as the command line.
+install -m 755 "$ROOT/scripts/github-runner.sh" "$APP/Contents/Resources/github-runner.sh"
 codesign --force --sign - "$APP"
 echo "Built $APP"
 $BUILD_ONLY && exit 0
