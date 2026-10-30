@@ -5508,6 +5508,7 @@ var MacRelay = class extends DurableObject {
         const hello = message;
         const previous = await this.ctx.storage.get("hello");
         await this.ctx.storage.put("hello", hello);
+        this.agent()?.send(JSON.stringify({ type: "welcome", bundle: this.env.MINIRUN_BUNDLE ?? null }));
         this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION }));
         this.syncStreams();
         this.recoverPending(hello.instance !== void 0 && hello.instance === previous?.instance);

@@ -323,6 +323,8 @@ export class MacRelay extends DurableObject<Env> {
         const hello = message as unknown as Hello;
         const previous = await this.ctx.storage.get<Hello>("hello");
         await this.ctx.storage.put("hello", hello);
+        // Tells the Mac which code this Worker runs, so it can say when the Worker needs updating.
+        this.agent()?.send(JSON.stringify({ type: "welcome", bundle: this.env.MINIRUN_BUNDLE ?? null }));
         this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION }));
         this.syncStreams();
         this.recoverPending(hello.instance !== undefined && hello.instance === previous?.instance);

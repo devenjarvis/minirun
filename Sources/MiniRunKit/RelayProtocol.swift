@@ -146,6 +146,9 @@ public enum RelayProtocol {
         case pending(ids: [String])
         /// One step of a live touch from a viewer, in points: phase is "down", "move" or "up".
         case touch(udid: String, phase: String, x: Double, y: Double)
+        /// The relay's answer to `hello`: the Worker's MINIRUN_BUNDLE (the hash of the code it runs),
+        /// or nil for a Worker deployed with wrangler. Older Workers don't send it.
+        case welcome(bundle: String?)
         case unknown(String)
     }
 
@@ -178,6 +181,8 @@ public enum RelayProtocol {
             guard let udid = message["device"]?.stringValue, let phase = message["phase"]?.stringValue,
                   let x = message["x"]?.doubleValue, let y = message["y"]?.doubleValue else { return .unknown(text) }
             return .touch(udid: udid, phase: phase, x: x, y: y)
+        case "welcome":
+            return .welcome(bundle: message["bundle"]?.stringValue)
         default:
             return .unknown(text)
         }
