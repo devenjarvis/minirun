@@ -13,21 +13,24 @@ public enum XcodeParsing {
         public let isAvailable: Bool
         /// e.g. "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro"; needed to create a copy.
         public let deviceType: String?
+        /// When it last booted, if it ever has.
+        public let lastBootedAt: Date?
 
-        public init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool, deviceType: String? = nil) {
+        public init(udid: String, name: String, state: String, runtime: String, isAvailable: Bool, deviceType: String? = nil, lastBootedAt: Date? = nil) {
             self.udid = udid
             self.name = name
             self.state = state
             self.runtime = runtime
             self.isAvailable = isAvailable
             self.deviceType = deviceType
+            self.lastBootedAt = lastBootedAt
         }
 
         public var isBooted: Bool { state == "Booted" }
 
         /// The same simulator, marked booted (after booting it).
         public var booted: SimDevice {
-            SimDevice(udid: udid, name: name, state: "Booted", runtime: runtime, isAvailable: isAvailable, deviceType: deviceType)
+            SimDevice(udid: udid, name: name, state: "Booted", runtime: runtime, isAvailable: isAvailable, deviceType: deviceType, lastBootedAt: lastBootedAt)
         }
 
         /// "com.apple.CoreSimulator.SimRuntime.iOS-26-0" -> "iOS 26.0"
@@ -56,7 +59,8 @@ public enum XcodeParsing {
                     state: entry["state"]?.stringValue ?? "Unknown",
                     runtime: runtime,
                     isAvailable: entry["isAvailable"]?.boolValue ?? true,
-                    deviceType: entry["deviceTypeIdentifier"]?.stringValue
+                    deviceType: entry["deviceTypeIdentifier"]?.stringValue,
+                    lastBootedAt: entry["lastBootedAt"]?.stringValue.flatMap { ISO8601DateFormatter().date(from: $0) }
                 ))
             }
         }

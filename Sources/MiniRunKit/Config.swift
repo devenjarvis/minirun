@@ -21,6 +21,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     public var idleShutdownMinutes: Int
     /// How many simulators minirun keeps booted at once before it asks for one to be freed.
     public var maxBootedSimulators: Int
+    /// Deletes minirun's "(minirun N)" copies that haven't booted for this many days (0 keeps them).
+    public var deleteCopiesAfterDays: Int
 
     public init(
         relayURL: String? = nil,
@@ -31,7 +33,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         preventSleep: Bool = true,
         gitURLTemplate: String = "https://github.com/{repo}.git",
         idleShutdownMinutes: Int = 30,
-        maxBootedSimulators: Int = 4
+        maxBootedSimulators: Int = 4,
+        deleteCopiesAfterDays: Int = 7
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -42,6 +45,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.gitURLTemplate = gitURLTemplate
         self.idleShutdownMinutes = idleShutdownMinutes
         self.maxBootedSimulators = maxBootedSimulators
+        self.deleteCopiesAfterDays = deleteCopiesAfterDays
     }
 
     public init(from decoder: Decoder) throws {
@@ -55,6 +59,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         gitURLTemplate = try c.decodeIfPresent(String.self, forKey: .gitURLTemplate) ?? "https://github.com/{repo}.git"
         idleShutdownMinutes = try c.decodeIfPresent(Int.self, forKey: .idleShutdownMinutes) ?? 30
         maxBootedSimulators = try c.decodeIfPresent(Int.self, forKey: .maxBootedSimulators) ?? 4
+        deleteCopiesAfterDays = try c.decodeIfPresent(Int.self, forKey: .deleteCopiesAfterDays) ?? 7
     }
 
     public static var home: String { FileManager.default.homeDirectoryForCurrentUser.path }

@@ -26,6 +26,10 @@ public final class ToolRegistry: @unchecked Sendable {
     let knownDevices = KnownDevices()
     /// One sync/build at a time per checkout.
     let checkouts = KeyedLock()
+    /// Makes a template after the first copy of a model, so later copies are clones. Only
+    /// `minirun serve` does: a one-shot `minirun call` would exit partway through.
+    public var makesTemplates = false
+    let templateBuilds = TemplateBuilds()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL
@@ -135,7 +139,8 @@ public final class ToolRegistry: @unchecked Sendable {
         case .create(let name, let like, let note):
             let udid: String
             var created = "Created \(name)"
-            if let template = SimulatorPicker.template(for: like, in: await knownDevices.all) {
+            let template = SimulatorPicker.template(for: like, in: await knownDevices.all)
+            if let template {
                 udid = try await Simctl.clone(template, name: name)
                 created += " from the template \(template.name)"
             } else {
@@ -144,7 +149,59 @@ public final class ToolRegistry: @unchecked Sendable {
             let device = XcodeParsing.SimDevice(udid: udid, name: name, state: "Booted", runtime: like.runtime, isAvailable: true, deviceType: like.deviceType)
             let fullNote = [note, "\(created) because every \(SimulatorPicker.baseName(like.name)) was in use."].compactMap { $0 }.joined(separator: " ")
             let started = await startBoot(udid)
+            if makesTemplates, template == nil {
+                // After this copy's first boot, so the two first boots don't compete for the disk.
+                Task { [self] in
+                    guard (try? await started.value) != nil else { return }
+                    await makeTemplate(like: like)
+                }
+            }
             return Allocation(device: device, note: fullNote, boot: started)
+        }
+    }
+
+    /// Makes the template for `like`'s model and runtime (see `SimulatorPicker.templateMarker`): a new
+    /// simulator, booted once and left to settle for two minutes so its first-run work is saved,
+    /// then shut down. It's named as a template only once that's done. Waits for other boots to
+    /// finish first, skips if minirun is at `maxBootedSimulators`, and makes one at a time per model.
+    func makeTemplate(like: XcodeParsing.SimDevice) async {
+        guard let type = like.deviceType else { return }
+        let key = type + " " + like.runtime
+        guard await templateBuilds.begin(key) else { return }
+        defer { Task { await templateBuilds.end(key) } }
+        let name = SimulatorPicker.templateName(for: like)
+        do {
+            // Two first boots at once stall each other (and timed out simctl on GitHub's runners).
+            var waits = 0
+            while !(await boots.booting.isEmpty) {
+                waits += 1
+                guard waits <= 180 else { return }
+                try await Task.sleep(nanoseconds: 10_000_000_000)
+            }
+            let listed = try await Simctl.devices()
+            let same = listed.filter { SimulatorPicker.isTemplate($0) && $0.deviceType == type && $0.runtime == like.runtime }
+            if same.contains(where: { $0.name.hasSuffix(SimulatorPicker.templateMarker) }) { return }
+            // Left over from a build that was interrupted: never cloned, so start again.
+            for leftover in same {
+                try? await Simctl.shutdown(leftover.udid)
+                try await Simctl.delete(leftover.udid)
+            }
+            guard listed.filter({ $0.isBooted }).count < config.maxBootedSimulators else { return }
+            Server.log("Making \(name) so later copies of \(SimulatorPicker.baseName(like.name)) boot in about a minute")
+            let udid = try await Simctl.create(name: SimulatorPicker.baseName(like.name) + SimulatorPicker.buildingTemplateMarker, like: like)
+            do {
+                try await Simctl.boot(udid, show: false)
+                try await Task.sleep(nanoseconds: 120_000_000_000)
+                try await Simctl.shutdown(udid)
+                try await Simctl.rename(udid, to: name)
+            } catch {
+                try? await Simctl.shutdown(udid)
+                try? await Simctl.delete(udid)
+                throw error
+            }
+            Server.log("Made \(name) (\(udid))")
+        } catch {
+            Server.log("Couldn't make \(name): \(error.localizedDescription)")
         }
     }
 
@@ -173,10 +230,12 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     /// Checks every minute for simulators nobody has used in `idleShutdownMinutes` and shuts them
-    /// down (see `IdleSimulators.plan`). Runs until cancelled; returns at once if turned off.
+    /// down (see `IdleSimulators.plan`), and deletes copies unused for `deleteCopiesAfterDays`.
+    /// Runs until cancelled; returns at once if both are turned off.
     public func shutDownIdleSimulators(log: @escaping @Sendable (String) -> Void) async {
-        guard config.idleShutdownMinutes > 0 else { return }
-        log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes")
+        guard config.idleShutdownMinutes > 0 || config.deleteCopiesAfterDays > 0 else { return }
+        if config.idleShutdownMinutes > 0 { log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes") }
+        if config.deleteCopiesAfterDays > 0 { log("Deleting copies of simulators not booted for \(config.deleteCopiesAfterDays) days") }
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
             do {
@@ -211,6 +270,14 @@ public final class ToolRegistry: @unchecked Sendable {
                     await SimulatorDriver.shared.reset(udid: udid)
                     await geometry.invalidate(udid: udid)
                     log("Shut down \(names[udid] ?? udid) (\(udid)): not used for \(minutes) min.")
+                }
+            }
+            for copy in StaleCopies.plan(devices: all, olderThan: Double(config.deleteCopiesAfterDays) * 86400) {
+                do {
+                    try await Simctl.delete(copy.udid)
+                    log("Deleted \(copy.name) (\(copy.udid)): not booted for \(config.deleteCopiesAfterDays) days.")
+                } catch {
+                    log("Couldn't delete \(copy.name) (\(copy.udid)): \(error.localizedDescription)")
                 }
             }
         }
@@ -278,6 +345,14 @@ public final class ToolRegistry: @unchecked Sendable {
         }
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
     }
+}
+
+/// The templates being made, by model and runtime, so two sessions don't both make one.
+actor TemplateBuilds {
+    private var running: Set<String> = []
+
+    func begin(_ key: String) -> Bool { running.insert(key).inserted }
+    func end(_ key: String) { running.remove(key) }
 }
 
 /// The simulators `simctl` listed last, templates included, by UDID.

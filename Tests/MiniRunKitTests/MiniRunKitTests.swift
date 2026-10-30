@@ -153,7 +153,7 @@ final class XcodeParsingTests: XCTestCase {
     {"devices":{
       "com.apple.CoreSimulator.SimRuntime.iOS-18-6":[{"udid":"A","name":"iPhone 16","state":"Shutdown","isAvailable":true}],
       "com.apple.CoreSimulator.SimRuntime.iOS-26-0":[
-        {"udid":"B","name":"iPhone 17 Pro","state":"Shutdown","isAvailable":true},
+        {"udid":"B","name":"iPhone 17 Pro","state":"Shutdown","isAvailable":true,"lastBootedAt":"2026-10-30T11:31:45Z"},
         {"udid":"C","name":"iPhone SE (3rd generation)","state":"Shutdown","isAvailable":true},
         {"udid":"D","name":"iPad Air","state":"Booted","isAvailable":true},
         {"udid":"E","name":"Broken","state":"Shutdown","isAvailable":false}],
@@ -165,6 +165,8 @@ final class XcodeParsingTests: XCTestCase {
         let devices = try XcodeParsing.parseDevices(Data(devicesJSON.utf8))
         XCTAssertEqual(devices.first?.udid, "D", "booted first")
         XCTAssertEqual(devices.first?.runtimeName, "iOS 26.0")
+        XCTAssertEqual(devices.first { $0.udid == "B" }?.lastBootedAt, Date(timeIntervalSince1970: 1_793_359_905))
+        XCTAssertNil(devices.first { $0.udid == "A" }?.lastBootedAt, "never booted")
         XCTAssertEqual(XcodeParsing.pickDevice(devices, query: nil)?.udid, "D")
         XCTAssertEqual(XcodeParsing.pickDevice(devices, query: "b")?.udid, "B")
         XCTAssertEqual(XcodeParsing.pickDevice(devices, query: "iphone 16")?.udid, "A")
@@ -263,6 +265,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertTrue(config.preventSleep)
         XCTAssertEqual(config.idleShutdownMinutes, 30)
         XCTAssertEqual(config.maxBootedSimulators, 4)
+        XCTAssertEqual(config.deleteCopiesAfterDays, 7)
     }
 }
 
@@ -419,6 +422,29 @@ final class SimulatorPickerTests: XCTestCase {
         XCTAssertNil(SimulatorPicker.template(for: like, in: [like, otherRuntime, otherModel]), "same model and runtime only")
         XCTAssertNil(SimulatorPicker.template(for: like, in: [device("T", "iPhone 17 Pro (minirun template)", booted: true)]), "a booted template can't be cloned")
         XCTAssertNil(SimulatorPicker.template(for: like, in: [device("B", "iPhone 17 Pro")]), "plain simulators aren't templates")
+
+        // One still being made is hidden from picks but never cloned.
+        let building = device("TB", "iPhone 17 Pro (minirun template, building)")
+        XCTAssertTrue(SimulatorPicker.isTemplate(building))
+        XCTAssertNil(SimulatorPicker.template(for: like, in: [like, building]))
+        XCTAssertEqual(SimulatorPicker.templateName(for: device("P2", "iPhone 17 Pro (minirun 2)")), "iPhone 17 Pro (minirun template)")
+    }
+
+    func testStaleCopies() {
+        func copy(_ udid: String, _ name: String, booted: Bool = false, daysAgo: Double?) -> Device {
+            Device(udid: udid, name: name, state: booted ? "Booted" : "Shutdown", runtime: runtime, isAvailable: true, deviceType: proType,
+                   lastBootedAt: daysAgo.map { now.addingTimeInterval(-$0 * 86400) })
+        }
+        let devices = [
+            copy("OLD", "iPhone 17 Pro (minirun 2)", daysAgo: 10),
+            copy("RECENT", "iPhone 17 Pro (minirun 3)", daysAgo: 1),
+            copy("RUNNING", "iPhone 17 Pro (minirun 4)", booted: true, daysAgo: 10),
+            copy("NEVER", "iPhone 17 Pro (minirun 5)", daysAgo: nil),
+            copy("MODEL", "iPhone 17 Pro", daysAgo: 30),
+            copy("TEMPLATE", "iPhone 17 Pro (minirun template)", daysAgo: 30),
+        ]
+        XCTAssertEqual(StaleCopies.plan(devices: devices, olderThan: 7 * 86400, now: now).map(\.udid), ["OLD"])
+        XCTAssertEqual(StaleCopies.plan(devices: devices, olderThan: 0, now: now), [], "0 keeps them")
     }
 
     func testBootRespectsTheLimit() {

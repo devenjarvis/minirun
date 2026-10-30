@@ -27,6 +27,7 @@ public enum Server {
         defer { if assertion != 0 { IOPMAssertionRelease(assertion) } }
 
         let registry = ToolRegistry(config: config)
+        registry.makesTemplates = true
         log("\(registry.definitions.count) tools ready; workspaces at \(config.workspaceRoot)")
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }

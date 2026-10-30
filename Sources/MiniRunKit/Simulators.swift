@@ -39,8 +39,14 @@ public enum SimulatorPicker {
     /// New copies are cloned from it, which skips the several-minute data migration of a first
     /// boot. Templates are never handed out themselves.
     public static let templateMarker = " (minirun template)"
+    /// A template minirun is still making. It only gets its final name once it has booted and
+    /// settled, so an interrupted one is never cloned.
+    public static let buildingTemplateMarker = " (minirun template, building)"
 
-    public static func isTemplate(_ device: Device) -> Bool { device.name.hasSuffix(templateMarker) }
+    /// True for templates, finished or not. They're left out of every pick.
+    public static func isTemplate(_ device: Device) -> Bool { device.name.contains(" (minirun template") }
+
+    public static func templateName(for like: Device) -> String { baseName(like.name) + templateMarker }
 
     /// The template to clone a copy of `like` from: a shut-down template of the same model and runtime.
     public static func template(for like: Device, in devices: [Device]) -> Device? {
@@ -366,6 +372,19 @@ public actor SimulatorActivity {
 }
 
 /// Decides which idle simulators to shut down. Pure logic so it can be unit tested anywhere.
+/// Which of minirun's copies to delete: ones shut down and not booted for `olderThan`. Copies
+/// that never booted, the models they copy, and templates are kept.
+public enum StaleCopies {
+    public static func plan(devices: [XcodeParsing.SimDevice], olderThan: TimeInterval, now: Date = Date()) -> [XcodeParsing.SimDevice] {
+        guard olderThan > 0 else { return [] }
+        return devices.filter { device in
+            guard device.name.contains(SimulatorPicker.cloneMarker), !SimulatorPicker.isTemplate(device),
+                  device.state == "Shutdown", let booted = device.lastBootedAt else { return false }
+            return now.timeIntervalSince(booted) >= olderThan
+        }
+    }
+}
+
 public enum IdleSimulators {
     public enum Action: Equatable, Sendable {
         /// Shut it down (which also ends its reservation).

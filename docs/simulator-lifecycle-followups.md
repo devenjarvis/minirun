@@ -20,27 +20,7 @@ should be a config setting.
 
 **Tests:** picker cases in `SimulatorPickerTests` (Linux).
 
-## 2. Make templates for `simctl clone`, and delete stale copies
-
-**Today:** when every simulator of a model is in use, minirun makes a copy (`ToolRegistry.realize`).
-If a shut-down template of that model and runtime exists (named like
-"iPhone 17 Pro (minirun template)", see `SimulatorPicker.template`), it runs `simctl clone`, which
-copies the template's data and skips the first-boot data migration. Otherwise it runs
-`simctl create` and the first boot takes several minutes. Only the smoke test makes templates
-(`scripts/sim-template.sh`). The "(minirun N)" copies are never deleted, so they pile up in
-`~/Library/Developer/CoreSimulator/Devices`.
-
-**Change:**
-- Make the template the first time a copy of a model is needed: create it, boot it once, shut it
-  down, then clone it. Do it outside the allocation lock, and not alongside another first boot
-  (two at once timed out `simctl` calls on GitHub's runners).
-- Delete copies (names containing `SimulatorPicker.cloneMarker`, but not templates) that have been
-  shut down for more than a few days, or keep at most N of them, with `simctl delete`. This could
-  run in the idle shutdown loop (`ToolRegistry.shutDownIdleSimulators`).
-
-**Tests:** the choice of which copies to delete can be a pure function in MiniRunKit.
-
-## 3. Clean up when a simulator changes hands
+## 2. Clean up when a simulator changes hands
 
 **Today:** when a build adopts a free simulator, the previous session's app and its data stay
 installed.
@@ -53,7 +33,7 @@ the same repo, so switching branches keeps the app's data.
 **Tests:** the "should we uninstall, and what" decision can live in MiniRunKit. The uninstall
 itself needs a Mac.
 
-## 4. Pick a free simulator instead of failing when several are booted
+## 3. Pick a free simulator instead of failing when several are booted
 
 **Today:** a build without `device` fails with a list when more than one booted simulator has no
 reservation (`SimulatorPicker.target`, the `free.count > 1` branch). The idle shutdown spare makes

@@ -31,7 +31,8 @@ enum Simctl {
         return udid
     }
 
-    static func boot(_ udid: String) async throws {
+    /// Boots a simulator and waits for it. `show` opens Simulator.app on it, for demos on the Mac.
+    static func boot(_ udid: String, show: Bool = true) async throws {
         let result = try await Shell.run("/usr/bin/xcrun", ["simctl", "boot", udid], timeout: 120)
         // "Unable to boot device in current state: Booted" is fine.
         if !result.succeeded && !result.stderr.contains("current state: Booted") {
@@ -40,7 +41,15 @@ enum Simctl {
         // A new simulator's first boot runs a data migration that can take several minutes.
         _ = try await run(["bootstatus", udid, "-b"], timeout: 900, what: "Waiting for the simulator to finish booting")
         // Simulator.app isn't required for automation, but opening it makes demos visible on the Mac.
-        _ = try? await Shell.run("/usr/bin/open", ["-g", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], timeout: 20)
+        if show { _ = try? await Shell.run("/usr/bin/open", ["-g", "-a", "Simulator", "--args", "-CurrentDeviceUDID", udid], timeout: 20) }
+    }
+
+    static func rename(_ udid: String, to name: String) async throws {
+        _ = try await run(["rename", udid, name], timeout: 60)
+    }
+
+    static func delete(_ udid: String) async throws {
+        _ = try await run(["delete", udid], timeout: 120, what: "Deleting simulator \(udid)")
     }
 
     static func shutdown(_ udid: String) async throws {

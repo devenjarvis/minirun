@@ -99,8 +99,10 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 - **Each piece of work gets its own simulator.** `build_and_run` without `device` uses the simulator
   reserved for its repo + ref. If there isn't one, it takes an unreserved booted simulator or
   boots a separate one, creating a copy such as "iPhone 17 Pro (minirun 2)" if every simulator of
-  that model is busy. If a shut-down "iPhone 17 Pro (minirun template)" of the same runtime
-  exists, the copy is cloned from it, which skips the minutes-long first boot.
+  that model is busy. A copy's first boot takes minutes, so after the first one `minirun serve`
+  makes a shut-down "iPhone 17 Pro (minirun template)" in the background, and later copies are
+  cloned from it and boot in about a minute. Copies not booted for `deleteCopiesAfterDays` are
+  deleted.
   `boot_simulator {label: "you/app@feature-a"}` does the same up front.
   Reservations are saved in `~/.config/minirun/simulators.json` and end when the simulator shuts down.
 - **Idle simulators shut down.** A simulator nobody has used for `idleShutdownMinutes` (30 by
@@ -149,6 +151,7 @@ JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that 
 | `preventSleep` | `true` | Blocks idle sleep while serving |
 | `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
 | `maxBootedSimulators` | `4` | How many simulators minirun runs at once. Past this, a call that needs another one fails and lists the running ones |
+| `deleteCopiesAfterDays` | `7` | Deletes minirun's "(minirun N)" copies of simulators that haven't booted for this long; `0` keeps them |
 
 After editing, restart: `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`.
 
