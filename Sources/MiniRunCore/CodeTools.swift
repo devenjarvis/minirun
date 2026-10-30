@@ -11,7 +11,7 @@ extension ToolRegistry {
             "pass the same ref on every call for this work. Prefer a branch name over a commit SHA, which gets a fresh checkout."
         ),
         "path": Schema.string("Instead of repo: a directory on the Mac (absolute, or relative to the workspaces folder)."),
-        "project": Schema.string("Optional .xcworkspace / .xcodeproj / Package.swift path inside the checkout. Found automatically if omitted."),
+        "project": Schema.string("Optional .xcworkspace / .xcodeproj / Package.swift path inside the checkout. Found automatically if omitted. A project.yml is run through XcodeGen first."),
         "scheme": Schema.string("Scheme to build. Picked automatically if omitted; see list_schemes."),
     ]
 

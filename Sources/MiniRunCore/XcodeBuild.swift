@@ -43,6 +43,33 @@ enum XcodeBuild {
         throw ToolError("No .xcworkspace, .xcodeproj or Package.swift found in \(dir). Pass `project` to point at one.")
     }
 
+    /// Runs XcodeGen when the checkout has a project.yml (top level, then one level down), so a
+    /// repo that doesn't commit its generated .xcodeproj builds as it is. Runs on every build: a
+    /// project generated for an earlier commit is gitignored, so syncing leaves it behind, stale.
+    static func generateProject(in dir: String, log: URL?) async throws {
+        guard let spec = xcodeGenSpec(in: dir) else { return }
+        let specDir = (spec as NSString).deletingLastPathComponent
+        appendLog(log, "$ xcodegen generate (in \(specDir))\n")
+        let result = try await Shell.run("xcodegen", ["generate", "--quiet"], cwd: specDir, timeout: 300, logURL: log)
+        if result.exitCode == 127 {
+            // /usr/bin/env couldn't find it. A committed project may still build.
+            appendLog(log, "XcodeGen isn't installed; building without regenerating the project.\n")
+            guard (try? container(in: dir, project: nil)) != nil else {
+                throw ToolError("Found \(relative(spec, to: dir)) but XcodeGen isn't installed on the Mac, so there's no project to build. Install it with `brew install xcodegen`.")
+            }
+            return
+        }
+        guard result.succeeded else { throw ToolError(failureReport("xcodegen generate for \(relative(spec, to: dir))", result: result)) }
+    }
+
+    private static func xcodeGenSpec(in dir: String) -> String? {
+        for depth in 0...1 {
+            let candidates = (try? listDirectories(dir, depth: depth)) ?? []
+            if let spec = candidates.filter({ ($0 as NSString).lastPathComponent == "project.yml" }).sorted().first { return spec }
+        }
+        return nil
+    }
+
     private static func listDirectories(_ dir: String, depth: Int) throws -> [String] {
         let top = try FileManager.default.contentsOfDirectory(atPath: dir).filter { !$0.hasPrefix(".") }.map { dir + "/" + $0 }
         if depth == 0 { return top }
@@ -59,14 +86,15 @@ enum XcodeBuild {
         path.hasPrefix(dir + "/") ? String(path.dropFirst(dir.count + 1)) : path
     }
 
-    static func schemes(directory: String, project: String?) async throws -> (Container, [String]) {
+    static func schemes(directory: String, project: String?, log: URL? = nil) async throws -> (Container, [String]) {
+        try await generateProject(in: directory, log: log)
         let container = try container(in: directory, project: project)
         let result = try await Shell.check("/usr/bin/xcrun", ["xcodebuild", "-list", "-json"] + container.flags, cwd: directory, timeout: 180, what: "xcodebuild -list")
         return (container, XcodeParsing.parseSchemes(Data(result.stdout.utf8)))
     }
 
     static func resolveScheme(_ options: Options) async throws -> (Container, String) {
-        let (container, schemes) = try await schemes(directory: options.directory, project: options.project)
+        let (container, schemes) = try await schemes(directory: options.directory, project: options.project, log: options.log)
         if let scheme = options.scheme {
             guard schemes.isEmpty || schemes.contains(scheme) else {
                 throw ToolError("No scheme \"\(scheme)\". Available: \(schemes.joined(separator: ", "))")
