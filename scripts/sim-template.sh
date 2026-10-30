@@ -39,6 +39,9 @@ case "${1:-}" in
       start=$SECONDS
       xcrun simctl boot "$udid"
       xcrun simctl bootstatus "$udid" >&2
+      # After the boot, the simulator spends a few minutes on first-run work (icon caches, first
+      # launches of system apps). Doing it here keeps it in the template, so clones don't redo it.
+      sleep "${MINIRUN_TEMPLATE_SETTLE:-120}"
       xcrun simctl shutdown "$udid"
       trap - ERR
       echo "Template ready after $((SECONDS - start))s" >&2

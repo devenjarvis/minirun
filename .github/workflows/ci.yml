@@ -48,6 +48,10 @@ jobs:
         run: |
           xcodebuild -version && swift --version
           echo "version=$(xcodebuild -version | tr -d '\n ' )" >> "$GITHUB_OUTPUT"
+      - name: Turn off Spotlight
+        # It indexes gigabytes of simulator files, and on the runner's slow disk that stalls boots and builds.
+        if: runner.environment == 'github-hosted'
+        run: sudo mdutil -a -i off
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Restore frameworks
@@ -73,7 +77,7 @@ jobs:
       # skips the 6-7 minute first boot. Cached, so most runs don't make one at all.
       - name: Simulator template key
         id: template
-        run: echo "key=sim-template-v1-${{ steps.xcode.outputs.version }}-$(scripts/sim-template.sh key)" >> "$GITHUB_OUTPUT"
+        run: echo "key=sim-template-v2-${{ steps.xcode.outputs.version }}-$(scripts/sim-template.sh key)" >> "$GITHUB_OUTPUT"
       - name: Restore simulator template
         id: template-cache
         uses: actions/cache/restore@v4
