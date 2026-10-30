@@ -86,20 +86,32 @@ public final class SimulatorDriver {
     /// Captures the screen as JPEG. The image is resized to `targetWidth` pixels if given,
     /// otherwise by `scale` relative to native pixels.
     public func screenshotJPEG(udid: String, targetWidth: Int? = nil, scale: Double = 1.0, quality: Int = 75) async throws -> (data: Data, width: Int, height: Int) {
-        let target = try await simulator(udid)
-        let png = try await target.takeScreenshot(format: .png)
+        let png = try await screenshotPNG(udid: udid)
         return try Self.encodeJPEG(png, targetWidth: targetWidth, scale: scale, quality: quality)
     }
 
     /// An H.264 encoder fed straight from the simulator's display. `bitrate` gets the encoded size.
     public func screenEncoder(udid: String, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) async throws -> ScreenEncoder {
         let target = try await simulator(udid)
+        if let displays = MainDisplays.load(target) {
+            return ScreenEncoder(source: .displays(displays), scale: scale, fps: fps, bitrate: bitrate)
+        }
         let framebuffer = try FBFramebuffer.mainScreenSurface(for: target, logger: logger)
-        return ScreenEncoder(framebuffer: framebuffer, scale: scale, fps: fps, bitrate: bitrate)
+        return ScreenEncoder(source: .framebuffer(framebuffer), scale: scale, fps: fps, bitrate: bitrate)
     }
 
     public func screenshotPNG(udid: String) async throws -> Data {
-        try await simulator(udid).takeScreenshot(format: .png)
+        let target = try await simulator(udid)
+        // takeScreenshot always captures the first main screen, which is black on a folded foldable.
+        guard let displays = MainDisplays.load(target) else { return try await target.takeScreenshot(format: .png) }
+        guard let image = displays.image() else { throw DriverError(message: "Could not read the simulator's screen.") }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {
+            throw DriverError(message: "Could not create a PNG encoder.")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { throw DriverError(message: "Could not encode the screenshot.") }
+        return output as Data
     }
 
     nonisolated static func encodeJPEG(_ imageData: Data, targetWidth: Int? = nil, scale: Double, quality: Int) throws -> (data: Data, width: Int, height: Int) {

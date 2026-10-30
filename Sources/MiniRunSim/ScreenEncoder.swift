@@ -10,6 +10,13 @@ import FBSimulatorControl
 /// one). Frames come straight from the simulator's framebuffer, an IOSurface, so there's no PNG
 /// screenshot to take and decode. An unchanged screen produces no frames at all.
 public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Sendable {
+    /// Where frames come from: FBFramebuffer's main screen, or, on devices with several main
+    /// screens (foldables), whichever of them is lit.
+    enum Source {
+        case framebuffer(FBFramebuffer)
+        case displays(MainDisplays)
+    }
+
     public struct Frame: Sendable {
         /// NAL units, each prefixed with its length as a `lengthSize`-byte big-endian number.
         public let nalUnits: Data
@@ -22,7 +29,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         public let sourceHeight: Int
     }
 
-    private let framebuffer: FBFramebuffer
+    private let source: Source
     private let scale: Double
     private let fps: Int
     /// Target bits per second for an encoded size.
@@ -37,17 +44,20 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     private var pool: CVPixelBufferPool?
     private var sourceSize = (width: 0, height: 0)
     private var lastSeed: UInt32?
+    private var lastSurface: IOSurface?
 
-    init(framebuffer: FBFramebuffer, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) {
-        self.framebuffer = framebuffer
+    init(source: Source, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) {
+        self.source = source
         self.scale = scale
         self.fps = fps
         self.bitrate = bitrate
         super.init()
-        let immediate = framebuffer.attach(self, on: queue)
-        lock.lock()
-        if surface == nil { surface = immediate }
-        lock.unlock()
+        if case .framebuffer(let framebuffer) = source {
+            let immediate = framebuffer.attach(self, on: queue)
+            lock.lock()
+            if surface == nil { surface = immediate }
+            lock.unlock()
+        }
     }
 
     // MARK: FBFramebufferConsumer
@@ -65,13 +75,19 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     /// Encodes the current screen. Returns nil when the screen hasn't changed since the last
     /// frame (unless `forceKeyframe`), or before the simulator has delivered its first surface.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
-        lock.lock()
-        let current = surface
-        lock.unlock()
+        let current: IOSurface?
+        switch source {
+        case .framebuffer:
+            lock.lock()
+            current = surface
+            lock.unlock()
+        case .displays(let displays):
+            current = displays.currentSurface()
+        }
         guard let current else { return nil }
         let seed = current.seed
         var keyframe = forceKeyframe
-        if !keyframe && seed == lastSeed { return nil }
+        if !keyframe && seed == lastSeed && current === lastSurface { return nil }
 
         let width = current.width, height = current.height
         if session == nil || width != sourceSize.width || height != sourceSize.height {
@@ -93,6 +109,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         // Copying out of the surface also means the simulator can't redraw it mid-encode.
         try check(VTPixelTransferSessionTransferImage(transfer, from: source, to: scaled), "scale the screen")
         lastSeed = seed
+        lastSurface = current
 
         let time = CMClockGetTime(CMClockGetHostTimeClock())
         let options = keyframe ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
@@ -120,7 +137,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     }
 
     public func close() {
-        framebuffer.detach(self)
+        if case .framebuffer(let framebuffer) = source { framebuffer.detach(self) }
         invalidate()
     }
 
