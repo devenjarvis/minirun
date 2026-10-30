@@ -3,10 +3,10 @@ import MiniRunKit
 import MiniRunSim
 
 /// Keeps a WebSocket open to the Cloudflare relay, runs tool calls that arrive on it, and streams
-/// the screen while someone is watching. Reconnects with backoff forever.
+/// the screen while someone is watching. Reconnects with backoff forever, and at once when the
+/// relay URL or agent token changes.
 public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSocketDelegate {
-    private let url: URL
-    private let token: String
+    private let config: LiveConfig
     private let registry: ToolRegistry
     private var session: URLSession!
     private var socket: URLSessionWebSocketTask?
@@ -19,17 +19,22 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private let log: @Sendable (String) -> Void
     private let stateLock = NSLock()
     private var state: ServeStatus.Relay
+    /// Set when the relay settings change, so the run loop reconnects without waiting.
+    private var reconnectRequested = false
     /// Tells the relay this is the same run of minirun when it reconnects.
     private let instance = UUID().uuidString
     private let calls = CallLedger()
 
-    public init(url: URL, token: String, registry: ToolRegistry, log: @escaping @Sendable (String) -> Void) {
-        self.url = url
-        self.token = token
+    public init(config: LiveConfig, registry: ToolRegistry, log: @escaping @Sendable (String) -> Void) {
+        self.config = config
         self.registry = registry
         self.log = log
-        state = ServeStatus.Relay(state: .connecting, host: url.host)
+        state = ServeStatus.Relay(state: .connecting, host: RelayClient.endpoint(config.current)?.url.host)
         super.init()
+        config.observe { [weak self] old, new in
+            guard old.relayURL != new.relayURL || old.agentToken != new.agentToken else { return }
+            self?.reconnect()
+        }
         let configuration = URLSessionConfiguration.default
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = .infinity
@@ -41,6 +46,29 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         )
     }
 
+    /// Where to connect and with which token, or nil if the settings don't say.
+    static func endpoint(_ config: MiniRunConfig) -> (url: URL, token: String)? {
+        guard let relay = config.relayURL, let url = URL(string: relay), url.host != nil, let token = config.agentToken, !token.isEmpty else { return nil }
+        return (url, token)
+    }
+
+    /// Drops the current connection and connects again straight away with the current settings.
+    public func reconnect() {
+        stateLock.lock()
+        reconnectRequested = true
+        stateLock.unlock()
+        log("Relay settings changed; reconnecting")
+        socket?.cancel(with: .goingAway, reason: nil)
+    }
+
+    private func takeReconnectRequest() -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        let requested = reconnectRequested
+        reconnectRequested = false
+        return requested
+    }
+
     /// The connection as of now, for `minirun status`.
     public var relayStatus: ServeStatus.Relay {
         stateLock.lock()
@@ -48,9 +76,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         return state
     }
 
-    private func setState(_ new: ServeStatus.Relay.State, problem: String? = nil) {
+    private func setState(_ new: ServeStatus.Relay.State, problem: String? = nil, host: String? = nil) {
         stateLock.lock()
         defer { stateLock.unlock() }
+        if let host { state.host = host }
         if state.state != new { state.since = Date() }
         state.state = new
         // Keep the last problem while reconnecting, so status can say why it dropped.
@@ -67,19 +96,32 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             await streamer.stop()
             // A finger left down on the simulator would block everything else.
             await touches.releaseAll()
+            if takeReconnectRequest() {
+                backoff = 1
+                continue
+            }
             // Reset the backoff after a connection that lasted a while.
             if Date().timeIntervalSince(connectedAt) > 60 { backoff = 1 }
             log("Relay disconnected; reconnecting in \(Int(backoff))s")
-            try? await Task.sleep(nanoseconds: UInt64(backoff * 1_000_000_000))
+            // Wait in short steps, so changed settings cut the wait short.
+            for _ in 0..<Int(backoff * 4) {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                if takeReconnectRequest() { break }
+            }
             backoff = min(30, backoff * 2)
         }
     }
 
     private func connectOnce() async {
+        guard let endpoint = Self.endpoint(config.current) else {
+            setState(.disconnected, problem: "No relay configured. Run `minirun worker deploy`, or set relayURL and agentToken in ~/.config/minirun/config.json.")
+            return
+        }
+        let (url, token) = endpoint
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("minirun/\(MiniRun.version)", forHTTPHeaderField: "User-Agent")
-        setState(.connecting)
+        setState(.connecting, host: url.host)
         let task = session.webSocketTask(with: request)
         task.maximumMessageSize = 32 * 1024 * 1024
         socket = task

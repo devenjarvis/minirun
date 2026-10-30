@@ -155,22 +155,52 @@ public struct ServeStatus: Codable, Equatable, Sendable {
 
 /// Messages on the control socket: one JSON request line, one JSON response line.
 public enum ControlProtocol {
-    public struct Request: Codable, Equatable, Sendable {
-        /// "status" is the only command so far.
-        public var command: String
+    /// Goes up when commands are added, so the menu bar app can tell it's talking to an older
+    /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest.
+    public static let version = 2
 
-        public init(command: String) { self.command = command }
+    public struct Request: Codable, Equatable, Sendable {
+        /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
+        /// workspaces, delete_workspace, doctor.
+        public var command: String
+        /// The simulator for shutdown_simulator and release_simulator.
+        public var udid: String?
+        /// The job for cancel_job.
+        public var id: String?
+        /// The checkout folder for delete_workspace.
+        public var path: String?
+
+        public init(command: String, udid: String? = nil, id: String? = nil, path: String? = nil) {
+            self.command = command
+            self.udid = udid
+            self.id = id
+            self.path = path
+        }
     }
 
     public struct Response: Codable, Equatable, Sendable {
+        /// The daemon's `ControlProtocol.version`. Nil from a daemon older than version 2.
+        public var controlVersion: Int?
         public var ok: Bool
         public var error: String?
+        /// What a command did, in a sentence for the user.
+        public var message: String?
         public var status: ServeStatus?
+        public var reload: ConfigReload?
+        public var workspaces: [WorkspaceInfo]?
+        public var doctor: [DoctorCheck]?
 
-        public init(ok: Bool, error: String? = nil, status: ServeStatus? = nil) {
+        public init(ok: Bool, error: String? = nil, message: String? = nil, status: ServeStatus? = nil,
+                    reload: ConfigReload? = nil, workspaces: [WorkspaceInfo]? = nil, doctor: [DoctorCheck]? = nil,
+                    controlVersion: Int? = ControlProtocol.version) {
+            self.controlVersion = controlVersion
             self.ok = ok
             self.error = error
+            self.message = message
             self.status = status
+            self.reload = reload
+            self.workspaces = workspaces
+            self.doctor = doctor
         }
 
         public static func failure(_ message: String) -> Response { Response(ok: false, error: message) }
@@ -190,17 +220,66 @@ public enum ControlProtocol {
         return try decoder.decode(type, from: Data(line.utf8))
     }
 
-    /// Answers one request line. `status` builds the snapshot; it's only called for "status".
-    public static func respond(to line: String, status: @Sendable () async -> ServeStatus) async -> String {
+    /// Answers one request line by calling the matching method on `commands`. A thrown error
+    /// becomes `{"ok":false,"error":…}`.
+    public static func respond(to line: String, commands: ControlCommands) async -> String {
         let request: Request
         do {
             request = try decode(Request.self, from: line)
         } catch {
             return encode(Response.failure("Expected a JSON request like {\"command\":\"status\"}."))
         }
-        switch request.command {
-        case "status": return encode(Response(ok: true, status: await status()))
-        default: return encode(Response.failure("Unknown command \(request.command)."))
+        func required(_ value: String?, _ name: String) throws -> String {
+            guard let value, !value.isEmpty else { throw ToolError("\(request.command) needs \(name).") }
+            return value
+        }
+        do {
+            switch request.command {
+            case "status":
+                return encode(Response(ok: true, status: await commands.status()))
+            case "reload_config":
+                let reload = try await commands.reloadConfig()
+                return encode(Response(ok: true, message: reload.summary, reload: reload))
+            case "shutdown_simulator":
+                return encode(Response(ok: true, message: try await commands.shutdownSimulator(udid: required(request.udid, "udid"))))
+            case "release_simulator":
+                return encode(Response(ok: true, message: try await commands.releaseSimulator(udid: required(request.udid, "udid"))))
+            case "cancel_job":
+                return encode(Response(ok: true, message: try await commands.cancelJob(id: required(request.id, "id"))))
+            case "workspaces":
+                return encode(Response(ok: true, workspaces: try await commands.workspaces()))
+            case "delete_workspace":
+                return encode(Response(ok: true, message: try await commands.deleteWorkspace(path: required(request.path, "path"))))
+            case "doctor":
+                return encode(Response(ok: true, doctor: await commands.doctor()))
+            default:
+                return encode(Response.failure("Unknown command \(request.command)."))
+            }
+        } catch {
+            return encode(Response.failure(error.localizedDescription))
         }
     }
+
+    /// Sends one request to the running `minirun serve` and decodes the answer. Blocks, so call
+    /// it off the main thread. Throws if nothing answers on the socket.
+    public static func send(_ request: Request, path: String = MiniRunConfig.controlSocketURL.path, timeout: Int = 10) throws -> Response {
+        let line = try ControlSocket.request(path, encode(request), timeout: timeout)
+        return try decode(Response.self, from: line)
+    }
+}
+
+/// What `minirun serve` does for each control command. The daemon implements it; tests fake it.
+public protocol ControlCommands: Sendable {
+    func status() async -> ServeStatus
+    /// Re-reads config.json and applies it.
+    func reloadConfig() async throws -> ConfigReload
+    /// Shuts the simulator down and drops its reservation. Returns what happened.
+    func shutdownSimulator(udid: String) async throws -> String
+    /// Drops the simulator's reservation and leaves it booted.
+    func releaseSimulator(udid: String) async throws -> String
+    func cancelJob(id: String) async throws -> String
+    func workspaces() async throws -> [WorkspaceInfo]
+    /// Deletes one checkout. Refuses one a job is using.
+    func deleteWorkspace(path: String) async throws -> String
+    func doctor() async -> [DoctorCheck]
 }

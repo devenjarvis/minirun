@@ -37,7 +37,8 @@ public struct WorkerCommand: Sendable {
     public var output: @Sendable (String) -> Void
     /// Asks for a secret without echoing it; nil if there's no one to ask.
     public var readSecret: @Sendable (String) -> String?
-    /// Restarts `minirun serve` so it picks up a new relay or token. Says what happened, or nil if it isn't installed.
+    /// Makes `minirun serve` pick up a new relay or token (reload, or restart if that fails). Says
+    /// what happened, or nil if it isn't installed.
     public var restartServe: @Sendable () async -> String?
     /// Waits between checks that the new Worker answers.
     public var verifyDelays: [TimeInterval] = [0, 2, 4, 8, 15, 30]
@@ -61,7 +62,7 @@ public struct WorkerCommand: Sendable {
             loadBundle: { try WorkerBundle.locate(executable: executable) },
             output: { print($0) },
             readSecret: { prompt in WorkerCommand.readHidden(prompt) },
-            restartServe: { await WorkerCommand.restartLaunchAgent() }
+            restartServe: { await WorkerCommand.reloadServe() }
         )
     }
 
@@ -216,16 +217,29 @@ public struct WorkerCommand: Sendable {
         return readLine()
     }
 
+    /// Points the running `minirun serve` at the new relay settings: asks it to reload its config
+    /// over the control socket, and restarts the LaunchAgent if it doesn't answer.
+    static func reloadServe() async -> String? {
+        if let response = try? ControlProtocol.send(ControlProtocol.Request(command: "reload_config")) {
+            if response.ok { return "minirun serve reloaded its settings and is reconnecting to the new Worker." }
+            if response.controlVersion != nil {
+                return "warning: minirun serve couldn't reload its settings: \(response.error ?? "unknown error")"
+            }
+            // An older daemon without reload_config: restart it instead.
+        }
+        return await restartLaunchAgent()
+    }
+
     /// `launchctl kickstart -k` for the LaunchAgent that install.sh sets up.
     static func restartLaunchAgent() async -> String? {
         #if os(macOS)
-        let label = "dev.minirun.agent"
-        let plist = MiniRunConfig.home + "/Library/LaunchAgents/\(label).plist"
-        guard FileManager.default.fileExists(atPath: plist) else { return nil }
-        let result = try? await Shell.run("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(label)"], timeout: 30)
-        return result?.succeeded == true
-            ? "Restarted minirun serve with the new settings."
-            : "warning: couldn't restart minirun serve. Run: launchctl kickstart -k gui/$(id -u)/\(label)"
+        guard LaunchAgent.isInstalled else { return nil }
+        do {
+            try await LaunchAgent.kickstart(restart: true)
+            return "Restarted minirun serve with the new settings."
+        } catch {
+            return "warning: couldn't restart minirun serve. Run: \(Doctor.kickstart)"
+        }
         #else
         return nil
         #endif
