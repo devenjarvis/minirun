@@ -5,7 +5,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${MINIRUN_BIN:-$ROOT/.build/debug/minirun}"
 export MINIRUN_CONFIG="${MINIRUN_CONFIG:-$(mktemp -d)/config.json}"
-run() { echo "+ minirun call $*" >&2; "$BIN" call "$@"; }
+# Each call is logged with the Mac's load average and free memory, to show what slow steps wait on.
+run() { echo "+ minirun call $* [load $(sysctl -n vm.loadavg | tr -d '{}'), $(memory_pressure 2>/dev/null | sed -n 's/.*free percentage: //p') free]" >&2; "$BIN" call "$@"; }
 expect() {
   local output; output=$(cat)
   grep -q -- "$1" <<< "$output" || { echo "FAILED: expected output to contain: $1" >&2; echo "--- output was:" >&2; echo "$output" >&2; exit 1; }
@@ -25,7 +26,10 @@ cleanup() {
   [[ -n "${MINIRUN_SMOKE_KEEP:-}" ]] || sims="$UDID $sims"
   for sim in $sims; do xcrun simctl shutdown "$sim" >/dev/null 2>&1 || true; xcrun simctl delete "$sim" >/dev/null 2>&1 || true; done
 }
-trap cleanup EXIT
+# The busiest processes once a minute, to show what slow steps are waiting on.
+(while sleep 60; do echo "--- top processes at $(date +%T)"; top -l 2 -n 6 -o cpu -stats command,cpu,mem | tail -7; done) >&2 &
+SAMPLER=$!
+trap 'kill $SAMPLER 2>/dev/null; cleanup' EXIT
 echo "Cloned $UDID from the template $TEMPLATE"
 
 run boot_simulator "{\"device\":\"$UDID\"}" | expect "Booted"
