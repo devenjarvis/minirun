@@ -50,7 +50,7 @@ public enum SimulatorPicker {
 
     /// The template to clone a copy of `like` from: a shut-down template of the same model and runtime.
     public static func template(for like: Device, in devices: [Device]) -> Device? {
-        devices.first { isTemplate($0) && $0.isAvailable && !$0.isBooted && $0.deviceType != nil && $0.deviceType == like.deviceType && $0.runtime == like.runtime }
+        devices.first { $0.name.hasSuffix(templateMarker) && $0.isAvailable && !$0.isBooted && $0.deviceType != nil && $0.deviceType == like.deviceType && $0.runtime == like.runtime }
     }
 
     /// Picks the simulator for a tool call.
