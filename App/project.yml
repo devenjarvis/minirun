@@ -1,0 +1,45 @@
+# The menu bar app. Generate the Xcode project with `xcodegen` in this folder (the .xcodeproj is
+# gitignored), or build, sign and install it with ../scripts/install-app.sh.
+#
+# The app links MiniRunKit only, compiled here from ../Sources/MiniRunKit as a static library.
+# It never touches FBSimulatorControl: it talks to `minirun serve` over the control socket.
+name: minirun-menu
+options:
+  bundleIdPrefix: dev.minirun
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Open source with no Apple Developer ID: ad-hoc signed, no hardened runtime, no sandbox.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+targets:
+  MiniRunKit:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: ../Sources/MiniRunKit
+  minirun-menu:
+    type: application
+    platform: macOS
+    scheme: {}
+    sources:
+      - path: Sources
+    dependencies:
+      - target: MiniRunKit
+    settings:
+      base:
+        PRODUCT_NAME: minirun
+        PRODUCT_BUNDLE_IDENTIFIER: dev.minirun.menu
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        # A menu bar app: no Dock icon and no main window.
+        INFOPLIST_KEY_LSUIElement: YES
+        INFOPLIST_KEY_CFBundleDisplayName: minirun
+        ENABLE_APP_SANDBOX: NO

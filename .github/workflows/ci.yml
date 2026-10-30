@@ -78,6 +78,8 @@ jobs:
         run: scripts/ci-step.sh swift-build swift build
       - name: Unit tests
         run: scripts/ci-step.sh swift-test swift test
+      - name: Build the menu bar app
+        run: scripts/ci-step.sh menu-app scripts/install-app.sh --build-only
       # The smoke test clones its simulators from a template that has already booted once, which
       # skips the 6-7 minute first boot. Cached, so most runs don't make one at all.
       - name: Simulator template key
