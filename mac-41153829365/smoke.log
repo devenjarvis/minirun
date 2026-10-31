@@ -1,0 +1,34 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
+Cloned A1046DCF-922D-4731-8344-28430F4B71B2 from the template F61D032C-5E43-4366-B021-F181800AF6C4
++ minirun call boot_simulator {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  9.20 22.93 12.77 , 74% free]
++ minirun call screenshot {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  122.48 50.47 23.60 , 58% free]
++ minirun call build_and_run {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  127.64 52.74 24.56 , 58% free]
++ minirun call describe_ui {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  292.24 133.82 60.98 , 46% free]
++ minirun call tap {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","id":"tapButton"} [load  292.24 133.82 60.98 , 46% free]
++ minirun call describe_ui {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  304.55 139.00 63.23 , 45% free]
++ minirun call tap {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","id":"nameField"} [load  317.00 144.33 65.56 , 45% free]
++ minirun call type_text {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","text":"Claude"} [load  328.21 149.52 67.85 , 44% free]
++ minirun call describe_ui {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  339.81 154.89 70.22 , 44% free]
++ minirun call screenshot {"device":"A1046DCF-922D-4731-8344-28430F4B71B2"} [load  339.81 154.89 70.22 , 43% free]
++ minirun call swipe {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","direction":"up"} [load  350.07 160.09 72.55 , 42% free]
++ minirun call press_button {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","button":"home"} [load  370.71 170.75 77.36 , 41% free]
++ minirun call app_logs {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","bundle_id":"dev.minirun.HelloApp","seconds":120} [load  370.71 170.75 77.36 , 41% free]
++ minirun call terminate_app {"device":"A1046DCF-922D-4731-8344-28430F4B71B2","bundle_id":"dev.minirun.HelloApp"} [load  391.13 181.71 82.34 , 41% free]
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} [load  391.13 181.71 82.34 , 41% free]
++ minirun call boot_simulator {"label":"smoke/second"} [load  432.25 421.75 240.44 , 27% free]
++ minirun call list_simulators {"include_shutdown":false} [load  463.03 429.98 248.66 , 27% free]
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  463.03 429.98 248.66 , 27% free]
++ minirun call shutdown_simulator {"device":"B0A50DDF-4A44-4DBA-86D8-B8F9A14E2591"} [load  448.09 428.89 254.51 , 28% free]
+Smoke test passed.
