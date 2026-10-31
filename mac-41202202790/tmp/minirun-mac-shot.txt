@@ -1,0 +1,2 @@
+[image saved to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/minirun-6097DBFD.jpg]
+Screenshot of window 0 ("HelloMacApp"), 900x450px. The window is 900x450 points; image pixels equal window points from the window's top-left, title bar included, so use them directly for tap, swipe and scroll.
