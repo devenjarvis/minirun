@@ -188,21 +188,19 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
         guard let size = Self.windowSize(windowID) else {
             throw MacDriverError("The window (\(windowID)) closed. Call list_windows to find the app's windows.")
         }
-        lock.lock()
-        let target = pending ?? current
-        lock.unlock()
+        let target = lock.withLock { pending ?? current }
         guard abs(size.width - target.points.width) >= 1 || abs(size.height - target.points.height) >= 1 else { return }
         let geometry = Self.geometry(points: size, pixelScale: pixelScale, scale: scale)
-        lock.lock()
-        if geometry.output == current.output {
-            // Same video size (a sub-pixel change): just take the new point size.
-            current = geometry
-            pending = nil
-        } else {
-            pending = geometry
+        let reconfigure = lock.withLock {
+            if geometry.output == current.output {
+                // Same video size (a sub-pixel change): just take the new point size.
+                current = geometry
+                pending = nil
+            } else {
+                pending = geometry
+            }
+            return pending != nil
         }
-        let reconfigure = pending != nil
-        lock.unlock()
         if reconfigure, let stream {
             try? await stream.updateConfiguration(configuration(geometry))
         }
@@ -214,10 +212,7 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
     /// (unless `forceKeyframe`), or before the first frame arrives.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
         try await followResize()
-        lock.lock()
-        let snapshot = self.latest
-        let error = stopError
-        lock.unlock()
+        let (snapshot, error) = lock.withLock { (self.latest, stopError) }
         if let error { throw MacDriverError("The window stream stopped: \(error.localizedDescription)") }
         guard let latest = snapshot else { return nil }
         if !forceKeyframe && latest.number == lastEncoded { return nil }
@@ -263,10 +258,9 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
         var snapshot: (buffer: CVPixelBuffer, geometry: Geometry, number: Int)?
         let deadline = Date().addingTimeInterval(2)
         while true {
-            lock.lock()
-            snapshot = self.latest
-            let error = stopError
-            lock.unlock()
+            let state = lock.withLock { (self.latest, stopError) }
+            snapshot = state.0
+            let error = state.1
             if let error { throw MacDriverError("The window stream stopped: \(error.localizedDescription)") }
             if snapshot != nil || Date() > deadline { break }
             await waitForChange(timeout: 0.1)
