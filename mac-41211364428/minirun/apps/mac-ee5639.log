@@ -1,0 +1,5 @@
+
+=== minirun launch 2026-10-31T15:02:09Z /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp/.minirun/DerivedData/Build/Products/Debug/HelloMacApp.app/Contents/MacOS/HelloMacApp ===
+HelloMacApp: launched
+HelloMacApp: count=1
+HelloMacApp: count=2
