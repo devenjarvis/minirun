@@ -48,7 +48,7 @@ If storage ever gets tight, R2 is a drop-in swap behind the same `/media` routes
 ```
  agent ── screenshot {share:true} ──► Worker /mcp ──relay──► Mac
                                                             │ capture JPEG / record MP4 → GIF
-                                                            │ POST /media  (Bearer AGENT_TOKEN)
+                                                            │ PUT /media/<id>.<ext>  (Bearer AGENT_TOKEN)
                                                             ▼
                                          Worker ── put MEDIA_KV (expirationTtl) ──► id
  agent ◄── URL + ready-to-paste markdown ◄────────────────── Mac
@@ -65,7 +65,7 @@ If storage ever gets tight, R2 is a drop-in swap behind the same `/media` routes
   - `GET /m/<id>.jpg|.gif|.mp4` serves the raw bytes, with `X-Robots-Tag: noindex` and long
     immutable caching, since objects never change.
   - `GET /m/<id>` is a small HTML player page for recordings: `<video controls>` showing the MP4.
-- **Agent-token routes:** `POST /media` (body is the file; type, TTL, repo, ref go in headers) and
+- **Agent-token routes:** `PUT /media/<id>.<ext>` (see the contract below) and
   `DELETE /media/<id>`.
 
 ### The ledger lives on the Mac
@@ -117,7 +117,7 @@ already knows them, so take them from there and the agent doesn't have to.
 
 **Add this to `INSTRUCTIONS` in `worker/src/mcp.ts`:** "To show your work in a PR, call
 `screenshot {share:true}` or `start_recording`/`stop_recording` and paste the returned markdown
-into the PR description. Before recording, set `configure_simulator {status_bar: 'clear'}`.
+into the PR description. Before recording, set `configure_simulator {status_bar: 'demo'}`.
 Never share screens showing credentials or personal data."
 
 ## Cleanup
@@ -229,7 +229,7 @@ An array of `MediaItem`:
 
 ## Phases
 
-1. **Worker:** add the `MEDIA_KV` binding, `POST/DELETE /media`, `GET /m/<id>[.ext]`, and the
+1. **Worker:** add the `MEDIA_KV` binding, `PUT/DELETE /media`, `GET /m/<id>[.ext]`, and the
    player page, with vitest coverage (bad token, oversize body, unknown id, TTL passed through).
    Deployer: add the second namespace. Instructions text.
 2. **Mac, screenshots:** media ledger and uploader in MiniRunKit (tested on Linux with a fake

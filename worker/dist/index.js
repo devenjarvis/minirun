@@ -5744,7 +5744,7 @@ Tests:
 - configure_simulator sets text_size (including accessibility-* sizes), increase_contrast and appearance; don't tap through the Settings app for them.
 
 To show your work in a PR, put a screenshot or recording in the PR description:
-- Set configure_simulator {status_bar: "clear"} first.
+- Set configure_simulator {status_bar: "demo"} first, for a clean 9:41 status bar.
 - screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown to paste into the description.
 - Never share screens showing credentials or personal data. Anyone with the link can see it until it expires.
 - delete_media {id} takes back a wrong upload.

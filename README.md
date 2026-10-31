@@ -173,7 +173,8 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 | Area | Tools |
 | --- | --- |
 | Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, text size including accessibility sizes, increase contrast, location, demo status bar, permissions) |
-| Seeing | `screenshot` (sized so pixels = points), `describe_ui` (compact text or full JSON) |
+| Seeing | `screenshot` (sized so pixels = points; `share: true` also returns a link for a PR), `describe_ui` (compact text or full JSON) |
+| Sharing | `start_recording`, `stop_recording` (a GIF that links to the MP4, ready to paste into a PR), `delete_media` |
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
 | Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests`, `swift_test` (package tests, no simulator), `run_command` (opt-in) |
@@ -191,6 +192,30 @@ JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that 
 each problem (`--json` for scripts). Claude gets the same checks from `host_info`, along with the
 minirun version; `mac_status` says whether the Mac and the Worker run the same minirun.
 
+## Screenshots and recordings in PRs
+
+GitHub only shows images it can fetch from a public URL, so minirun hosts them on your Worker.
+`screenshot {device, share: true}`, or `start_recording` → tap around → `stop_recording`, uploads
+the result and returns markdown to paste into a PR description:
+
+- A screenshot is a JPEG at 2x points.
+- A recording is a looping GIF (about 10 fps, 320 px wide) that links to a player page for the
+  full MP4. GitHub won't play video hosted elsewhere, so the GIF shows the motion inline.
+  Recordings stop by themselves after `maxRecordingSeconds` (60).
+
+Files are stored in a `MEDIA_KV` namespace with an expiry (`mediaRetentionDays`, 7), so KV deletes
+them by itself; old PRs then show a broken image. The Mac keeps a list of what it uploaded in
+`~/.config/minirun/media.json` and deletes the oldest files to stay under
+`mediaStorageLimitMB` (500). The menu bar app lists them, with Open, Copy link and Delete.
+
+Links are long and random, but anyone who has one can open it until it expires, even for a
+private repository. GitHub's image proxy may keep showing a copy for a while after you delete it.
+
+**How large can a GIF be?** GitHub's image proxy has a size limit that isn't documented. The Worker
+serves test GIFs of any size from 1 to 25 MB at `/m/probe/<n>.gif`. Paste a few into a PR
+description, see which ones show, and set `mediaInlineLimitMB` (default 5) to the largest. Larger
+GIFs are shrunk until they fit.
+
 ## The menu bar app
 
 `/Applications/minirun.app` puts minirun in the menu bar. The icon shows whether the Mac is
@@ -204,6 +229,8 @@ running jobs beside it. The menu shows:
 - Live view (in a window), Copy connector URL, Copy password, Restart service, Settings… and Quit.
 - When `minirun serve` isn't running, a Start button and the end of its log.
 - A note when the Worker runs older code than the app, or a newer release is on GitHub.
+- Shared media: how many files and how much space, the newest ten with Open, Copy link and
+  Delete, and Delete all. A simulator that's recording shows a red dot and Stop recording.
 
 **Setup window.** It opens by itself while there's no Worker in the settings, and from the menu's
 Set Up minirun…: it checks Xcode, the simulator runtime and the frameworks; takes a Cloudflare
@@ -264,6 +291,11 @@ Gatekeeper prompts.
 | `preventSleep` | `true` | Blocks idle sleep while serving |
 | `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
 | `maxBootedSimulators` | `4` | How many simulators minirun runs at once. Past this, a call that needs another one fails and lists the running ones |
+| `shareMedia` | `true` | Lets `share: true` and `stop_recording` upload to the Worker |
+| `mediaRetentionDays` | `7` | How long shared files last (1–90) |
+| `mediaStorageLimitMB` | `500` | The oldest shared files are deleted to stay under this |
+| `maxRecordingSeconds` | `60` | Recordings stop by themselves after this |
+| `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR; bigger ones are shrunk |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a
 new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
@@ -359,6 +391,9 @@ uses Durable Object requests: each frame and its acknowledgement count as 1/20 o
 H.264 only sends frames while the screen changes, so a still screen costs almost nothing and
 scrolling at 30 fps costs about 3 requests per second. That works out to many hours of viewing a
 day within the free 100k requests. The viewer stops streaming when its tab is hidden.
+
+Shared media uses KV's free 1 GB and 1,000 writes a day; with the defaults (500 MB, 7 days) it
+stays well inside both.
 
 ## Limitations (v0.1)
 
