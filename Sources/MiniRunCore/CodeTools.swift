@@ -30,11 +30,12 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "host_info",
-            description: "Describe the Mac: macOS and Xcode versions, installed simulator runtimes, free disk space, and checked-out repositories.",
+            description: "Describe the Mac: minirun, macOS and Xcode versions, installed simulator runtimes, free disk space, checked-out repositories, and setup checks (Xcode license, simulator frameworks, relay, GitHub auth…) with how to fix any that fail. Call it when builds or simulators fail for reasons that aren't in your code.",
             properties: [:]
         )) { [self] _ in
             async let xcode = Shell.run("/usr/bin/xcrun", ["xcodebuild", "-version"], timeout: 60)
             async let runtimes = Shell.run("/usr/bin/xcrun", ["simctl", "list", "runtimes"], timeout: 60)
+            async let checks = doctorChecks(serveStatus: nil)
             let os = ProcessInfo.processInfo.operatingSystemVersionString
             let free = (try? FileManager.default.attributesOfFileSystem(forPath: MiniRunConfig.home)[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
             let repos = (try? FileManager.default.contentsOfDirectory(atPath: config.workspaceRoot))?.flatMap { owner in
@@ -44,12 +45,16 @@ extension ToolRegistry {
             let devices = snapshot?.devices ?? [], claims = snapshot?.claims ?? [:]
             let booted = devices.filter(\.isBooted)
             let text = """
+            minirun: \(MiniRun.version)
             macOS: \(os)
             Xcode: \((try? await xcode)?.stdout.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces) ?? "not found")
             Free disk: \(free / 1_000_000_000) GB
             Shell commands (run_command): \(config.allowShell ? "enabled" : "disabled — set allowShell in ~/.config/minirun/config.json")
             Workspaces (\(config.workspaceRoot)): \(repos.isEmpty ? "none" : repos.sorted().joined(separator: ", "))
             Booted simulators: \(booted.isEmpty ? "none" : "\n" + SimulatorPicker.describe(booted, claims: claims))
+
+            Checks:
+            \(Doctor.format(await checks))
 
             \((try? await runtimes)?.stdout ?? "")
             """
@@ -251,6 +256,23 @@ extension ToolRegistry {
     }
 
     // MARK: Helpers
+
+    /// The checks behind `minirun doctor`. host_info leaves out `serveStatus`: it's minirun serve
+    /// answering, so that check would only say it's running.
+    func doctorChecks(serveStatus: (@Sendable () async -> ServeStatus?)?) async -> [DoctorCheck] {
+        let doctor = Doctor(
+            loadFrameworks: {
+                do {
+                    try await SimulatorDriver.shared.prepare()
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            },
+            serveStatus: serveStatus
+        )
+        return await doctor.checks(config: config)
+    }
 
     /// Names the work a call is for: "owner/app@ref" (or "owner/app"), or the folder for `path`.
     /// Simulator reservations and checkout locks use this name.

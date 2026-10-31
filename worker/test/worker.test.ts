@@ -1,5 +1,6 @@
 import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { compareVersions, VERSION } from "../src/version";
 
 const ORIGIN = "https://example.com";
 const REDIRECT = "https://claude.test/callback";
@@ -103,6 +104,7 @@ describe("minirun worker", () => {
     const init = await rpc(token, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     expect(init.result.protocolVersion).toBe("2025-06-18");
     expect(init.result.capabilities.tools).toBeDefined();
+    expect(init.result.serverInfo.version).toBe(VERSION);
 
     const list = await rpc(token, "tools/list");
     expect(list.result.tools.map((t: { name: string }) => t.name)).toContain("mac_status");
@@ -152,6 +154,7 @@ describe("minirun worker", () => {
 
     const status = await rpc(token, "tools/call", { name: "mac_status", arguments: {} });
     expect(status.result.content[0].text).toContain("online (Test Mac)");
+    expect(status.result.content[0].text).toContain("hasn't said which minirun");
     const mine = await rpc(token, "tools/call", { name: "mac_status", arguments: { device: "ABC-123" } });
     expect(mine.result.content[0].text).toContain(`${ORIGIN}/?device=ABC-123`);
     const bad = await rpc(token, "tools/call", { name: "mac_status", arguments: { device: "../x" } });
@@ -160,6 +163,21 @@ describe("minirun worker", () => {
     const call = await rpc(token, "tools/call", { name: "screenshot", arguments: { scale: 0.5 } });
     expect(call.result.content[0].text).toBe('ran screenshot with {"scale":0.5}');
     agent.close();
+  });
+
+  it("says which minirun the Mac and the relay run, and which to update", async () => {
+    const token = await getAccessToken();
+    const statusWith = async (minirun: string) => {
+      const agent = (await connectAgent()) as WebSocket;
+      agent.send(JSON.stringify({ type: "hello", version: 3, host: { name: "Test Mac", minirun }, tools: [] }));
+      await new Promise((r) => setTimeout(r, 50));
+      const status = await rpc(token, "tools/call", { name: "mac_status", arguments: {} });
+      agent.close();
+      return status.result.content[0].text as string;
+    };
+    expect(await statusWith(VERSION)).toContain(`minirun ${VERSION} on the Mac and the relay.`);
+    expect(await statusWith("0.0.1")).toContain("update minirun on the Mac");
+    expect(await statusWith("99.0.0")).toContain("update the Worker");
   });
 
   it("keeps a call across a reconnect, and fails it if minirun restarted", async () => {
@@ -443,5 +461,13 @@ describe("minirun worker", () => {
     viewer.ws.close();
     old.ws.close();
     agent.close();
+  });
+});
+
+describe("compareVersions", () => {
+  it("compares by number, not as text", () => {
+    expect(compareVersions("0.10.0", "0.9.0")).toBeGreaterThan(0);
+    expect(compareVersions("0.2", "0.2.0")).toBe(0);
+    expect(compareVersions("1.0.0", "1.0.1")).toBeLessThan(0);
   });
 });

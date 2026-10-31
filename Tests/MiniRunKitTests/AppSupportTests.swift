@@ -128,6 +128,9 @@ final class UpdateCheckTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let project = try String(contentsOf: root.appendingPathComponent("App/project.yml"), encoding: .utf8)
         XCTAssertTrue(project.contains("MARKETING_VERSION: \"\(MiniRun.version)\""), "App/project.yml's MARKETING_VERSION must be \(MiniRun.version)")
+        // mac_status compares it with the version the Mac reports.
+        let worker = try String(contentsOf: root.appendingPathComponent("worker/src/version.ts"), encoding: .utf8)
+        XCTAssertTrue(worker.contains("export const VERSION = \"\(MiniRun.version)\";"), "worker/src/version.ts's VERSION must be \(MiniRun.version)")
     }
 }
 
