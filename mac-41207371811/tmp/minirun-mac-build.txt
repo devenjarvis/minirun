@@ -1,0 +1,9 @@
+[job_add71d1d] build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp: succeeded in 1m 31s
+Built HelloMacApp in 63s.
+App (macos): /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp/.minirun/DerivedData/Build/Products/Debug/HelloMacApp.app
+Bundle id: dev.minirun.HelloMacApp
+Log: /Users/runner/Library/Logs/minirun/jobs/2026-10-31T14-09-39Z-build-and-run.log
+Launched HelloMacApp (pid 35295) with its home folder at /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp/.minirun/home.
+Mac app: HelloMacApp, id mac-ee5639. Pass device: "mac-ee5639" on later calls (screenshot, describe_ui, tap, type_text, press_key, app_logs, terminate_app…) so they reach this app.
+[image saved to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/minirun-9D08D8C0.jpg]
+Screenshot of window 0 ("HelloMacApp"), 900x450px. The window is 900x450 points; image pixels equal window points from the window's top-left, title bar included, so use them directly for tap, swipe and scroll.
