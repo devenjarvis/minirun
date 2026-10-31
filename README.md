@@ -39,8 +39,9 @@ open ports, and no tunnel to run.
   browser without WebCodecs gets JPEG frames instead, and so does everyone watching that simulator
   with it, since one stream serves all of a simulator's viewers.
 - **Long work runs as jobs.** `build`, `build_and_run`, `run_tests` and `run_command` return
-  within `wait_seconds` (default 45). If the work is still going they return a `job_id`, and
-  Claude waits on it with `get_job`. Long builds never hit request timeouts.
+  within `wait_seconds` (default 45, max 50, under the MCP client's 60-second request timeout).
+  If the work is still going they return a `job_id`, and Claude waits on it with `get_job`. Long
+  builds never hit request timeouts.
 
 ## Setup
 

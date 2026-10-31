@@ -12,7 +12,7 @@ const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators on you
 const INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
 Then exercise the app: describe_ui to find elements, tap by id/label (or x,y in points), type_text, swipe, screenshot to look.
-Long builds return a job_id; call get_job to wait for it.
+Long builds return a job_id after at most 50 seconds; call get_job (repeatedly if need be) to wait for it. If a call ever times out, the work keeps running on the Mac: list_jobs finds it.
 
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
