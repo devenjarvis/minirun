@@ -1,0 +1,170 @@
+# Screenshots and recordings in PR descriptions: plan
+
+Goal: an agent working through minirun can put a screenshot or a short recording of the simulator
+in a PR description, so the owner can check the work without opening the live view.
+
+Today `screenshot` returns the image inline to the agent, and nothing else. GitHub markdown needs
+a URL that it can fetch, so the agent has nothing to paste.
+
+## Constraints that shape the design
+
+- **GitHub fetches the image anonymously.** It rewrites `![](url)` to go through its image proxy
+  (camo), which can't send cookies or OAuth tokens. So a shared image needs a public, unguessable
+  capability URL. It can't sit behind the viewer password.
+- **The proxy caps size.** Open-source camo defaults to 5 MB, so keep an inline image under about 5 MB.
+- **GitHub won't play externally hosted video.** `<video>` works only for files uploaded through
+  GitHub's web UI, and an agent can't upload that way. To show motion inline, use an **animated
+  GIF**: it renders inline and loops. Link the GIF to a small player page that holds the full MP4.
+- **Cost: $0 on the Cloudflare free plan.** Add no new account sign-ups, payment methods or
+  API-token permissions.
+
+## Storage: Workers KV, not R2
+
+| | Workers KV (recommended) | R2 |
+| --- | --- | --- |
+| Already set up | Yes. `OAUTH_KV` exists, or a second namespace is created by the same deploy code | No. A bucket and a new binding are needed |
+| Account setup | None | Enabling R2 needs a payment method on the account, even on the free tier |
+| API token | Already has *Workers KV Storage: Edit* | Needs *R2: Edit* too, so every user must make a new token |
+| Free allowance | 1 GB stored, 1,000 writes/day, 100k reads/day, 25 MiB per value | 10 GB-month, free egress |
+| Cleanup | `expirationTtl` on each put: KV deletes the object by itself | Bucket lifecycle rule (days granularity) |
+
+KV fits easily. A screenshot is about 100–300 KB, and a 20-second GIF plus MP4 is about 2–5 MB,
+so 1 GB holds hundreds of recordings or thousands of screenshots. A few dozen uploads a day is
+nowhere near the 1,000-write limit. Each object gets its own TTL, so you don't need a cron job, a
+cleanup worker or a lifecycle rule.
+
+Use a **separate namespace, `MEDIA_KV`**, so media never mixes with OAuth grants and "delete
+all" can't affect them. `WorkerDeployer` already creates and adopts KV namespaces by binding
+name, so this is one more entry in its list.
+
+If storage ever gets tight, R2 is a drop-in swap behind the same `/media` routes. Don't build it now.
+
+## Data flow
+
+```
+ agent ── screenshot {share:true} ──► Worker /mcp ──relay──► Mac
+                                                            │ capture JPEG / record MP4 → GIF
+                                                            │ POST /media  (Bearer AGENT_TOKEN)
+                                                            ▼
+                                         Worker ── put MEDIA_KV (expirationTtl) ──► id
+ agent ◄── URL + ready-to-paste markdown ◄────────────────── Mac
+
+ GitHub camo ── GET /m/<id>.gif ──► Worker ── get MEDIA_KV ──► bytes (Cache-Control: immutable)
+```
+
+- **The Mac uploads over plain HTTPS, not the relay WebSocket.** Multi-MB blobs would otherwise
+  share the socket with live-view frames and tool calls. Authentication is the same `AGENT_TOKEN`
+  that `/agent` checks, and the Mac already knows `relayURL`.
+- **IDs are random, 128 bits, base64url.** Only the Mac can write, so they never come from
+  agent input.
+- **Public routes:**
+  - `GET /m/<id>.jpg|.gif|.mp4` serves the raw bytes, with `X-Robots-Tag: noindex` and long
+    immutable caching, since objects never change.
+  - `GET /m/<id>` is a small HTML player page for recordings: `<video controls>` showing the MP4.
+- **Agent-token routes:** `POST /media` (body is the file; type, TTL, repo, ref go in headers) and
+  `DELETE /media/<id>`.
+
+### The ledger lives on the Mac
+
+There's one Mac per deployment and it makes every upload, so it can keep the index itself in
+`~/.config/minirun/media.json`. Each entry holds: id, kind, bytes, created, expires, repo, ref,
+URL. This means:
+
+- The Worker needs no index, no Durable Object changes and no KV `list` calls, which have a
+  1,000/day free limit.
+- The storage cap is enforced on the Mac before upload. When an upload would exceed the cap, the
+  oldest entries are deleted first.
+- The menu bar app reads the ledger over the control socket, as it already does for jobs.
+- Expired entries are pruned from the ledger lazily. KV has already deleted the objects.
+
+## MCP tools
+
+Keep the surface small: one flag on an existing tool, plus a start/stop pair. Recording needs two
+calls because the agent has to tap and swipe while it records.
+
+1. **`screenshot` gets `share: boolean`** (and an optional `caption`). With `share: true` it still
+   returns the image to the agent, plus:
+   ```
+   Shared: https://minirun.you.workers.dev/m/Xb3…q.jpg (expires 2026-11-30)
+   Markdown: ![Settings screen, dark mode](https://minirun.you.workers.dev/m/Xb3…q.jpg)
+   ```
+   Shared screenshots are captured at 2x points, not 1x, so they look sharp in a PR. The copy for
+   the agent stays at 1x points.
+2. **`start_recording {device, max_seconds?}`** starts recording that simulator. Use
+   `simctl io <udid> recordVideo --codec=h264` to start: it's the least code, and the process
+   stops cleanly on SIGINT. If it misbehaves on Xcode 27's Device Hub, put the existing
+   `ScreenEncoder` H.264 frames into an `AVAssetWriter` instead. `max_seconds` defaults to 30,
+   with a maximum of 60. When the time runs out the recording stops by itself, so a forgotten
+   recording can't run forever or hold the simulator. Allow one recording per simulator.
+3. **`stop_recording {device, share?: true, caption?}`** stops the recording. It makes the GIF on
+   the Mac with `AVAssetImageGenerator` and ImageIO's GIF encoder (`CGImageDestination`): about
+   10 fps, 320 points wide, no ffmpeg. If the GIF comes out over about 4.5 MB, lower the fps or
+   width and encode again. Then it uploads both files and returns:
+   ```
+   Markdown: [![Onboarding flow](…/m/Ab9….gif)](…/m/Ab9…)
+   ```
+   That's an inline looping GIF; clicking it opens the MP4 player page. With `share: false` it
+   only returns a few still frames to the agent, for checking its own work.
+4. **`delete_media {id}`** lets an agent take back a wrong upload, but only one made with the same
+   repo+ref. It's small, and it saves the owner from cleaning up after agents.
+
+Uploads are tagged with the caller's `repo` + `ref` if it passes them. The simulator reservation
+already knows them, so take them from there and the agent doesn't have to.
+
+**Add this to `INSTRUCTIONS` in `worker/src/mcp.ts`:** "To show your work in a PR, call
+`screenshot {share:true}` or `start_recording`/`stop_recording` and paste the returned markdown
+into the PR description. Before recording, set `configure_simulator {status_bar: 'clear'}`.
+Never share screens showing credentials or personal data."
+
+## Cleanup
+
+Plan for three levels; the first one does most of the work:
+
+1. **TTL (automatic, built in).** Every object is written with `expirationTtl`. The default is 30
+   days, and Settings offers 7, 30 or 90. Expiry costs nothing and needs no code. After that the
+   PR shows a broken image. For a verification screenshot that's fine; once merged, the code is
+   the record. Make this clear in the settings text.
+2. **Storage cap (automatic).** The default is 500 MB, about half the KV free limit, leaving room.
+   The Mac deletes the oldest objects before an upload would go over it.
+3. **Delete when the PR closes (optional, phase 2).** The Mac already has `gh`. About once an hour,
+   for each repo+ref in the ledger, run `gh pr view <ref> --json state`, and delete that branch's
+   media N days after the PR merged or closed. It's off by default because merged PRs are often
+   reread soon after merging.
+
+Note: GitHub's image proxy caches images, so a deleted image can still show in a PR for a while.
+"Delete" means "stop serving", not "erase from everywhere". Capability URLs are public to anyone
+holding the link, which matters for private repos. Say so in Settings.
+
+## Menu bar app
+
+- **Menu:** a "Shared media" row, e.g. `14 items · 38 MB`, with a submenu listing the latest ~10:
+  `you/app@branch · recording · 2h ago`. Each item has *Open*, *Copy link* and *Delete*. At the
+  bottom: *Delete all shared media…*, with a confirmation.
+- **Settings → Sharing** (a new pane, backed by `config.json` like the other settings and
+  reloaded live):
+  - *Let Claude share screenshots and recordings* (on by default). When it's off, `share: true`
+    fails with a clear message, and the agent still gets the image itself.
+  - *Keep shared media for* 7 / 30 / 90 days.
+  - *Storage limit*, default 500 MB.
+  - *Longest recording*, default 60 s.
+  - *Delete media when its PR closes* (phase 2).
+- **Recording indicator:** while any simulator is recording, show a red dot on the menu bar icon
+  and add *Stop recording* to that simulator's row in the menu. You can tell what's being
+  captured and stop it.
+- **Setup and deploy:** `WorkerDeployer` creates or adopts `MEDIA_KV` alongside `OAUTH_KV`. Older
+  Workers have no `/media` route, so the existing version mismatch shown by `mac_status` and the
+  menu tells the user to redeploy. The share tools return "Redeploy the Worker from Settings to
+  enable sharing" instead of failing with no explanation.
+
+## Phases
+
+1. **Worker:** add the `MEDIA_KV` binding, `POST/DELETE /media`, `GET /m/<id>[.ext]`, and the
+   player page, with vitest coverage (bad token, oversize body, unknown id, TTL passed through).
+   Deployer: add the second namespace. Instructions text.
+2. **Mac, screenshots:** media ledger and uploader in MiniRunKit (tested on Linux with a fake
+   HTTP client), the `screenshot share` flag, `delete_media`, config keys and control-socket
+   commands.
+3. **Mac, recordings:** `start_recording`/`stop_recording`, auto-stop, GIF encoding with size
+   back-off.
+4. **Menu bar app:** the Shared media section, the Sharing settings pane, the recording indicator.
+5. **Optional:** delete media when its PR closes, using `gh`.
