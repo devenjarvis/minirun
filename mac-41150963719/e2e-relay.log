@@ -1,0 +1,34 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.Yj8upgvysy/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  31 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, run_command, get_job, job_log, list_jobs
+• mac_status
+  The Mac is online (iad20-eo1212-1758fb2b-c172-41df-ac5f-011f9d4d90e8-B21429BAFC14).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  1 frames, 3584 bytes, avc1.4D001F
+E2E relay test passed.
+--- minirun status
+minirun 0.2.0 serving (pid 25608, up 14s)
+Relay: connected to 127.0.0.1 for 14s
+Live view: http://127.0.0.1:8787/
+
+Simulators:
+  minirun-smoke (iOS 26.5) 77CD5814-9E57-47CD-A27E-4C239E8F6CD8 — not reserved, busy, used just now
+
+Jobs: none yet
+--- minirun serve log
+2026-10-31T00:51:02Z minirun 0.2.0 starting
+2026-10-31T00:51:02Z Simulator support loaded
+2026-10-31T00:51:02Z Preventing idle sleep while running
+2026-10-31T00:51:02Z 30 tools ready; workspaces at /Users/runner/minirun/workspaces
+2026-10-31T00:51:02Z Shutting down simulators after 30 idle minutes
+2026-10-31T00:51:02Z Answering control requests on /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.Yj8upgvysy/control.sock
+2026-10-31T00:51:02Z Connected to relay 127.0.0.1
+2026-10-31T00:51:02Z Relay round trip: 4ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
