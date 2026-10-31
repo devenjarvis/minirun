@@ -11,7 +11,10 @@ a URL that it can fetch, so the agent has nothing to paste.
 - **GitHub fetches the image anonymously.** It rewrites `![](url)` to go through its image proxy
   (camo), which can't send cookies or OAuth tokens. So a shared image needs a public, unguessable
   capability URL. It can't sit behind the viewer password.
-- **The proxy caps size.** Open-source camo defaults to 5 MB, so keep an inline image under about 5 MB.
+- **The proxy may cap size.** Open-source camo defaults to 5 MB, but GitHub's live limit isn't
+  documented and may be higher. Rather than guess, the Worker serves size probes (see
+  [Finding the real size limit](#finding-the-real-size-limit)), and the inline limit is a
+  setting (`mediaInlineLimitMB`, default 5) that can be raised once the probes show what renders.
 - **GitHub won't play externally hosted video.** `<video>` works only for files uploaded through
   GitHub's web UI, and an agent can't upload that way. To show motion inline, use an **animated
   GIF**: it renders inline and loops. Link the GIF to a small player page that holds the full MP4.
@@ -28,8 +31,9 @@ a URL that it can fetch, so the agent has nothing to paste.
 | Free allowance | 1 GB stored, 1,000 writes/day, 100k reads/day, 25 MiB per value | 10 GB-month, free egress |
 | Cleanup | `expirationTtl` on each put: KV deletes the object by itself | Bucket lifecycle rule (days granularity) |
 
-KV fits easily. A screenshot is about 100–300 KB, and a 20-second GIF plus MP4 is about 2–5 MB,
-so 1 GB holds hundreds of recordings or thousands of screenshots. A few dozen uploads a day is
+KV fits easily. A screenshot is about 100–300 KB, and a 60-second GIF plus MP4 is about 5–15 MB,
+so 1 GB holds about a hundred recordings or thousands of screenshots, and 7-day expiry keeps
+only a week's worth. A few dozen uploads a day is
 nowhere near the 1,000-write limit. Each object gets its own TTL, so you don't need a cron job, a
 cleanup worker or a lifecycle rule.
 
@@ -93,13 +97,13 @@ calls because the agent has to tap and swipe while it records.
 2. **`start_recording {device, max_seconds?}`** starts recording that simulator. Use
    `simctl io <udid> recordVideo --codec=h264` to start: it's the least code, and the process
    stops cleanly on SIGINT. If it misbehaves on Xcode 27's Device Hub, put the existing
-   `ScreenEncoder` H.264 frames into an `AVAssetWriter` instead. `max_seconds` defaults to 30,
-   with a maximum of 60. When the time runs out the recording stops by itself, so a forgotten
+   `ScreenEncoder` H.264 frames into an `AVAssetWriter` instead. `max_seconds` defaults to
+   `maxRecordingSeconds` (60). When the time runs out the recording stops by itself, so a forgotten
    recording can't run forever or hold the simulator. Allow one recording per simulator.
 3. **`stop_recording {device, share?: true, caption?}`** stops the recording. It makes the GIF on
    the Mac with `AVAssetImageGenerator` and ImageIO's GIF encoder (`CGImageDestination`): about
-   10 fps, 320 points wide, no ffmpeg. If the GIF comes out over about 4.5 MB, lower the fps or
-   width and encode again. Then it uploads both files and returns:
+   10 fps, 320 points wide, no ffmpeg. If the GIF comes out over `mediaInlineLimitMB`, lower the
+   fps or width and encode again. Then it uploads both files and returns:
    ```
    Markdown: [![Onboarding flow](…/m/Ab9….gif)](…/m/Ab9…)
    ```
@@ -120,8 +124,8 @@ Never share screens showing credentials or personal data."
 
 Plan for three levels; the first one does most of the work:
 
-1. **TTL (automatic, built in).** Every object is written with `expirationTtl`. The default is 30
-   days, and Settings offers 7, 30 or 90. Expiry costs nothing and needs no code. After that the
+1. **TTL (automatic, built in).** Every object is written with `expirationTtl`. The default is 7
+   days, and Settings offers 1, 7, 30 or 90. Expiry costs nothing and needs no code. After that the
    PR shows a broken image. For a verification screenshot that's fine; once merged, the code is
    the record. Make this clear in the settings text.
 2. **Storage cap (automatic).** The default is 500 MB, about half the KV free limit, leaving room.
@@ -144,9 +148,10 @@ holding the link, which matters for private repos. Say so in Settings.
   reloaded live):
   - *Let Claude share screenshots and recordings* (on by default). When it's off, `share: true`
     fails with a clear message, and the agent still gets the image itself.
-  - *Keep shared media for* 7 / 30 / 90 days.
+  - *Keep shared media for* 1 / 7 / 30 / 90 days (default 7).
   - *Storage limit*, default 500 MB.
   - *Longest recording*, default 60 s.
+  - *Largest inline GIF*, default 5 MB (raise it after running the size probes).
   - *Delete media when its PR closes* (phase 2).
 - **Recording indicator:** while any simulator is recording, show a red dot on the menu bar icon
   and add *Stop recording* to that simulator's row in the menu. You can tell what's being
@@ -155,6 +160,72 @@ holding the link, which matters for private repos. Say so in Settings.
   Workers have no `/media` route, so the existing version mismatch shown by `mac_status` and the
   menu tells the user to redeploy. The share tools return "Redeploy the Worker from Settings to
   enable sharing" instead of failing with no explanation.
+
+## Finding the real size limit
+
+`GET /m/probe/<n>.gif` (n = 1 to 25, in MB) returns a valid animated GIF padded to exactly n MB,
+generated on the fly with nothing stored. To find GitHub's real limit, put probes into a PR
+description:
+
+```markdown
+| 4 MB | 6 MB | 8 MB | 10 MB | 15 MB | 20 MB | 25 MB |
+| --- | --- | --- | --- | --- | --- | --- |
+| ![](https://minirun.you.workers.dev/m/probe/4.gif) | ![](https://minirun.you.workers.dev/m/probe/6.gif) | … |
+```
+
+Then set `mediaInlineLimitMB` to the largest size that renders. KV's 25 MiB value limit is the
+ceiling either way. The MP4 is only linked, never proxied, so it can always use the full 25 MiB.
+
+## Implementation contract
+
+What the Worker and the Mac agree on, so they can be built separately.
+
+### Worker HTTP API
+
+- `PUT /media/<id>.<ext>`: requires `Authorization: Bearer <AGENT_TOKEN>`.
+  - `<id>` matches `^[A-Za-z0-9_-]{22}$` (16 random bytes, base64url, chosen by the Mac).
+    `<ext>` is one of `jpg`, `png`, `gif`, `mp4`.
+  - The body is the raw bytes. Header `X-Minirun-Expires-In` is the TTL in seconds: required,
+    from 60 to 7,776,000 (90 days). Optional `X-Minirun-Caption` is percent-encoded and up to
+    200 characters.
+  - Stored in `MEDIA_KV` under key `<id>.<ext>`, with `expirationTtl` and metadata
+    `{ type, bytes, caption?, created }`.
+  - Replies `201 {"url": "https://<host>/m/<id>.<ext>"}`. `401` for a bad token, `400` for a bad
+    id, ext or TTL, `413` for a body over 25 MiB.
+- `DELETE /media/<id>`: agent token. Deletes `<id>.jpg|png|gif|mp4` and replies `204`.
+- `GET|HEAD /m/<id>.<ext>`: public. Content-Type comes from the ext. Sends
+  `Cache-Control: public, max-age=31536000, immutable`, `X-Robots-Tag: noindex`,
+  `X-Content-Type-Options: nosniff`, and `Accept-Ranges: bytes`. Answers single-range
+  `Range` requests with `206` (Safari needs these to play MP4). `404` if missing.
+- `GET /m/<id>`: public HTML player page when `<id>.mp4` exists: `<video controls playsinline>`
+  with the caption. `404` otherwise. Robots `noindex`.
+- `GET|HEAD /m/probe/<n>.gif`: public size probe, n from 1 to 25, as above.
+
+### Mac config (`config.json`)
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `shareMedia` | Bool | `true` | Whether `share` uploads are allowed |
+| `mediaRetentionDays` | Int | `7` | TTL for uploads, clamped to 1–90 |
+| `mediaStorageLimitMB` | Int | `500` | Delete the oldest uploads to stay under this |
+| `maxRecordingSeconds` | Int | `60` | Recordings stop by themselves after this, clamped to 5–300 |
+| `mediaInlineLimitMB` | Int | `5` | The largest GIF to embed; shrink the GIF to fit |
+
+The media base URL comes from `relayURL` the same way `viewerURL` is derived
+(`wss://host/agent` becomes `https://host`).
+
+### Ledger (`~/.config/minirun/media.json`)
+
+An array of `MediaItem`:
+`{ id, kind: "screenshot"|"recording", files: [{ext, bytes}], createdAt, expiresAt, repo?, ref?, caption?, url }`.
+`url` is the page to open: `/m/<id>.jpg` for screenshots, `/m/<id>` for recordings.
+
+### Control socket (`controlVersion` 3)
+
+- New commands: `list_media` (fills `Response.media: [MediaItem]`), `delete_media` (`id`),
+  `delete_all_media`, `stop_recording` (`udid`).
+- `ServeStatus.media: { count, bytes }?` and `ServeStatus.Simulator.recording: Bool`, which
+  decodes as `false` when missing.
 
 ## Phases
 
