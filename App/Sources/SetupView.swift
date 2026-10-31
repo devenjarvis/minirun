@@ -30,6 +30,10 @@ final class SetupStore {
     // Connect Claude
     private(set) var claudeStepOpened = Date()
 
+    // macOS apps
+    /// What request_mac_permissions said to do next.
+    private(set) var macMessage: String?
+
     init(menu: MenuStore) {
         self.menu = menu
     }
@@ -39,12 +43,15 @@ final class SetupStore {
     var github: DoctorCheck? { checks.first { $0.id == "github" } }
     var claudeConnected: Bool { Setup.claudeConnected(menu.snapshot.relay, since: claudeStepOpened) }
     var relayConnected: Bool { menu.snapshot.relay?.state == .connected }
+    /// Screen Recording, Accessibility and Display, from the daemon's status or the doctor.
+    var macChecks: [DoctorCheck] { Setup.macAppRows(checks: checks, permissions: menu.snapshot.macPermissions) }
+    var macReady: Bool { !macChecks.isEmpty && macChecks.allSatisfy(\.ok) }
 
     func go(_ next: Setup.Step) {
         error = nil
         step = next
         if next == .claude { claudeStepOpened = Date() }
-        if next == .prerequisites || next == .github { runChecks() }
+        if next == .prerequisites || next == .github || next == .macApps { runChecks() }
     }
 
     func runChecks() {
@@ -103,6 +110,23 @@ final class SetupStore {
                 self.checklist.fail(error.localizedDescription)
                 throw error
             }
+        }
+    }
+
+    /// Has minirun serve ask macOS for Screen Recording and Accessibility as itself, so the
+    /// prompts and the System Settings entries name the daemon, not this app.
+    func requestMacPermissions() {
+        work {
+            let response = try await self.menu.send(ControlProtocol.Request(command: "request_mac_permissions"))
+            guard response.ok else {
+                if (response.controlVersion ?? 0) < ControlProtocol.version {
+                    throw ToolError("This minirun serve is older than the app and can't ask for these. Restart it, then try again.")
+                }
+                throw ToolError(response.error ?? "minirun serve couldn't ask for them.")
+            }
+            self.macMessage = response.message
+            self.menu.refresh()
+            self.runChecks()
         }
     }
 
@@ -169,6 +193,10 @@ struct SetupView: View {
             .frame(width: 480)
         }
         .frame(height: 500)
+        // Coming back from System Settings: see whether the grant took.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if store.step == .macApps { store.runChecks() }
+        }
         .onAppear { store.go(Setup.needed(MiniRunConfig.load()) ? .prerequisites : store.step) }
     }
 
@@ -178,6 +206,7 @@ struct SetupView: View {
         case .cloudflare: cloudflare
         case .claude: claude
         case .github: github
+        case .macApps: macApps
         case .headless: headless
         }
     }
@@ -284,6 +313,53 @@ struct SetupView: View {
         }
     }
 
+    @ViewBuilder private var macApps: some View {
+        Text("Only needed to build and drive native macOS apps on this Mac. iOS apps in the simulator work without any of this, so you can skip it.")
+        Text("macOS grants these per program: they go to minirun serve (\(AppPaths.helper ?? "minirun.app/Contents/Helpers/minirun")), not to this app.")
+            .font(.callout).foregroundStyle(.secondary)
+        if store.checking && store.macChecks.isEmpty {
+            HStack { ProgressView().controlSize(.small); Text("Checking…") }
+        } else if store.macChecks.isEmpty {
+            Text("minirun serve didn't report these. Make sure it's running and up to date (Restart service in the menu), then check again.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
+        ForEach(store.macChecks, id: \.id) { check in
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: check.ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill").foregroundStyle(check.ok ? .green : .orange)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(check.title)
+                    Text(check.detail).font(.caption).foregroundStyle(.secondary)
+                    if !check.ok, let fix = check.fix { Text(fix).font(.caption).textSelection(.enabled) }
+                }
+                Spacer()
+                if !check.ok, let link = Self.settingsLink(check.id) {
+                    Button("Open Settings") { store.menu.open(link) }.controlSize(.small)
+                }
+            }
+        }
+        HStack {
+            Button("Request Access") { store.requestMacPermissions() }
+                .disabled(store.working || store.macReady)
+                .help("minirun serve asks macOS for Screen Recording and Accessibility, so it shows up in System Settings")
+            Button("Restart minirun serve") { store.menu.perform(.restart) }
+                .help("Screen Recording takes effect after minirun serve restarts")
+            Button("Check Again") { store.runChecks() }.disabled(store.checking)
+            if store.working { ProgressView().controlSize(.small) }
+        }
+        if let message = store.macMessage { Text(message).font(.callout).foregroundStyle(.secondary) }
+        Text("minirun's builds are ad-hoc signed, so macOS may forget these after an update. If macOS apps stop working, remove minirun from both lists in System Settings, add it again and restart minirun serve.")
+            .font(.caption).foregroundStyle(.secondary)
+    }
+
+    private static func settingsLink(_ check: String) -> String? {
+        switch check {
+        case "screen-recording": return SystemSettingsLinks.screenRecording
+        case "accessibility": return SystemSettingsLinks.accessibility
+        case "display": return SystemSettingsLinks.automaticLogin
+        default: return nil
+        }
+    }
+
     @ViewBuilder private var headless: some View {
         Text("If this Mac (a Mac mini, say) runs without anyone at it, set it up so minirun stays reachable:")
         VStack(alignment: .leading, spacing: 8) {
@@ -324,7 +400,9 @@ struct SetupView: View {
             case .claude:
                 Button(store.claudeConnected ? "Continue" : "Skip for Now") { store.go(.github) }.keyboardShortcut(.defaultAction)
             case .github:
-                Button("Continue") { store.go(.headless) }.keyboardShortcut(.defaultAction)
+                Button("Continue") { store.go(.macApps) }.keyboardShortcut(.defaultAction)
+            case .macApps:
+                Button(store.macReady ? "Continue" : "Skip for Now") { store.go(.headless) }.keyboardShortcut(.defaultAction)
             case .headless:
                 Button("Done") {
                     store.menu.configChanged()

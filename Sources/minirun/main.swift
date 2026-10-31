@@ -109,7 +109,10 @@ func main() async {
                     return error.localizedDescription
                 }
             },
-            serveStatus: { try? ControlProtocol.send(ControlProtocol.Request(command: "status")).status }
+            serveStatus: { try? ControlProtocol.send(ControlProtocol.Request(command: "status")).status },
+            // macOS grants Screen Recording and Accessibility per program, and this process runs
+            // under Terminal's grants, so ask the daemon what it has.
+            macPermissions: { try? ControlProtocol.send(ControlProtocol.Request(command: "status")).status?.macPermissions }
         )
         let checks = await doctor.checks(config: config)
         print(args.contains("--json") ? ControlProtocol.encode(checks) : Doctor.format(checks))
