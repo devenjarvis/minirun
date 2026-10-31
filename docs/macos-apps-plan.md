@@ -364,6 +364,26 @@ Phase 3:
   HelloMacApp and Fetch with two sessions at once (two branches of the same app) to check
   isolation, and watch it live in the viewer.
 
+## Release checklist (on the real Mac)
+
+CI covers the loop on HelloMacApp. After installing the release, check what CI can't:
+
+1. **Permissions.** Menu bar app → Set Up → macOS apps → Request Access; grant Screen Recording
+   and Accessibility; `minirun doctor` shows all three Mac checks ✓. Restart `minirun serve` and
+   check they still hold.
+2. **Fetch end to end.** `build_and_run {repo: "devenjarvis/fetch", ref: <branch>, platform:
+   "macos"}`. If the build needed the ad-hoc signing fallback and the app exits at launch, the
+   result should blame entitlements (iCloud, push, team app groups).
+3. **Input on a real app.** describe_ui, tap by id and at a point, right click, double click,
+   drag (swipe / long_press), type_text, press_key with ⌘, press_menu_item, scroll.
+4. **Two sessions at once.** Two branches of the same app via `build_and_run`: each gets its own
+   Mac app id, rebuilding one never quits the other, and `isolated_home` keeps their data apart.
+5. **Live view.** Open the Mac app from the viewer's picker; click, scroll and type; resize the
+   window while watching; try `?codec=jpeg`.
+6. **Menu bar app.** The Mac apps section shows the app with Watch live, Bring to front and Quit.
+7. **Idle quitting** after `idleShutdownMinutes`, and reconciling after `minirun serve` restarts.
+8. **After the next update,** check whether macOS dropped the permission grants (ad-hoc signing).
+
 ## Out of scope for now
 
 - Command-line tools and menu bar–only (`LSUIElement`) apps beyond launch and logs (they have no
