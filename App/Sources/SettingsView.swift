@@ -18,6 +18,7 @@ struct SettingsView: View {
             SimulatorsTab(store: store).tabItem { Label("Simulators", systemImage: "iphone") }
             WorkspacesTab(store: store).tabItem { Label("Workspaces", systemImage: "folder") }
             SecurityTab(store: store).tabItem { Label("Security", systemImage: "lock.shield") }
+            RunnersTab(store: store.menu.runners, menu: store.menu).tabItem { Label("GitHub Runners", systemImage: "server.rack") }
             DiagnosticsTab(store: store).tabItem { Label("Diagnostics", systemImage: "stethoscope") }
         }
         .frame(width: 560)

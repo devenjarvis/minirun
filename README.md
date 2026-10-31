@@ -300,6 +300,13 @@ For each repository, this:
 4. Installs it as a LaunchAgent, so it starts at login like `minirun serve`. Simulators need the
    logged-in GUI session, so it's not a LaunchDaemon.
 
+Or, in the menu bar app, open **Settings → GitHub Runners**, type `owner/repo` and choose **Add
+Runner**. The app carries the same script and runs it for you. The tab lists each runner with
+its service state and GitHub's view of it (idle, busy or offline). From there you can start, stop
+or remove a runner, open its logs, and open its page on GitHub. For a public repository it shows
+the warning below and asks before registering. Once a runner is installed, the menu shows it too,
+with Start and Stop.
+
 Target it from a workflow with:
 
 ```yaml
@@ -325,6 +332,8 @@ those reach the simulators Claude and your viewer are using.
 
 ```bash
 ./scripts/github-runner.sh status              # service state and GitHub's view of each runner
+./scripts/github-runner.sh stop you/app        # take no jobs until started again (or the next login)
+./scripts/github-runner.sh start you/app
 ./scripts/github-runner.sh uninstall you/app   # stops the service, deregisters, deletes the folder
 ```
 
