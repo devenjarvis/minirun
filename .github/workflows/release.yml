@@ -1,32 +1,76 @@
 name: Release
 
-# Push a tag like v0.3.0 (it must match MiniRun.version and worker/src/version.ts) to build minirun.app with the daemon,
-# frameworks and Worker inside, and attach it to a GitHub Release. The build is ad-hoc signed
-# and not notarized; the README says how to open it.
+# Builds minirun.app with the daemon, frameworks and Worker inside, and attaches it to a GitHub
+# Release. The build is ad-hoc signed and not notarized; the README says how to open it.
+#
+# Releasing is a merge: when main's MiniRun.version (which must match App/project.yml and
+# worker/src/version.ts) has no vX.Y.Z tag yet, this builds it and creates the release, which
+# creates the tag on that commit. Pushing a tag by hand still works, and so does running it from
+# the Actions tab (rebuilds an existing release, or releases main's version).
 
 permissions:
   contents: write
 
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build (e.g. v0.3.0)
-        required: true
+        description: "Tag to build, e.g. v0.3.0 (default: main's version)"
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
+  check:
+    name: Decide what to release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.decide.outputs.tag }}
+      ref: ${{ steps.decide.outputs.ref }}
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: decide
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          version=$(sed -nE 's/.*static let version = "([^"]+)".*/\1/p' Sources/MiniRunKit/Version.swift)
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            tag="$GITHUB_REF_NAME"; ref="$GITHUB_REF_NAME"; release=true
+          elif [[ -n "$INPUT_TAG" ]]; then
+            tag="$INPUT_TAG"; ref="$INPUT_TAG"; release=true
+          else
+            # A push to main (or a run without a tag): release this commit if its version is new.
+            tag="v$version"; ref="$GITHUB_SHA"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+                release=false; echo "$tag already exists; nothing to release."
+              else
+                ref="$tag"; release=true   # run by hand: rebuild the existing release
+              fi
+            else
+              release=true; echo "Releasing $tag from $GITHUB_SHA."
+            fi
+          fi
+          { echo "tag=$tag"; echo "ref=$ref"; echo "release=$release"; } >> "$GITHUB_OUTPUT"
+
   app:
     name: Build and publish minirun.app
+    needs: check
+    if: needs.check.outputs.release == 'true'
     runs-on: macos-26
     timeout-minutes: 60
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ needs.check.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ needs.check.outputs.ref }}
       - name: Tag matches the version
         run: |
           version=$(sed -nE 's/.*static let version = "([^"]+)".*/\1/p' Sources/MiniRunKit/Version.swift)
@@ -81,5 +125,6 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --clobber
           else
-            gh release create "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --title "minirun $VERSION" --notes-file notes.md
+            # Creates the tag on the commit that was built if it doesn't exist yet.
+            gh release create "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --title "minirun $VERSION" --notes-file notes.md --target "$(git rev-parse HEAD)"
           fi
