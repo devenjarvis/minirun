@@ -24,6 +24,16 @@ public actor JobStore {
     private var order: [String] = []
     private let maxJobs = 50
 
+    /// The longest a tool call waits on a job before handing back its id. Claude's MCP client gives
+    /// up on a call after about 60 seconds, and the job keeps running when it does, so waiting
+    /// longer only loses the job id.
+    public static let maxWait: Double = 50
+
+    /// `wait_seconds` as asked, defaulting to 45 and kept within 0...`maxWait`.
+    public static func waitSeconds(_ asked: Double?) -> Double {
+        min(maxWait, max(0, asked ?? 45))
+    }
+
     public init() {}
 
     /// Starts `work` in the background and returns the job id immediately.

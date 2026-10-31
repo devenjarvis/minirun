@@ -74,7 +74,7 @@ const VIDEO_WINDOW = 10;
 /** How often a stream's viewers may ask the Mac for a keyframe. */
 const KEYFRAME_INTERVAL_MS = 500;
 
-/** Longest a tool call may take. Mac jobs return within their wait_seconds (max 600). */
+/** Longest a tool call may take. Mac jobs return within their wait_seconds (max 50); this is a backstop. */
 const CALL_TIMEOUT_MS = 11 * 60 * 1000;
 
 /**

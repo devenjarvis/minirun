@@ -306,6 +306,13 @@ final class ShellAndJobTests: XCTestCase {
         XCTAssertTrue(final.isError)
         XCTAssertTrue(final.content.description.contains("boom"))
     }
+
+    func testJobWaitStaysUnderClientTimeout() {
+        XCTAssertEqual(JobStore.waitSeconds(nil), 45)
+        XCTAssertEqual(JobStore.waitSeconds(600), JobStore.maxWait)
+        XCTAssertEqual(JobStore.waitSeconds(-1), 0)
+        XCTAssertLessThan(JobStore.maxWait, 60, "Claude's MCP client gives up on a call after 60 seconds")
+    }
 }
 
 final class SimulatorPickerTests: XCTestCase {
