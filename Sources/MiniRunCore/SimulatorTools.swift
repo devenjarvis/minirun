@@ -82,7 +82,7 @@ extension ToolRegistry {
             required: ["device"]
         )) { [self] args in
             if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("shutdown_simulator")) }
-            .text(try await self.shutDownSimulator(self.device(args, boot: false)))
+            return .text(try await self.shutDownSimulator(self.device(args, boot: false)))
         }
 
         register(ToolDefinition(

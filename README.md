@@ -1,7 +1,7 @@
 # minirun
 
 Turn a Mac (a home Mac mini is ideal) into a runner that Claude can drive from anywhere: it
-builds your iOS app, runs it in a simulator, taps through it, reads logs, runs tests, and streams
+builds your iOS app, runs it in a simulator (or your macOS app on the Mac itself), taps through it, reads logs, runs tests, and streams
 the simulator live to your phone or laptop's browser so you can watch and take over.
 
 Everything runs on hardware you own plus Cloudflare's free plan. There's no domain to buy, no
@@ -191,6 +191,53 @@ different branches of the same app (for example, two worktrees). minirun keeps t
   (`/?device=UDID`), and taps from that page only reach that simulator. When more than one simulator
   is booted, the viewer shows a picker to switch between them.
 
+## macOS apps
+
+minirun also builds and drives native macOS apps (AppKit, SwiftUI or Mac Catalyst) on the Mac
+itself, with the same loop:
+
+1. `build_and_run {repo, ref, platform: "macos"}` builds the app, quits the copy it launched for
+   this repo + ref last time, launches the new build, waits for its window and returns a
+   screenshot of it. Without `platform`, a scheme that only builds for macOS is detected. The
+   result gives a **Mac app id** like `mac-3f9a2c`; Claude passes it as `device` on later calls.
+2. `screenshot`, `describe_ui` (`include_menus` for the menu bar), `tap` (by id/label/value through
+   Accessibility, or a click at a window point; `button: "right"`, `count: 2`), `swipe` and
+   `long_press` (mouse drags), `scroll`, `type_text` (any characters), `press_key` with
+   `modifiers`, `press_menu_item ["File", "New Window"]`, `open_url`, `app_logs` (stdout/stderr
+   since launch plus unified logging), `terminate_app`. `list_windows` lists the app's windows;
+   most tools take `window` (an index or title). Coordinates are window points from the window's
+   top-left, title bar included.
+3. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac.
+4. The live view link shows the app's window; you can click, drag, scroll, right-click and type
+   into it.
+
+**Isolation between sessions.** Each repo + ref gets its own Mac app id, and minirun only ever
+quits the process it launched for that id (it checks the pid still runs that executable). Apps are
+started as plain processes, not through Launch Services, so two branches of the same app run side
+by side. Clicks, scrolls and keys are posted to the app's process, so they don't move your cursor
+or need the window in front; `input: "hid"` uses the real cursor and keyboard instead for apps
+that ignore those events. `list_mac_apps` shows every Mac app minirun launched and who it's for.
+Apps nobody has used for `idleShutdownMinutes` are quit, like idle simulators.
+
+It needs Screen Recording and Accessibility for `minirun serve`: see
+[Permissions for macOS apps](#permissions-for-macos-apps).
+
+Limitations:
+
+- Copies of one app share its bundle id, so they share UserDefaults and containers.
+  `isolated_home: true` runs a non-sandboxed app with `CFFIXED_USER_HOME` set to
+  `<checkout>/.minirun/home`, which separates its preferences and files; sandboxed apps still share.
+- macOS UI tests take over the Mac's real mouse and keyboard, so `run_tests` for macOS runs one at
+  a time on the Mac (unit tests included, since minirun can't tell them apart up front).
+- A headless Mac needs a logged-in user and a display (or an HDMI dummy plug) for windows to draw.
+- If signing with the project's team fails, minirun builds again signed ad hoc and says so. macOS
+  kills an ad-hoc-signed app at launch if its entitlements need a provisioning profile (iCloud,
+  push, app groups with a team prefix); the result says when that's the likely cause.
+- `set_pasteboard` sets the Mac's own pasteboard, shared by every app and session.
+- In the browser viewer, shortcuts the browser keeps for itself (⌘W, ⌘T, ⌘Q…) never reach the app;
+  Claude can send them with `press_key` or `press_menu_item`.
+- Menu bar–only apps and command-line tools launch and log, but have no window to show.
+
 ## Tools
 
 | Area | Tools |
@@ -199,7 +246,8 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 | Seeing | `screenshot` (sized so pixels = points), `describe_ui` (compact text or full JSON) |
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
-| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests`, `run_command` (opt-in) |
+| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests` (all three take `platform`: `ios`, `macos`, `mac-catalyst`), `run_command` (opt-in) |
+| macOS apps | `list_mac_apps`, `list_windows`, `scroll`, `press_menu_item`, plus the tools above with a Mac app id as `device` (see [macOS apps](#macos-apps)) |
 | Jobs | `get_job`, `job_log`, `list_jobs` |
 | Host | `host_info`, `mac_status` (served by the Worker) |
 
@@ -383,7 +431,7 @@ day within the free 100k requests. The viewer stops streaming when its tab is hi
 
 ## Limitations (v0.1)
 
-- One Mac per Worker deployment. Simulators only for UI control (physical devices are planned).
+- One Mac per Worker deployment. Simulators and macOS apps only for UI control (physical devices are planned).
 - Each branch keeps its own checkout and build folder. Delete old ones from `~/minirun/workspaces`
   to free disk space.
 - The Mac and the Worker must be updated together: the viewer's per-simulator streams need both.

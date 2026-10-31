@@ -90,6 +90,12 @@ echo "$out" | expect "press_key"
 
 HOST=$(run host_info)
 grep -E "(Screen Recording|Accessibility|Display) \(for macOS apps\)" <<< "$HOST" || true
+# CI grants them first (scripts/ci-grant-tcc.sh) and sets this, so a lost grant fails rather than skips.
+if [[ -n "${MINIRUN_SMOKE_REQUIRE_MAC_GRANTS:-}" ]]; then
+  for check in "Accessibility" "Screen Recording" "Display"; do
+    grep -q "✓ $check (for macOS apps)" <<< "$HOST" || { echo "FAILED: $check isn't available to minirun, but MINIRUN_SMOKE_REQUIRE_MAC_GRANTS is set" >&2; exit 1; }
+  done
+fi
 if grep -q "✓ Accessibility (for macOS apps)" <<< "$HOST"; then
   run describe_ui "{\"device\":\"$MAC_ID\"}" | tee /tmp/minirun-mac-ui.txt | expect "incrementButton"
   run tap "{\"device\":\"$MAC_ID\",\"id\":\"incrementButton\"}" | expect "Pressed"

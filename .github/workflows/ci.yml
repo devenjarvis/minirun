@@ -96,10 +96,16 @@ jobs:
       - name: Install simulator template
         if: steps.template-cache.outputs.cache-hit == 'true'
         run: scripts/sim-template.sh restore ~/sim-template
+      - name: Grant minirun Screen Recording and Accessibility
+        # So the smoke test's macOS app steps run instead of skipping. GitHub's images allow
+        # writing TCC.db (SIP is off); a self-hosted Mac keeps whatever grants it has.
+        if: runner.environment == 'github-hosted'
+        run: scripts/ci-grant-tcc.sh "$PWD/.build/debug/minirun"
       - name: Simulator smoke test
         # Leaves its first simulator booted so the relay test below doesn't wait for another boot.
         env:
           MINIRUN_SMOKE_KEEP: "1"
+          MINIRUN_SMOKE_REQUIRE_MAC_GRANTS: ${{ runner.environment == 'github-hosted' && '1' || '' }}
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
       - name: Stage simulator template
         id: template-stage

@@ -1,5 +1,19 @@
 # Plan: build, run and drive macOS apps
 
+> **Status:** phases 1 and 2 have landed on `claude/macos-apps-integration`: the build pipeline,
+> the Mac driver, viewer and relay, host checks and menu, and the integration (`MacTools.swift`,
+> `platform` on the build tools, Mac live view, idle quitting, the control handlers, protocol 5,
+> the smoke test's macOS section, README and CHANGELOG). CI compiles it and the smoke test builds,
+> launches, logs, tests and quits HelloMacApp; the steps that need Screen Recording and
+> Accessibility run only where the runner has them. Not yet checked on a real Mac with the grants:
+> the live view of a window (H.264, resize, viewer input), pid-posted input across apps, `hid`
+> input, Catalyst builds, idle quitting, and two sessions on two branches of one app. Phase 3
+> (review) is next.
+>
+> Deviations: `run_tests` for macOS always takes the global lock (unit tests too), because
+> telling UI test targets apart would need another `xcodebuild` call. `scroll` with `direction`
+> means the content direction (`down` shows more below), with `amount` (default 300 points).
+
 Today minirun builds iOS apps, runs them in a simulator, and lets Claude see and touch them. This
 plan adds the same loop for **native macOS apps** (AppKit or SwiftUI, and Mac Catalyst), running
 directly on the Mac that hosts minirun. The first users are Fetch (a macOS app) and a future
