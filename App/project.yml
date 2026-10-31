@@ -36,7 +36,7 @@ targets:
       base:
         PRODUCT_NAME: minirun
         PRODUCT_BUNDLE_IDENTIFIER: dev.minirun.menu
-        MARKETING_VERSION: "0.3.0"
+        MARKETING_VERSION: "0.4.0"
         CURRENT_PROJECT_VERSION: "1"
         GENERATE_INFOPLIST_FILE: YES
         # A menu bar app: no Dock icon and no main window.
