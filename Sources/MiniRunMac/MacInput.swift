@@ -54,9 +54,15 @@ enum MacInput {
     }
 
     static func mouse(_ type: CGEventType, at point: CGPoint, button: CGMouseButton, clickState: Int = 1, target: MacInputTarget, source: CGEventSource?) {
-        guard let event = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { return }
+        // No event source: on CI, clicks made from a private-state source never reached SwiftUI
+        // buttons (keys did), while source-less events are what click tools like cliclick post.
+        _ = source
+        guard let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: point, mouseButton: button) else { return }
         event.flags = []
         if type != .mouseMoved { event.setIntegerValueField(.mouseEventClickState, value: Int64(clickState)) }
+        if [.leftMouseDown, .rightMouseDown, .leftMouseDragged, .rightMouseDragged].contains(type) {
+            event.setDoubleValueField(.mouseEventPressure, value: 1)
+        }
         event.setIntegerValueField(.mouseEventWindowUnderMousePointer, value: Int64(target.windowID))
         event.setIntegerValueField(.mouseEventWindowUnderMousePointerThatCanHandleThisEvent, value: Int64(target.windowID))
         post(event, to: target)
@@ -72,7 +78,7 @@ enum MacInput {
         let clicks = min(3, max(1, count))
         for click in 1...clicks {
             mouse(types.down, at: location, button: types.button, clickState: click, target: target, source: source)
-            await pause(0.02)
+            await pause(0.05)
             mouse(types.up, at: location, button: types.button, clickState: click, target: target, source: source)
             if click < clicks { await pause(0.05) }
         }
