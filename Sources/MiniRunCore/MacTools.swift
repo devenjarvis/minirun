@@ -212,6 +212,7 @@ extension ToolRegistry {
     /// while holding `macLaunches` for the id.
     private func spawnMac(_ launch: MacLaunch) async throws -> Int32 {
         if let previous = await macApps.session(launch.id), let pid = previous.pid {
+            await recordings.halt(launch.id, reason: "the app was relaunched")
             await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: previous.executablePath, start: previous.processStart)
             await macApps.markExited(launch.id, ifPid: pid)
         }
@@ -507,13 +508,15 @@ extension ToolRegistry {
     func quitIdleMacAppsOnce(log: @Sendable (String) -> Void) async {
         let minutes = config.idleShutdownMinutes
         let sessions = await refreshedMacApps()
-        let busy = await activity.busy
+        // A recording counts as use, as for simulators: it stops by itself.
+        let busy = (await activity.busy).union(await recordings.recording)
         for id in IdleMacApps.plan(sessions, busy: busy, idleAfter: Double(minutes) * 60) {
             guard let planned = sessions.first(where: { $0.id == id }), let plannedPid = planned.pid else { continue }
             let quit = try? await macLaunches.withLock(id) { () async -> MacAppSession? in
                 // Look again under the lock: it may have been relaunched, used or quit since the plan.
                 guard let session = await macApps.session(id), let pid = session.pid, pid == plannedPid,
-                      session.updatedAt <= planned.updatedAt, !(await activity.busy).contains(id) else { return nil }
+                      session.updatedAt <= planned.updatedAt, !(await activity.busy).contains(id),
+                      !(await recordings.recording).contains(id) else { return nil }
                 await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: session.executablePath, start: session.processStart)
                 await macApps.markExited(id, ifPid: pid)
                 return session

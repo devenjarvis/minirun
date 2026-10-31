@@ -65,7 +65,7 @@ targets += frameworks.map { .binaryTarget(name: $0, path: "Vendor/XCFrameworks/\
 
 let package = Package(
     name: "minirun",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS("26.0")],
     products: products,
     targets: targets
 )

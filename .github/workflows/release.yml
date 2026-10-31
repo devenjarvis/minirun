@@ -103,7 +103,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "minirun $VERSION for macOS 14 or later on Apple silicon."
+            echo "minirun $VERSION for macOS 26 or later on Apple silicon."
             echo
             echo "This build is ad-hoc signed and not notarized, so macOS blocks it at first. After unzipping:"
             echo

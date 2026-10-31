@@ -93,9 +93,15 @@ final class MacToolsTests: XCTestCase {
         XCTAssertTrue(MacToolSupport.earlyExit(name: "Fetch", exit: "killed by signal 9 (SIGKILL)", adHoc: true).contains("entitlements"))
         XCTAssertFalse(MacToolSupport.earlyExit(name: "Fetch", exit: "exited with status 1", adHoc: false).contains("entitlements"))
 
-        for tool in ["press_button", "configure_simulator", "add_media", "install_app", "uninstall_app", "start_recording", "stop_recording"] {
+        for tool in ["press_button", "configure_simulator", "add_media", "install_app", "uninstall_app"] {
             XCTAssertFalse(MacToolSupport.unsupported(tool).contains("doesn't work"), tool)
         }
+
+        let started = MacToolSupport.recordingStarted(name: "Fetch", id: "mac-3f9a2c", windowIndex: 0, title: "Inbox", seconds: 60)
+        XCTAssertTrue(started.contains("Fetch's window 0 (\"Inbox\")"))
+        XCTAssertTrue(started.contains("after 60 s"))
+        XCTAssertTrue(started.contains("device \"mac-3f9a2c\""))
+        XCTAssertTrue(MacToolSupport.recordingStarted(name: "Fetch", id: "mac-3f9a2c", windowIndex: 1, title: "", seconds: 30).contains("Fetch's window 1."))
     }
 
     func testLiveMouse() {

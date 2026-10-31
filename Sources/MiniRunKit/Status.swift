@@ -118,9 +118,11 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         /// A job is using it or someone is watching it live.
         public var busy: Bool
         public var viewerURL: String?
+        /// A window of it is being recorded (start_recording). False from daemons that predate it.
+        public var recording: Bool
 
         public init(id: String, name: String, bundleID: String? = nil, pid: Int32? = nil, running: Bool, reservedFor: String? = nil,
-                    lastUsed: Date? = nil, busy: Bool = false, viewerURL: String? = nil) {
+                    lastUsed: Date? = nil, busy: Bool = false, viewerURL: String? = nil, recording: Bool = false) {
             self.id = id
             self.name = name
             self.bundleID = bundleID
@@ -130,11 +132,30 @@ public struct ServeStatus: Codable, Equatable, Sendable {
             self.lastUsed = lastUsed
             self.busy = busy
             self.viewerURL = viewerURL
+            self.recording = recording
         }
 
-        public init(_ session: MacAppSession, busy: Bool = false, viewerURL: String? = nil) {
+        public init(_ session: MacAppSession, busy: Bool = false, viewerURL: String? = nil, recording: Bool = false) {
             self.init(id: session.id, name: session.name, bundleID: session.bundleID, pid: session.pid, running: session.isRunning,
-                      reservedFor: session.label, lastUsed: session.updatedAt, busy: busy, viewerURL: viewerURL)
+                      reservedFor: session.label, lastUsed: session.updatedAt, busy: busy, viewerURL: viewerURL, recording: recording)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, bundleID, pid, running, reservedFor, lastUsed, busy, viewerURL, recording
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            name = try c.decode(String.self, forKey: .name)
+            bundleID = try c.decodeIfPresent(String.self, forKey: .bundleID)
+            pid = try c.decodeIfPresent(Int32.self, forKey: .pid)
+            running = try c.decode(Bool.self, forKey: .running)
+            reservedFor = try c.decodeIfPresent(String.self, forKey: .reservedFor)
+            lastUsed = try c.decodeIfPresent(Date.self, forKey: .lastUsed)
+            busy = try c.decode(Bool.self, forKey: .busy)
+            viewerURL = try c.decodeIfPresent(String.self, forKey: .viewerURL)
+            recording = try c.decodeIfPresent(Bool.self, forKey: .recording) ?? false
         }
     }
 
@@ -227,6 +248,7 @@ public struct ServeStatus: Codable, Equatable, Sendable {
                 var parts = [app.running ? (app.pid.map { "running (pid \($0))" } ?? "running") : "not running"]
                 parts.append(app.reservedFor.map { "for \($0)" } ?? "not reserved")
                 if app.busy { parts.append("busy") }
+                if app.recording { parts.append("recording") }
                 if let used = app.lastUsed { parts.append("used \(SimulatorPicker.ago(used, now: now))") }
                 lines.append("  \(app.name) \(app.id)" + (app.bundleID.map { " (\($0))" } ?? "") + " — " + parts.joined(separator: ", "))
             }
@@ -424,7 +446,7 @@ public protocol ControlCommands: Sendable {
     /// Stops serving one shared item and drops it from the ledger. The owner may delete any.
     func deleteMedia(id: String) async throws -> String
     func deleteAllMedia() async throws -> String
-    /// Stops a simulator's recording. The video is kept for the agent's stop_recording call.
+    /// Stops a simulator's (or Mac app's) recording. The video is kept for the agent's stop_recording call.
     func stopRecording(udid: String) async throws -> String
     /// Asks macOS for Screen Recording and Accessibility for `minirun serve` itself, so the prompts
     /// and the System Settings entries name the daemon. Returns what to do next.

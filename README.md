@@ -49,7 +49,7 @@ open ports, and no tunnel to run.
 
 ## Setup
 
-On the Mac (Apple silicon, macOS 14+, Xcode 26 or 27 with an iOS simulator runtime):
+On the Mac (Apple silicon, macOS 26+, Xcode 26 or 27 with an iOS simulator runtime):
 
 ```bash
 git clone https://github.com/devenjarvis/minirun && cd minirun
@@ -104,7 +104,7 @@ menu bar app or Terminal:
 
 | Permission | What it's for |
 | --- | --- |
-| **Screen Recording** | Screenshots of the app's window and the live view |
+| **Screen Recording** | Screenshots and recordings of the app's window, and the live view |
 | **Accessibility** | Reading the window's UI (`describe_ui`), clicks, typing, keys and menus |
 | **A display** | Windows only draw on an active display |
 
@@ -246,8 +246,10 @@ Limitations:
 - In the browser viewer, shortcuts the browser keeps for itself (⌘W, ⌘T, ⌘Q…) never reach the app;
   Claude can send them with `press_key` or `press_menu_item`.
 - Menu bar–only apps and command-line tools launch and log, but have no window to show.
-- `screenshot {share: true}` shares a Mac app's window for a PR, but `start_recording` and
-  `stop_recording` are simulator-only for now: recording a Mac app isn't supported yet.
+- `screenshot {share: true}` and `start_recording` / `stop_recording` capture one window of a Mac
+  app (pick it with `window`). Its menus, popovers and other windows don't show, and a recording
+  keeps the window's starting size if it's resized (the frames are scaled to fit). A recording
+  stops by itself when the window closes or the app quits; `stop_recording` still collects it.
 
 ## Tools
 
@@ -335,7 +337,7 @@ running jobs beside it. The menu shows:
 - When `minirun serve` isn't running, a Start button and the end of its log.
 - A note when the Worker runs older code than the app, or a newer release is on GitHub.
 - Shared media: how many files and how much space, the newest ten with Open, Copy link and
-  Delete, and Delete all. A simulator that's recording shows a red dot and Stop recording.
+  Delete, and Delete all. A simulator or Mac app that's recording shows a red dot and Stop recording.
 
 **Setup window.** It opens by itself while there's no Worker in the settings, and from the menu's
 Set Up minirun…: it checks Xcode, the simulator runtime and the frameworks; takes a Cloudflare

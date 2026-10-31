@@ -126,7 +126,7 @@ Built as planned, except:
 
 A new `App/` folder with an XcodeGen `project.yml`. The repo already uses XcodeGen, and the
 `.xcodeproj` stays gitignored. One target, `minirun-menu`, depends on the local `MiniRunKit`
-package product. SwiftUI `MenuBarExtra` with `.menuBarExtraStyle(.window)`. macOS 14 minimum,
+package product. SwiftUI `MenuBarExtra` with `.menuBarExtraStyle(.window)`. macOS 26 minimum,
 which matches `Package.swift`.
 
 - **Icon** shows the state: connected, connecting, disconnected or problem, and not running. Add a

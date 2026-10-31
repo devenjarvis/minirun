@@ -9,8 +9,10 @@ extension ToolRegistry {
     /// someone watching them live.
     func macAppStatus() async -> [ServeStatus.MacApp] {
         let busy = await activity.busy
+        let recording = await recordings.recording
         return await refreshedMacApps().map { session in
-            ServeStatus.MacApp(session, busy: busy.contains(session.id), viewerURL: config.viewerURL(device: session.id))
+            ServeStatus.MacApp(session, busy: busy.contains(session.id), viewerURL: config.viewerURL(device: session.id),
+                               recording: recording.contains(session.id))
         }
     }
 
@@ -44,6 +46,7 @@ extension ToolRegistry {
                 if let pid = current.pid { await macApps.markExited(current.id, ifPid: pid) }
                 return "\(current.name) (\(who)) isn't running."
             }
+            await recordings.halt(current.id, reason: "the app was quit")
             await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: current.executablePath, start: current.processStart)
             await macApps.markExited(current.id, ifPid: pid)
             await macApps.touch(current.id)

@@ -5763,7 +5763,7 @@ To show your work in a PR, put a screenshot or recording in the PR description:
 - Otherwise it goes to the user's Worker. The GitHub tools turn those links into plain links and they expire, so don't paste them as PR images: follow the repo's own instructions for media, or ask the user to create a pr-media branch.
 - Never share screens showing credentials or personal data. Worker links are public to anyone who has them; files on pr-media stay in the repo's history.
 - delete_media {id} takes back a wrong upload.
-- For a Mac app, screenshot {device: "mac-\u2026", share: true} shares its window; recordings aren't supported for Mac apps yet.
+- For a Mac app, screenshot {device: "mac-\u2026", share: true} shares its window, and start_recording/stop_recording record one of its windows.
 
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
