@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
+
+minirun now builds, runs and drives macOS apps, agents can share screenshots and recordings in
+PR descriptions, and hung test runs are stopped instead of holding the Mac.
 
 **Screenshots and recordings in PR descriptions.** Agents can now show their work in a PR.
 
