@@ -14,9 +14,12 @@ struct ServeControl: ControlCommands {
         let local = await registry.status()
         var relay = client.relayStatus
         relay.viewerURL = registry.config.viewerURL(device: nil)
+        let macApps = await registry.macAppStatus()
+        let macPermissions = await registry.macPermissionReport()
         return ServeStatus(
             version: MiniRun.version, pid: ProcessInfo.processInfo.processIdentifier, startedAt: startedAt,
-            relay: relay, simulators: local.simulators, simulatorError: local.simulatorError, jobs: local.jobs
+            relay: relay, simulators: local.simulators, simulatorError: local.simulatorError, jobs: local.jobs,
+            macApps: macApps, macPermissions: macPermissions
         )
     }
 
@@ -74,6 +77,22 @@ struct ServeControl: ControlCommands {
 
     func doctor() async -> [DoctorCheck] {
         await registry.doctorChecks(serveStatus: { await self.status() })
+    }
+
+    func requestMacPermissions() async throws -> String {
+        let message = try await registry.requestMacPermissions()
+        log("Asked macOS for Screen Recording and Accessibility (from the control socket)")
+        return message
+    }
+
+    func quitMacApp(id: String) async throws -> String {
+        let message = try await registry.quitMacApp(id: id)
+        log("\(message) (from the control socket)")
+        return message
+    }
+
+    func activateMacApp(id: String) async throws -> String {
+        try await registry.activateMacApp(id: id)
     }
 
     /// Folders in use by a sync, build or command, standardized like the checkout paths.

@@ -14,6 +14,7 @@ struct MenuView: View {
             header
             if snapshot.daemonRunning {
                 simulators
+                if !snapshot.macApps.isEmpty { macApps }
                 jobs
             } else if snapshot.canStart {
                 notRunning
@@ -120,6 +121,31 @@ struct MenuView: View {
             }
         } header: {
             SectionTitle("Simulators")
+        }
+    }
+
+    // MARK: Mac apps
+
+    private var macApps: some View {
+        Section {
+            ForEach(snapshot.macApps) { app in
+                MacAppRowView(app: app, store: store, actionsEnabled: !snapshot.daemonOutdated)
+            }
+            if let missing = snapshot.macPermissions?.missing, !missing.isEmpty {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Needs \(missing.joined(separator: " and ")).").font(.caption).foregroundStyle(.orange)
+                    Spacer()
+                    Button("Set Up…") {
+                        openWindow(id: WindowID.setup)
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .help("Set Up minirun → macOS apps")
+                }
+            }
+        } header: {
+            SectionTitle("Mac apps")
         }
     }
 
@@ -250,16 +276,54 @@ struct SimulatorRowView: View {
     }
 }
 
+struct MacAppRowView: View {
+    let app: MenuSnapshot.MacAppRow
+    let store: MenuStore
+    let actionsEnabled: Bool
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: "macwindow")
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(app.name).lineLimit(1)
+                    Badge(text: app.activity.rawValue, color: color)
+                }
+                Text(app.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer()
+            Menu {
+                Button("Watch live") { store.open(app.viewerURL) }
+                    .disabled(app.viewerURL == nil || !app.isRunning)
+                Button("Bring to front") { store.bringToFront(app) }
+                    .disabled(!actionsEnabled || !app.isRunning)
+                Divider()
+                Button("Quit") { store.perform(.quitMacApp(app.id)) }
+                    .disabled(!actionsEnabled || !app.isRunning)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Actions for \(app.name) (\(app.id))")
+        }
+    }
+
+    private var color: Color {
+        switch app.activity {
+        case .busy: return .blue
+        case .idle: return .secondary
+        case .notRunning: return .orange
+        }
+    }
+}
+
 struct ActivityBadge: View {
     let activity: MenuSnapshot.SimulatorRow.Activity
 
     var body: some View {
-        Text(activity.rawValue)
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .background(color.opacity(0.18), in: Capsule())
-            .foregroundStyle(color)
+        Badge(text: activity.rawValue, color: color)
     }
 
     private var color: Color {
@@ -268,6 +332,20 @@ struct ActivityBadge: View {
         case .busy: return .blue
         case .idle: return .secondary
         }
+    }
+}
+
+struct Badge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.18), in: Capsule())
+            .foregroundStyle(color)
     }
 }
 

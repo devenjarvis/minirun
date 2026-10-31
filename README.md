@@ -91,6 +91,36 @@ Then:
 
 For private repositories, run `gh auth login && gh auth setup-git` on the Mac so it can clone them.
 
+### Permissions for macOS apps
+
+iOS apps need nothing more. To build and drive **native macOS apps** on the Mac, macOS has to let
+`minirun serve` see and control other apps' windows. It grants this per program, so the
+permissions go to the daemon, `/Applications/minirun.app/Contents/Helpers/minirun`, not to the
+menu bar app or Terminal:
+
+| Permission | What it's for |
+| --- | --- |
+| **Screen Recording** | Screenshots of the app's window and the live view |
+| **Accessibility** | Reading the window's UI (`describe_ui`), clicks, typing, keys and menus |
+| **A display** | Windows only draw on an active display |
+
+The easy way: open the menu bar app's **Set Up minirun… → macOS apps** and choose **Request
+Access**. `minirun serve` asks macOS itself, so it shows up in System Settings by name; turn it on
+in the panes the step opens, then choose **Restart minirun serve** (Screen Recording takes effect
+after a restart). The rows turn green once granted.
+
+By hand: System Settings → Privacy & Security → **Screen Recording**, and then **Accessibility**:
+turn on `minirun`, or click **+**, press ⇧⌘G, enter the path above and add it. Then restart
+`minirun serve` (`launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`).
+
+A headless Mac mini needs a logged-in user (automatic login, System Settings → Users & Groups)
+and a display: a monitor or an HDMI dummy plug.
+
+`minirun doctor` reports all three as `Screen Recording`, `Accessibility` and `Display`. They're
+optional and never fail the iOS checks. minirun's builds are ad-hoc signed, so macOS may treat an
+updated minirun as a different program and quietly stop honouring the grants: if macOS apps stop
+working after an update, remove minirun from both lists, add it again and restart `minirun serve`.
+
 ### The Worker
 
 `minirun worker deploy` deploys the Worker through the Cloudflare API, with no node or wrangler on
