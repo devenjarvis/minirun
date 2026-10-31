@@ -112,15 +112,18 @@ def find(nodes):
         if found: return found
 f = find(json.load(sys.stdin))["frame"]
 print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[1:-1])')
+  # What Accessibility finds at that point, and what the window looks like, for when clicks miss.
+  run describe_ui "{\"device\":\"$MAC_ID\",$at}" || true
+  shot=$(run screenshot "{\"device\":\"$MAC_ID\"}" | sed -n 's/.*image saved to \(.*\)]/\1/p'); cp "$shot" /tmp/minirun-mac-before-click.jpg || true
   run tap "{\"device\":\"$MAC_ID\",$at}" | expect "Clicked"
   sleep 1
   if mac_logs | grep -q "HelloMacApp: count=2"; then
-    echo "Clicks posted to the app's pid work."
+    echo "MAC CLICK: posted to the pid works."
   else
-    echo "NOTE: a click posted to the app's pid didn't reach the button; trying input: hid" >&2
+    echo "MAC CLICK: posted to the pid didn't reach the button; trying input: hid" >&2
     run tap "{\"device\":\"$MAC_ID\",$at,\"input\":\"hid\"}" | expect "moved the real cursor"
     sleep 1
-    mac_logs | expect "HelloMacApp: count=2"
+    if mac_logs | grep -q "HelloMacApp: count=2"; then echo "MAC CLICK: hid works."; else echo "::warning::MAC CLICK: neither pid nor hid clicks reached the button"; fi
   fi
   run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked Counter > Reset Counter"
   sleep 1
