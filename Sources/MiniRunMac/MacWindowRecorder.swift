@@ -140,7 +140,7 @@ public final class MacWindowRecorder: NSObject, SCStreamDelegate, SCStreamOutput
 
     public func stream(_ stream: SCStream, didStopWithError error: Error) {
         lock.withLock { if failure == nil, !stopping { failure = error } }
-        stoppedByItself("ScreenCaptureKit stopped capturing the window (it may have closed): \(error.localizedDescription)")
+        stoppedByItself("the window closed or ScreenCaptureKit stopped capturing it (\(error.localizedDescription))")
     }
 
     // MARK: SCRecordingOutputDelegate
@@ -151,7 +151,7 @@ public final class MacWindowRecorder: NSObject, SCStreamDelegate, SCStreamOutput
 
     public func recordingOutput(_ recordingOutput: SCRecordingOutput, didFailWithError error: Error) {
         lock.withLock { failure = error }
-        stoppedByItself("ScreenCaptureKit couldn't keep recording: \(error.localizedDescription)")
+        stoppedByItself("ScreenCaptureKit couldn't keep recording (\(error.localizedDescription))")
     }
 
     public func recordingOutputDidFinishRecording(_ recordingOutput: SCRecordingOutput) {
