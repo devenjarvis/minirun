@@ -101,6 +101,27 @@ if grep -q "✓ Accessibility (for macOS apps)" <<< "$HOST"; then
   run tap "{\"device\":\"$MAC_ID\",\"id\":\"incrementButton\"}" | expect "Pressed"
   sleep 1
   mac_logs | expect "HelloMacApp: count=1"
+  # A click at the button's window point (not through Accessibility), posted to the app's pid,
+  # then through the HID tap if the app ignored that.
+  at=$(run describe_ui "{\"device\":\"$MAC_ID\",\"format\":\"json\"}" | python3 -c '
+import json, sys
+def find(nodes):
+    for n in nodes:
+        if n.get("AXIdentifier") == "incrementButton": return n
+        found = find(n.get("children", []))
+        if found: return found
+f = find(json.load(sys.stdin))["frame"]
+print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[1:-1])')
+  run tap "{\"device\":\"$MAC_ID\",$at}" | expect "Clicked"
+  sleep 1
+  if mac_logs | grep -q "HelloMacApp: count=2"; then
+    echo "Clicks posted to the app's pid work."
+  else
+    echo "NOTE: a click posted to the app's pid didn't reach the button; trying input: hid" >&2
+    run tap "{\"device\":\"$MAC_ID\",$at,\"input\":\"hid\"}" | expect "moved the real cursor"
+    sleep 1
+    mac_logs | expect "HelloMacApp: count=2"
+  fi
   run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked Counter > Reset Counter"
   sleep 1
   mac_logs | expect "HelloMacApp: reset count=0"
