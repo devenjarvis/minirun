@@ -1,3 +1,4 @@
+import CoreGraphics
 import SwiftUI
 
 // A tiny macOS app minirun's CI builds, launches and drives to prove the Mac loop works.
@@ -9,6 +10,9 @@ struct HelloMacApp: App {
         // Line-buffer stdout so each print reaches the captured log file right away.
         setvbuf(stdout, nil, _IOLBF, 0)
         print("HelloMacApp: launched")
+        // minirun launches apps responsible for themselves, so this is the app's own Screen
+        // Recording grant, not minirun's (the smoke test expects false).
+        print("HelloMacApp: screen-capture-access=\(CGPreflightScreenCaptureAccess())")
     }
 
     var body: some Scene {

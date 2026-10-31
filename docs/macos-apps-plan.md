@@ -32,6 +32,18 @@
 > means the content direction (`down` shows more below), with `amount` (default 300 points).
 > Live view clicks only press the mouse button once the pointer moves (a drag); a click without
 > movement is performed as a whole when it ends.
+>
+> Review fixes: launched apps disclaim responsibility (no inherited TCC grants); HID input checks
+> before each event that the app is frontmost (Accessibility's focused app) and, for the mouse,
+> that its window is topmost at the point, and every activation takes the global input lock;
+> viewers can't pick `input` or `window` (the Worker and minirun both drop them) and their input
+> goes to the window the live view shows; `MacAppStore` re-reads the shared file and writes one
+> entry at a time under a file lock (`minirun call` keeps using it: the smoke test drives a
+> session through separate `call`s), clears pids compare-and-swap, records each process's start
+> time, and keeps the last pid for `app_logs`; launches and quits take a per-app lock; `open_url`
+> goes to the recorded pid by Apple Event; the detected build platform is remembered per scheme
+> while the project files don't change, and iOS builds pick their simulator before the checkout
+> lock again when the platform is known.
 
 Today minirun builds iOS apps, runs them in a simulator, and lets Claude see and touch them. This
 plan adds the same loop for **native macOS apps** (AppKit or SwiftUI, and Mac Catalyst), running
@@ -120,8 +132,8 @@ id derived from the bundle id plus a random suffix.
 - **Idle apps quit.** A Mac app minirun launched and nobody used for `idleShutdownMinutes` is
   quit, like idle simulators. An open live view or a running job counts as use.
 - **macOS UI tests take over the real mouse and keyboard**, so `run_tests` for macOS runs UI
-  test bundles under a global lock (one at a time on the Mac) and says so. Unit tests run
-  concurrently.
+  test runs under a global lock (one at a time on the Mac) and says so. Unit-test-only runs take
+  the lock too, since telling them apart would need another `xcodebuild` call (see Deviations).
 
 ## Live view
 
@@ -393,6 +405,17 @@ CI covers the loop on HelloMacApp. After installing the release, check what CI c
 6. **Menu bar app.** The Mac apps section shows the app with Watch live, Bring to front and Quit.
 7. **Idle quitting** after `idleShutdownMinutes`, and reconciling after `minirun serve` restarts.
 8. **After the next update,** check whether macOS dropped the permission grants (ad-hoc signing).
+9. **Apps don't inherit minirun's permissions.** Apps minirun launches are made responsible for
+   themselves (`responsibility_spawnattrs_setdisclaim`), so they get none of minirun's Screen
+   Recording or Accessibility (CI checks HelloMacApp prints `screen-capture-access=false`). An app
+   that needs a permission asks for it as itself. `xcodebuild` and `run_command` are *not*
+   disclaimed: evaluate whether macOS UI tests (XCUITest's runner, started by xcodebuild) depend
+   on inheriting minirun's Accessibility, and whether they should (untrusted branch code runs
+   in them too).
+10. **`open_url` on a Mac app** sends a kAEGetURL Apple Event to the app's pid, without prompting
+   for Automation. Without that grant it falls back to LaunchServices, and refuses when another
+   copy of the app is running. Check both, and what the Automation prompt (if granted from
+   System Settings) changes.
 
 ## Out of scope for now
 

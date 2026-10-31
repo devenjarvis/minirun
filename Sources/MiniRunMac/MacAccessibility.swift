@@ -398,11 +398,12 @@ enum MacAccessibility {
     }
 
     /// Raises the window and makes the app frontmost (for input that has to go through the HID tap).
-    static func raise(pid: Int32, windowID: UInt32, frame: MacRect) {
+    /// Makes the app frontmost and, given a window, raises it and makes it main.
+    static func raise(pid: Int32, window target: (id: UInt32, frame: MacRect)?) {
         guard AXIsProcessTrusted() else { return }
         let app = application(pid)
         _ = AXUIElementSetAttributeValue(app, "AXFrontmost" as CFString, kCFBooleanTrue)
-        if let window = try? windowElement(pid: pid, windowID: windowID, frame: frame) {
+        if let target, let window = try? windowElement(pid: pid, windowID: target.id, frame: target.frame) {
             _ = AXUIElementPerformAction(window, "AXRaise" as CFString)
             _ = AXUIElementSetAttributeValue(window, "AXMain" as CFString, kCFBooleanTrue)
         }

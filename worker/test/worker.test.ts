@@ -423,6 +423,8 @@ describe("minirun worker", () => {
       ["press_key", { key: "n", modifiers: ["command", "shift"] }],
       ["type_text", { text: "hello" }],
       ["press_menu_item", { path: ["File", "New Window"], device: "SIM-A" }],
+      // A viewer can't pick the HID path (the real cursor and keyboard) or another window.
+      ["tap", { x: 1, y: 2, input: "hid", window: "Settings" }],
       ["run_command", { command: "rm -rf /" }],
     ];
     for (const [tool, args] of inputs) viewer.send(JSON.stringify({ type: "input", tool, arguments: args }));
@@ -431,9 +433,10 @@ describe("minirun worker", () => {
     expect(JSON.parse(await touched)).toEqual({ type: "touch", device: "mac-3f9a2c", phase: "down", x: 5, y: 6 });
     viewer.send(JSON.stringify({ type: "touch", phase: "up", x: 5, y: 6 }));
     await new Promise((r) => setTimeout(r, 100));
-    expect(calls.map((c) => [c.tool, c.arguments])).toEqual(
-      inputs.slice(0, 6).map(([tool, args]) => [tool, { ...args, device: "mac-3f9a2c" }]),
-    );
+    expect(calls.map((c) => [c.tool, c.arguments])).toEqual([
+      ...inputs.slice(0, 6).map(([tool, args]) => [tool, { ...args, device: "mac-3f9a2c" }]),
+      ["tap", { x: 1, y: 2, device: "mac-3f9a2c" }],
+    ]);
 
     // mac_status links straight to a Mac app.
     const token = await getAccessToken();

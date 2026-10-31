@@ -5618,7 +5618,9 @@ var MacRelay = class extends DurableObject {
         if (!VIEWER_TOOLS.has(tool)) return;
         const device = await this.viewerDevice(ws);
         if (!device) return;
-        const args = typeof message.arguments === "object" && message.arguments !== null ? message.arguments : {};
+        const args = typeof message.arguments === "object" && message.arguments !== null ? { ...message.arguments } : {};
+        delete args.input;
+        delete args.window;
         this.agent()?.send(JSON.stringify({ type: "call", tool, arguments: { ...args, device } }));
         break;
       }

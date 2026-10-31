@@ -74,7 +74,10 @@ itself, with the same loop as iOS. See [macOS apps](README.md#macos-apps).
   the mouse and keyboard.
 - **Permissions:** `minirun doctor`, `host_info` and the menu bar app check Screen Recording,
   Accessibility and a display for the daemon; Setup can request them. `minirun status` and the
-  menu list the Mac apps minirun launched.
+  menu list the Mac apps minirun launched. Apps minirun launches are responsible for themselves,
+  so they never get minirun's permissions. `input: "hid"` checks before each event that the app
+  is in front (and its window is under the pointer), and stops otherwise; the live view never
+  uses it. `open_url` goes to the app's own pid.
 - **With the other new features:** Mac builds and tests get the same stall and overall timeouts,
   `cancel_job` and job records as iOS ones (macOS tests also run without parallel testing and with
   the per-test allowance). `screenshot {share: true}` with a Mac app id shares its window;

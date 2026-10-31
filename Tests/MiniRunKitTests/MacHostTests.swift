@@ -43,7 +43,7 @@ final class MacAppStoreTests: XCTestCase {
         let store = MacAppStore(url: url)
         await store.upsert(session("mac-aaaaaa", label: "you/fetch@main", used: 10))
         await store.upsert(session("mac-bbbbbb", label: "you/fetch@feature"))
-        await store.markExited("mac-aaaaaa")
+        await store.markExited("mac-aaaaaa", ifPid: 100)
 
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
@@ -98,7 +98,8 @@ final class MacAppStoreTests: XCTestCase {
         await store.upsert(session("mac-cccccc", pid: nil))
         var asked: [Int32] = []
         // pid 200 is alive but now runs something else.
-        await store.reconcile { pid, executable in
+        await store.reconcile { session in
+            let pid = session.pid!, executable = session.executablePath
             asked.append(pid)
             return pid == 100 && executable == "/w/Fetch.app/Contents/MacOS/Fetch"
         }
@@ -108,6 +109,64 @@ final class MacAppStoreTests: XCTestCase {
         XCTAssertEqual(a, 100)
         XCTAssertNil(b?.pid)
         XCTAssertNotNil(b, "the entry stays, marked not running")
+    }
+
+    func testMarkExitedOnlyClearsTheGivenPid() async {
+        let store = MacAppStore(url: nil)
+        await store.upsert(session("mac-aaaaaa", pid: 100))
+        // A check that saw the old pid (100) finishes after a relaunch as 200.
+        await store.upsert(session("mac-aaaaaa", pid: 200))
+        await store.markExited("mac-aaaaaa", ifPid: 100, at: now)
+        let relaunched = await store.session("mac-aaaaaa")
+        XCTAssertEqual(relaunched?.pid, 200, "a stale pid doesn't clear the new one")
+        await store.markExited("mac-aaaaaa", ifPid: 200, at: now)
+        let quit = await store.session("mac-aaaaaa")
+        XCTAssertNil(quit?.pid)
+        XCTAssertEqual(quit?.lastPid, 200, "the last pid is kept for its logs")
+        XCTAssertEqual(quit?.exitedAt, now)
+    }
+
+    func testProcessesSharingTheFileKeepEachOthersChanges() async throws {
+        let url = temporaryURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        // `minirun serve` and a `minirun call`, each with its own copy of the store.
+        let serve = MacAppStore(url: url)
+        let call = MacAppStore(url: url)
+        await serve.upsert(session("mac-aaaaaa", pid: 100))
+        let seen = await call.session("mac-aaaaaa")
+        XCTAssertEqual(seen?.pid, 100, "a launch by one process is visible to the other")
+        await call.upsert(session("mac-bbbbbb", pid: 200))
+        await serve.markExited("mac-aaaaaa", ifPid: 100)
+        let fromCall = await call.all()
+        XCTAssertEqual(Set(fromCall.map(\.id)), ["mac-aaaaaa", "mac-bbbbbb"], "the second writer didn't drop the first one's app")
+        XCTAssertNil(fromCall.first { $0.id == "mac-aaaaaa" }?.pid)
+        XCTAssertEqual(fromCall.first { $0.id == "mac-bbbbbb" }?.pid, 200)
+
+        // A touch not yet written survives re-reading the file.
+        await serve.touch("mac-bbbbbb", now: now)
+        await serve.touch("mac-bbbbbb", now: now.addingTimeInterval(5))
+        let touched = await serve.session("mac-bbbbbb")
+        XCTAssertEqual(touched?.updatedAt, now.addingTimeInterval(5))
+    }
+
+    func testDecodesEntriesFromOlderVersions() throws {
+        let json = """
+        {"mac-aaaaaa": {"id": "mac-aaaaaa", "name": "Fetch", "appPath": "/w/Fetch.app", "executablePath": "/w/Fetch.app/Contents/MacOS/Fetch",
+                        "pid": 100, "updatedAt": "2033-05-18T03:33:20Z"}}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let decoded = try decoder.decode([String: MacAppSession].self, from: Data(json.utf8))
+        XCTAssertEqual(decoded["mac-aaaaaa"]?.pid, 100)
+        XCTAssertNil(decoded["mac-aaaaaa"]?.processStart)
+        XCTAssertNil(decoded["mac-aaaaaa"]?.exitedAt)
+
+        var withStart = session("mac-bbbbbb")
+        withStart.processStart = MacProcessStart(seconds: 1_700_000_000, microseconds: 123_456)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let roundTrip = try decoder.decode(MacAppSession.self, from: encoder.encode(withStart))
+        XCTAssertEqual(roundTrip, withStart)
     }
 
     func testIdForLabelAvoidsCollisions() async {

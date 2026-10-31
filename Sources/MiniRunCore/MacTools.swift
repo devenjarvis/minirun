@@ -62,13 +62,20 @@ extension ToolRegistry {
         )) { [self] args in
             let session = try await macApp(args)
             let windows = await MacAppDriver.shared.windows(pid: session.pid!)
-            guard !windows.isEmpty else { return .text("\(session.name) has no windows right now.") }
+            let permissions = await MacAppDriver.shared.permissions()
+            // Without Screen Recording macOS hides other apps' window titles from minirun;
+            // Accessibility can still read them, so only both missing means no titles at all.
+            let titleNote = permissions.screenRecording ? nil
+                : "minirun has no Screen Recording permission, so macOS hides window titles from it" +
+                    (permissions.accessibility ? "; they're read through Accessibility instead, and may be empty for some windows." : ", and they may show as empty.")
+            guard !windows.isEmpty else { return .text(["\(session.name) has no windows right now.", titleNote].compactMap { $0 }.joined(separator: "\n")) }
             let lines = windows.map { window in
                 var line = window.summary + " at (\(Int(window.frame.x)), \(Int(window.frame.y))) on the screen"
                 if window.isKey { line += ", key (has keyboard focus)" }
                 return line
             }
-            return .text(lines.joined(separator: "\n") + "\nTools take window points from a window's top-left corner, title bar included.")
+            let text = lines.joined(separator: "\n") + "\nTools take window points from a window's top-left corner, title bar included."
+            return .text([text, titleNote].compactMap { $0 }.joined(separator: "\n"))
         }
 
         register(ToolDefinition(
@@ -120,8 +127,9 @@ extension ToolRegistry {
         guard var session = await macApps.session(device) else {
             throw ToolError(MacToolSupport.unknownApp(device, known: await refreshedMacApps()))
         }
-        if let pid = session.pid, !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) {
-            await macApps.markExited(session.id)
+        if let pid = session.pid, !MacAppDriver.isRunning(session) {
+            // Only if it's still that pid: a relaunch in the meantime has a new one.
+            await macApps.markExited(session.id, ifPid: pid)
             session.pid = nil
         }
         if running, session.pid == nil { throw ToolError(MacToolSupport.notRunning(session)) }
@@ -132,19 +140,27 @@ extension ToolRegistry {
     /// Every Mac app minirun knows, with the ones that have quit marked so.
     func refreshedMacApps() async -> [MacAppSession] {
         for session in await macApps.all() {
-            if let pid = session.pid, !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) {
-                await macApps.markExited(session.id)
+            if let pid = session.pid, !MacAppDriver.isRunning(session) {
+                await macApps.markExited(session.id, ifPid: pid)
             }
         }
         return await macApps.all()
     }
 
+    /// The window a call acts on. A call from the live view without a window goes to the
+    /// window the view is showing, not whichever is main by now.
     func macWindow(_ args: ToolArguments) -> MacWindowSelector {
-        MacWindowSelector.parse(args.string("window"))
+        if args.string("window") == nil, Self.fromViewer, let device = args.string("device"), let shown = streamedMacWindows[device] {
+            return .id(shown)
+        }
+        return MacWindowSelector.parse(args.string("window"))
     }
 
+    /// The input path a call asks for. Calls from the live view always get the default (pid):
+    /// a viewer never moves the Mac's real cursor or types through the HID tap.
     func macInput(_ args: ToolArguments) throws -> MacInputPath? {
-        try MacToolSupport.inputPath(args.string("input")).flatMap(MacInputPath.init(rawValue:))
+        if Self.fromViewer { return nil }
+        return try MacToolSupport.inputPath(args.string("input")).flatMap(MacInputPath.init(rawValue:))
     }
 
     /// Runs `body` with the Mac app marked busy (so idle quitting leaves it alone), then counts it as just used.
@@ -184,9 +200,20 @@ extension ToolRegistry {
     /// new one with its output going to the id's log file, waits for a window, and returns a
     /// screenshot plus the id to pass as device. `intro` goes first in the result.
     func launchMac(_ launch: MacLaunch, intro: [String]) async throws -> ToolResult {
+        // One launch or quit per app id at a time, so build_and_run and launch_app for the same
+        // id can't both spawn a copy (leaving one untracked).
+        let pid = try await macLaunches.withLock(launch.id) { () async throws -> Int32 in
+            try await spawnMac(launch)
+        }
+        return try await finishMacLaunch(launch, pid: pid, intro: intro)
+    }
+
+    /// Quits the copy this id launched before, then spawns the new one and records it. Call
+    /// while holding `macLaunches` for the id.
+    private func spawnMac(_ launch: MacLaunch) async throws -> Int32 {
         if let previous = await macApps.session(launch.id), let pid = previous.pid {
-            await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: previous.executablePath)
-            await macApps.markExited(launch.id)
+            await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: previous.executablePath, start: previous.processStart)
+            await macApps.markExited(launch.id, ifPid: pid)
         }
         var environment = launch.environment
         if let home = launch.home {
@@ -198,12 +225,19 @@ extension ToolRegistry {
         let now = Date()
         await macApps.upsert(MacAppSession(
             id: launch.id, label: launch.label, name: launch.name, bundleID: launch.bundleID, appPath: launch.appPath,
-            executablePath: launch.executablePath, pid: pid, logPath: logPath, launchedAt: now, updatedAt: now
+            executablePath: launch.executablePath, pid: pid, logPath: logPath, launchedAt: now, updatedAt: now,
+            processStart: MacAppDriver.processStart(pid: pid)
         ))
+        return pid
+    }
+
+    /// Waits for the window of the copy just launched as `pid` and builds the result.
+    private func finishMacLaunch(_ launch: MacLaunch, pid: Int32, intro: [String]) async throws -> ToolResult {
+        let logPath = MacToolSupport.logPath(id: launch.id, home: MiniRunConfig.home)
         let shown = await MacAppDriver.shared.waitForWindow(pid: pid, timeout: 15)
         if !shown, !MacAppDriver.isRunning(pid: pid, executablePath: launch.executablePath) {
             let exit = await MacAppDriver.shared.exitDescription(pid: pid)
-            await macApps.markExited(launch.id)
+            await macApps.markExited(launch.id, ifPid: pid)
             let output = MacToolSupport.outputSinceLaunch((try? String(contentsOfFile: logPath, encoding: .utf8)) ?? "")
             let text = intro + [MacToolSupport.earlyExit(name: launch.name, exit: exit, adHoc: launch.adHoc), output.isEmpty ? "(It printed nothing.)" : output, "Log: \(logPath)"]
             return ToolResult([.text(text.joined(separator: "\n"))], isError: true)
@@ -212,7 +246,13 @@ extension ToolRegistry {
         var launched = "Launched \(launch.name) (pid \(pid))"
         if let home = launch.home { launched += " with its home folder at \(home)" }
         lines.append(launched + ".")
-        if !shown { lines.append("No window appeared within 15 seconds. It may still be starting, be waiting on something, or have no window (a menu bar app). app_logs shows its output.") }
+        if !shown {
+            if await MacAppDriver.shared.permissions().hasDisplay {
+                lines.append("No window appeared within 15 seconds. It may still be starting, be waiting on something, or have no window (a menu bar app). app_logs shows its output.")
+            } else {
+                lines.append("No window appeared within 15 seconds, and this Mac has no active display (it's asleep, locked with the screen off, or headless), so apps can't show windows on it. Wake the Mac or connect a display (or a dummy HDMI plug), then launch again.")
+            }
+        }
         lines.append(MacToolSupport.footer(name: launch.name, id: launch.id, viewerURL: config.viewerURL(device: launch.id)))
         var content: [ToolContent] = [.text(lines.joined(separator: "\n"))]
         if shown, let session = await macApps.session(launch.id) {
@@ -396,10 +436,13 @@ extension ToolRegistry {
 
     func macAppLogs(_ args: ToolArguments) async throws -> ToolResult {
         let session = try await macApp(args, running: false)
-        let process = (session.executablePath as NSString).lastPathComponent
+        // A quit app's log lines are found by the pid it had, between its launch and when it
+        // quit; never by process name, which other branches' copies of the app share.
+        let pid = session.pid ?? session.lastPid
+        let until = session.pid == nil ? (session.exitedAt ?? Date()) : nil
         let text = try await MacAppDriver.shared.logs(
-            pid: session.pid, processName: process, capturedLog: session.logPath.map { URL(fileURLWithPath: $0) },
-            since: session.launchedAt, seconds: args.int("seconds") ?? 300, filter: args.string("contains")
+            pid: pid, capturedLog: session.logPath.map { URL(fileURLWithPath: $0) },
+            since: session.launchedAt, until: until, seconds: args.int("seconds") ?? 300, filter: args.string("contains")
         )
         return .text(text)
     }
@@ -407,8 +450,8 @@ extension ToolRegistry {
     func macOpenURL(_ args: ToolArguments) async throws -> ToolResult {
         let session = try await macApp(args)
         let url = try args.requireString("url")
-        try await MacAppDriver.shared.openURL(url, appPath: session.appPath)
-        return .text("Opened \(url) with \(session.name). If another copy of this app is running too, macOS may hand the URL to that one.")
+        let how = try await MacAppDriver.shared.openURL(url, pid: session.pid!, bundleID: session.bundleID, appPath: session.appPath)
+        return .text("Opened \(url) in \(session.name) \(how).")
     }
 
     func macSetPasteboard(_ args: ToolArguments) async throws -> ToolResult {
@@ -424,16 +467,23 @@ extension ToolRegistry {
     /// as a click only where there's no control.
     func macMouse(id: String, phase: String, x: Double, y: Double) async throws {
         guard let session = await macApps.session(id), let pid = session.pid else { throw ToolError("No running Mac app with id \(id).") }
+        // Like every other path: the recorded pid must still be the app minirun launched.
+        guard MacAppDriver.isRunning(session) else {
+            await macApps.markExited(session.id, ifPid: pid)
+            throw ToolError(MacToolSupport.notRunning(session))
+        }
         await macApps.touch(id)
+        // The window the viewer is looking at, not whichever is main by now.
+        let window = streamedMacWindows[id].map { MacWindowSelector.id($0) } ?? .main
         switch await liveMouse.step(id: id, phase: phase, x: x, y: y) {
         case .none:
             break
         case .post(let events):
-            for event in events { try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: event.phase, x: event.x, y: event.y) }
+            for event in events { try await MacAppDriver.shared.mouse(pid: pid, window: window, phase: event.phase, x: event.x, y: event.y) }
         case .click(let x, let y):
-            if try await MacAppDriver.shared.pressElement(pid: pid, x: x, y: y) == nil {
-                try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: "down", x: x, y: y)
-                try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: "up", x: x, y: y)
+            if try await MacAppDriver.shared.pressElement(pid: pid, window: window, x: x, y: y) == nil {
+                try await MacAppDriver.shared.mouse(pid: pid, window: window, phase: "down", x: x, y: y)
+                try await MacAppDriver.shared.mouse(pid: pid, window: window, phase: "up", x: x, y: y)
             }
         }
     }
@@ -459,9 +509,16 @@ extension ToolRegistry {
         let sessions = await refreshedMacApps()
         let busy = await activity.busy
         for id in IdleMacApps.plan(sessions, busy: busy, idleAfter: Double(minutes) * 60) {
-            guard let session = sessions.first(where: { $0.id == id }), let pid = session.pid else { continue }
-            await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: session.executablePath)
-            await macApps.markExited(id)
+            guard let planned = sessions.first(where: { $0.id == id }), let plannedPid = planned.pid else { continue }
+            let quit = try? await macLaunches.withLock(id) { () async -> MacAppSession? in
+                // Look again under the lock: it may have been relaunched, used or quit since the plan.
+                guard let session = await macApps.session(id), let pid = session.pid, pid == plannedPid,
+                      session.updatedAt <= planned.updatedAt, !(await activity.busy).contains(id) else { return nil }
+                await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: session.executablePath, start: session.processStart)
+                await macApps.markExited(id, ifPid: pid)
+                return session
+            }
+            guard let session = quit ?? nil else { continue }
             log("Quit \(session.name) (\(id)\(session.label.map { ", \($0)" } ?? "")): not used for \(minutes) min.")
         }
     }

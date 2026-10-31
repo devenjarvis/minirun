@@ -68,6 +68,28 @@ actor FrameStreamer {
         set([])
     }
 
+    /// When each stream last told its viewers about failed input, to send that at most every 10s.
+    private var inputErrorsSent: [String: Date] = [:]
+
+    /// Tells the viewers of stream `key` that their click or input didn't go through (say,
+    /// minirun lacks Accessibility), at most every 10 seconds per stream. The message shows over
+    /// the view for a few seconds, then the stream is marked live again (frames keep coming).
+    func inputFailed(key: String, message: String) {
+        guard let stream = streams[key] else { return }
+        let now = Date()
+        if let last = inputErrorsSent[key], now.timeIntervalSince(last) < 10 { return }
+        inputErrorsSent[key] = now
+        let sendText = self.sendText
+        Task {
+            await sendText(RelayProtocol.streamStatus("error", key: key, message: message))
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            // Still the same stream: it's live, the overlay can go.
+            if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+        }
+    }
+
+    private func isStreaming(_ stream: Stream, key: String) -> Bool { streams[key] === stream }
+
     func ack(_ sequence: UInt32, key: String) {
         // An ack past the last frame sent is for an earlier stream (this one restarted, or the Mac
         // reconnected while the viewer stayed open). Counting it would make every later frame
@@ -250,8 +272,10 @@ actor FrameStreamer {
             var streamedVideo = false
             if stream.request.codec == .h264 { streamedVideo = await runMacVideo(stream, session: session) }
             if !streamedVideo { await runMacJPEG(stream, session: session) }
+            registry.streamedMacWindows[key] = nil
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+        registry.streamedMacWindows[key] = nil
         await registry.activity.end(key)
         await registry.macApps.touch(key)
     }
@@ -273,9 +297,12 @@ actor FrameStreamer {
         let fps = settings.fps, quality = settings.quality
         let encoder: MacWindowEncoder
         do {
-            encoder = try await MacAppDriver.shared.windowEncoder(pid: pid, window: .main, scale: settings.scale, fps: fps) { width, height in
+            let started = try await MacAppDriver.shared.windowEncoder(pid: pid, window: .main, scale: settings.scale, fps: fps) { width, height in
                 H264.bitrate(width: width, height: height, fps: fps, quality: quality)
             }
+            encoder = started.encoder
+            // The stream stays on this window: the viewer's clicks and input go to it too.
+            registry.streamedMacWindows[key] = started.window.windowID
         } catch {
             return false
         }
@@ -322,7 +349,7 @@ actor FrameStreamer {
                 failures += 1
                 if announced == nil && failures >= 3 { return false }
                 // The app quit or its window closed: start over with whatever window it has now.
-                if failures >= 3 || !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) { return true }
+                if failures >= 3 || !MacAppDriver.isRunning(session) { return true }
                 try? await Task.sleep(nanoseconds: 500_000_000)
                 continue
             }
@@ -351,6 +378,8 @@ actor FrameStreamer {
             do {
                 // `scale` is relative to the window's pixels, two per point on a Retina display.
                 let shot = try await MacAppDriver.shared.screenshotJPEG(pid: pid, window: .main, scale: settings.scale * 2, quality: settings.quality)
+                // Each frame shows the main window as of now; the viewer's input follows it.
+                registry.streamedMacWindows[key] = shot.window.windowID
                 let screen = MacScreen(
                     pointWidth: shot.window.frame.width, pointHeight: shot.window.frame.height,
                     pixelWidth: Int((Double(shot.width) / settings.scale).rounded()), pixelHeight: Int((Double(shot.height) / settings.scale).rounded())
@@ -367,7 +396,7 @@ actor FrameStreamer {
             } catch {
                 failures += 1
                 if failures == 3 { await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription)) }
-                if failures >= 5 || !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) { return }
+                if failures >= 5 || !MacAppDriver.isRunning(session) { return }
                 try? await Task.sleep(nanoseconds: UInt64(min(5.0, 0.5 * Double(failures)) * 1_000_000_000))
                 continue
             }

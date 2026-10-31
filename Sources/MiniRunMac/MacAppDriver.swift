@@ -45,6 +45,8 @@ public enum MacWindowSelector: Sendable, Equatable {
     case index(Int)
     /// Case-insensitive: an exact title, else a substring.
     case title(String)
+    /// The window with this window server id (what a live view is showing).
+    case id(UInt32)
 
     /// From a tool argument: nil or "main" is the main window, digits an index, anything else a title.
     public static func parse(_ text: String?) -> MacWindowSelector {
@@ -133,6 +135,13 @@ public final class MacAppDriver {
         var allSignals = sigset_t()
         sigfillset(&allSignals)
         posix_spawnattr_setsigdefault(&attributes, &allSignals)
+        // Make the app responsible for itself. Otherwise macOS counts minirun as its
+        // "responsible process" and lets it use minirun's Screen Recording and Accessibility
+        // grants, so any branch's code that build_and_run launches could record the screen or
+        // post input anywhere. Disclaimed, it gets only what the user grants the app itself.
+        // Only Mac app launches do this: xcodebuild and run_command keep minirun's grants
+        // (macOS UI tests may rely on them; see the plan's release checklist).
+        try Self.disclaimResponsibility(&attributes)
 
         var actions: posix_spawn_file_actions_t?
         posix_spawn_file_actions_init(&actions)
@@ -166,6 +175,30 @@ public final class MacAppDriver {
 
     static let launchMarker = "=== minirun launch"
 
+    private typealias SetDisclaim = @convention(c) (UnsafeMutablePointer<posix_spawnattr_t?>, Int32) -> Int32
+
+    /// `responsibility_spawnattrs_setdisclaim(attrs, 1)`: a private but long-standing libSystem
+    /// call (what Terminal and Xcode use so the programs they start ask for permissions as
+    /// themselves). Looked up at run time; launching fails rather than hand out minirun's grants.
+    nonisolated static func disclaimResponsibility(_ attributes: inout posix_spawnattr_t?) throws {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_spawnattrs_setdisclaim") else { // RTLD_DEFAULT
+            throw MacDriverError("Couldn't find responsibility_spawnattrs_setdisclaim on this macOS, so minirun won't launch the app with its own permissions.")
+        }
+        let setDisclaim = unsafeBitCast(symbol, to: SetDisclaim.self)
+        let status = setDisclaim(&attributes, 1)
+        guard status == 0 else {
+            throw MacDriverError("Couldn't make the app responsible for its own permissions: \(String(cString: strerror(status))).")
+        }
+    }
+
+    /// When the process with this pid started, or nil if it isn't running (or can't be read).
+    public nonisolated static func processStart(pid: Int32) -> MacProcessStart? {
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard pid > 0, proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return MacProcessStart(seconds: UInt64(info.pbi_start_tvsec), microseconds: UInt64(info.pbi_start_tvusec))
+    }
+
     /// How a process this driver launched ended, e.g. "exited with status 1" or "killed by
     /// signal 11 (SIGSEGV)". Nil while it runs, or if it wasn't launched by this daemon.
     public func exitDescription(pid: Int32) -> String? {
@@ -184,13 +217,17 @@ public final class MacAppDriver {
         var activated = false
         while true {
             guard isRunning(pid: pid, executablePath: nil) else { return false }
-            if activate && !activated, let app = NSRunningApplication(processIdentifier: pid) {
-                _ = app.activate(options: [.activateAllWindows])
+            if activate && !activated, NSRunningApplication(processIdentifier: pid) != nil {
+                // Under the input lock, so a launch never takes the front mid-way through
+                // another session's HID input.
+                await MacInputLock.shared.lock()
+                _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
+                await MacInputLock.shared.unlock()
                 activated = true
             }
             let windows = await Self.readWindowsDetached(pid)
             if windows.contains(where: { $0.isOnScreen }) {
-                if activate { bringToFront(pid: pid, window: windows.first { $0.isOnScreen }) }
+                if activate { await bringToFront(pid: pid, window: windows.first { $0.isOnScreen }) }
                 return true
             }
             if Date() >= deadline { return false }
@@ -201,7 +238,8 @@ public final class MacAppDriver {
     /// Quits the app: a polite terminate (it may save, or ask to), then after `grace` seconds a
     /// SIGKILL to it and its process group. Given `executablePath`, a pid that now belongs to
     /// some other program is left alone.
-    public func terminate(pid: Int32, grace: TimeInterval = 5, executablePath: String? = nil) async {
+    public func terminate(pid: Int32, grace: TimeInterval = 5, executablePath: String? = nil, start: MacProcessStart? = nil) async {
+        func isRunning(pid: Int32, executablePath: String?) -> Bool { Self.isRunning(pid: pid, executablePath: executablePath, start: start) }
         guard isRunning(pid: pid, executablePath: executablePath) else { return }
         let group = getpgid(pid)
         let app = NSRunningApplication(processIdentifier: pid)
@@ -226,8 +264,16 @@ public final class MacAppDriver {
         Self.isRunning(pid: pid, executablePath: executablePath)
     }
 
-    public nonisolated static func isRunning(pid: Int32, executablePath: String?) -> Bool {
+    /// Whether the session's recorded pid is still the app minirun launched: alive, running its
+    /// executable and, when its start time was recorded, the very process that started then.
+    public nonisolated static func isRunning(_ session: MacAppSession) -> Bool {
+        guard let pid = session.pid else { return false }
+        return isRunning(pid: pid, executablePath: session.executablePath, start: session.processStart)
+    }
+
+    public nonisolated static func isRunning(pid: Int32, executablePath: String?, start: MacProcessStart? = nil) -> Bool {
         guard pid > 0, kill(pid, 0) == 0 || errno == EPERM else { return false }
+        if let start, processStart(pid: pid) != start { return false }
         guard let executablePath else { return true }
         var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
         let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
@@ -241,8 +287,10 @@ public final class MacAppDriver {
 
     /// The app's windows: the main window first, then the rest front to back. Minimized
     /// windows are included when Accessibility is granted (they're how they're found).
-    public func windows(pid: Int32) -> [MacWindowInfo] {
-        Self.readWindows(pid)
+    public func windows(pid: Int32) async -> [MacWindowInfo] {
+        // Accessibility calls are IPC to the app (up to a second and a half each if it hangs),
+        // so they stay off the main actor.
+        await Self.readWindowsDetached(pid)
     }
 
     nonisolated static func readWindowsDetached(_ pid: Int32) async -> [MacWindowInfo] {
@@ -311,6 +359,9 @@ public final class MacAppDriver {
             if let window = windows.first(where: { $0.title.caseInsensitiveCompare(title) == .orderedSame })
                 ?? windows.first(where: { $0.title.range(of: title, options: .caseInsensitive) != nil }) { return window }
             throw MacDriverError("No window titled \"\(title)\". \(available)")
+        case .id(let id):
+            if let window = windows.first(where: { $0.windowID == id }) { return window }
+            throw MacDriverError("The window the live view was showing has closed. \(available)")
         }
     }
 
@@ -319,10 +370,19 @@ public final class MacAppDriver {
         try Self.resolve(selector, in: await Self.readWindowsDetached(pid), pid: pid)
     }
 
-    /// Activates the app and raises the window (or its main window).
-    public func bringToFront(pid: Int32, window: MacWindowInfo?) {
+    /// Activates the app and raises the window (or its main window). Takes the global input
+    /// lock, so it never changes the front app in the middle of another session's HID input.
+    public func bringToFront(pid: Int32, window: MacWindowInfo?) async {
+        await MacInputLock.shared.lock()
+        await raiseUnlocked(pid: pid, window: window)
+        await MacInputLock.shared.unlock()
+    }
+
+    /// `bringToFront` for callers already holding the input lock.
+    private func raiseUnlocked(pid: Int32, window: MacWindowInfo?) async {
         _ = NSRunningApplication(processIdentifier: pid)?.activate(options: [.activateAllWindows])
-        if let window { MacAccessibility.raise(pid: pid, windowID: window.windowID, frame: window.frame) }
+        let target = window.map { (id: $0.windowID, frame: $0.frame) }
+        await Task.detached { MacAccessibility.raise(pid: pid, window: target) }.value
     }
 
     // MARK: Seeing
@@ -382,11 +442,12 @@ public final class MacAppDriver {
 
     /// An H.264 encoder fed by a ScreenCaptureKit stream of one window. `scale` is relative to
     /// the window's pixels; `bitrate` gets the encoded size.
+    /// Also returns the window it streams, so input from the live view can go to that window.
     public func windowEncoder(pid: Int32, window selector: MacWindowSelector = .main, scale: Double, fps: Int,
-                              bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) async throws -> MacWindowEncoder {
+                              bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) async throws -> (encoder: MacWindowEncoder, window: MacWindowInfo) {
         try MacPermissions.requireScreenRecording(for: "stream Mac app windows")
         let window = try await self.window(pid: pid, selector)
-        return try await Self.makeEncoder(windowID: window.windowID, scale: scale, fps: fps, bitrate: bitrate)
+        return (try await Self.makeEncoder(windowID: window.windowID, scale: scale, fps: fps, bitrate: bitrate), window)
     }
 
     nonisolated static func makeEncoder(windowID: UInt32, scale: Double, fps: Int, bitrate: @escaping @Sendable (Int, Int) -> Int) async throws -> MacWindowEncoder {
@@ -482,21 +543,25 @@ public final class MacAppDriver {
         try MacPermissions.requireAccessibility(for: "send clicks and keys to Mac apps")
         guard isRunning(pid: pid, executablePath: nil) else { throw DriverError("The app (pid \(pid)) isn't running. Launch it again.") }
         let chosen = path ?? inputPath(pid: pid)
-        let target = MacInputTarget(pid: pid, windowID: window?.windowID ?? 0, frame: window?.frame ?? MacRect(x: 0, y: 0, width: 0, height: 0), path: chosen)
+        var target = MacInputTarget(pid: pid, windowID: window?.windowID ?? 0, frame: window?.frame ?? MacRect(x: 0, y: 0, width: 0, height: 0), path: chosen)
         switch chosen {
         case .pid:
             await body(target)
         case .hid:
             await MacInputLock.shared.lock()
             let cursor = CGEvent(source: nil)?.location
-            bringToFront(pid: pid, window: window)
+            // Always, keys and text included: HID keys go to whichever app is in front.
+            await raiseUnlocked(pid: pid, window: window)
             await MacInput.pause(0.2)
+            let hidGuard = MacHIDGuard(pid: pid)
+            target.hidGuard = hidGuard
             await body(target)
             // The app handles the events after they're posted, and controls check where the
             // cursor is when the button comes up: put it back only once they've had time to.
             await MacInput.pause(0.4)
             if let cursor { CGWarpMouseCursorPosition(cursor) }
             await MacInputLock.shared.unlock()
+            if let failure = hidGuard.failure { throw DriverError(failure) }
         }
         return chosen
     }
@@ -597,10 +662,62 @@ public final class MacAppDriver {
 
     // MARK: Other
 
-    /// Opens a URL with the app at `appPath`, through LaunchServices, without bringing it forward.
-    public func openURL(_ url: String, appPath: String) async throws {
+    /// Hands a URL to the app running as `pid`, and only to it: a kAEGetURL Apple Event addressed
+    /// to that pid (what LaunchServices itself sends). Opening "with the app at appPath" through
+    /// LaunchServices goes by bundle id, so it could reach another session's copy of the app or
+    /// start an untracked one. If macOS won't let minirun send Apple Events to the app (the
+    /// Automation permission, which minirun never prompts for here), it falls back to
+    /// LaunchServices, but only when no other process has the same bundle id. Returns how the URL
+    /// was delivered, for the result.
+    public func openURL(_ url: String, pid: Int32, bundleID: String?, appPath: String) async throws -> String {
         guard let parsed = URL(string: url), parsed.scheme != nil else { throw DriverError("\(url) isn't a URL (it needs a scheme, like https:// or myapp://).") }
+        let status = await Task.detached { Self.sendGetURL(url, to: pid) }.value
+        switch status {
+        case 0:
+            return "with an Apple Event to pid \(pid)"
+        case -1743, -1744: // errAEEventNotPermitted, errAEEventWouldRequireUserConsent
+            break
+        case -600: // procNotFound
+            throw DriverError("The app (pid \(pid)) isn't running. Launch it again.")
+        case -1708: // errAEEventNotHandled
+            throw DriverError("The app (pid \(pid)) doesn't handle URLs (it ignored the open-URL Apple Event). Does it declare the URL scheme in CFBundleURLTypes and handle it (onOpenURL, application(_:open:))?")
+        case -1712: // errAETimeout
+            throw DriverError("The app (pid \(pid)) didn't answer the open-URL Apple Event within 10 seconds. It may be busy or hung.")
+        default:
+            throw DriverError("Couldn't send the URL to the app (pid \(pid)): Apple Event error \(status).")
+        }
+        let others = bundleID.map { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }?.map(\.processIdentifier).filter { $0 != pid } ?? []
+        if !others.isEmpty {
+            throw DriverError(
+                "Another copy of this app (\(bundleID ?? ""), pid \(others.map(String.init).joined(separator: ", "))) is running, and minirun may not send Apple Events to it " +
+                    "(the Automation permission), so macOS could hand the URL to the wrong copy. Not opened. Quit the other copy, or allow minirun to control the app in " +
+                    "System Settings > Privacy & Security > Automation."
+            )
+        }
         try await Self.openWith(parsed, appPath: appPath)
+        return "through LaunchServices (no other copy of the app is running)"
+    }
+
+    /// Sends kAEGetURL ('GURL' 'GURL', the URL as the direct object) to `pid` and waits up to 10
+    /// seconds for the reply. Never prompts for consent. Returns 0 or the Apple Event error.
+    nonisolated static func sendGetURL(_ url: String, to pid: Int32) -> Int {
+        let getURL: FourCharCode = 0x4755_524C // 'GURL', both the event class and id
+        let directObject: FourCharCode = 0x2D2D_2D2D // '----'
+        let errorNumber: FourCharCode = 0x6572_726E // 'errn'
+        let event = NSAppleEventDescriptor(
+            eventClass: getURL, eventID: getURL, targetDescriptor: NSAppleEventDescriptor(processIdentifier: pid),
+            returnID: AEReturnID(-1), transactionID: AETransactionID(0) // kAutoGenerateReturnID, kAnyTransactionID
+        )
+        event.setParam(NSAppleEventDescriptor(string: url), forKeyword: directObject)
+        let doNotPrompt = NSAppleEventDescriptor.SendOptions(rawValue: 0x0002_0000) // kAEDoNotPromptForUserConsent
+        do {
+            let reply = try event.sendEvent(options: [.waitForReply, .neverInteract, doNotPrompt], timeout: 10)
+            if let code = reply.paramDescriptor(forKeyword: errorNumber)?.int32Value, code != 0 { return Int(code) }
+            return 0
+        } catch {
+            let code = (error as NSError).code
+            return code == 0 ? -1 : code
+        }
     }
 
     nonisolated static func openWith(_ url: URL, appPath: String) async throws {
@@ -624,10 +741,13 @@ public final class MacAppDriver {
     }
 
     /// The app's output: what it printed to stdout/stderr since its last launch (from
-    /// `capturedLog`), then unified logging for the pid (or, with no pid, the process name) over
-    /// the last `seconds` (or since `since`, if sooner). Lines are filtered by `filter`
-    /// (case-insensitive) and each part keeps its newest `maxBytes`.
-    public func logs(pid: Int32?, processName: String, capturedLog: URL?, since: Date? = nil, seconds: Int = 300, filter: String? = nil, maxBytes: Int = 40_000) async throws -> String {
+    /// `capturedLog`), then unified logging for `pid` over the last `seconds` (or since `since`,
+    /// if sooner). For an app that has quit, pass its last pid and `until` (when it quit): the
+    /// unified log is read for that pid between its launch and then only, so another process
+    /// that got the pid later doesn't show up. Never by process name, which other branches'
+    /// copies of the app share. Lines are filtered by `filter` (case-insensitive) and each part
+    /// keeps its newest `maxBytes`.
+    public func logs(pid: Int32?, capturedLog: URL?, since: Date? = nil, until: Date? = nil, seconds: Int = 300, filter: String? = nil, maxBytes: Int = 40_000) async throws -> String {
         func keep(_ lines: [Substring]) -> String {
             let filtered = filter.map { term in lines.filter { $0.range(of: term, options: .caseInsensitive) != nil } } ?? lines
             return Shell.tail(filtered.joined(separator: "\n"), limit: maxBytes)
@@ -641,18 +761,36 @@ public final class MacAppDriver {
             let output = keep(sinceLaunch.split(separator: "\n", omittingEmptySubsequences: false))
             parts.append("--- stdout/stderr since launch ---\n" + (output.isEmpty ? "(nothing\(filter == nil ? "" : " matching"))" : output))
         }
-        var window = max(1, seconds)
-        if let since { window = min(window, max(1, Int((-since.timeIntervalSinceNow).rounded(.up)))) }
-        let predicate = pid.map { "processIdentifier == \($0)" }
-            ?? "process == \"\(processName.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
-        let result = try await Shell.run("/usr/bin/log", ["show", "--style", "compact", "--last", "\(window)s", "--predicate", predicate], timeout: 45)
-        if result.succeeded {
-            // The first line is a column header.
-            let lines = result.stdout.split(separator: "\n").filter { !$0.hasPrefix("Timestamp") }
-            let output = keep(lines)
-            parts.append("--- unified log, last \(window)s ---\n" + (output.isEmpty ? "(nothing\(filter == nil ? "" : " matching"))" : output))
+        if let pid {
+            let end = until ?? Date()
+            var start = end.addingTimeInterval(-Double(max(1, seconds)))
+            if let since, since > start { start = since }
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            // Local time, the form `log show` takes for --start and --end.
+            formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+            var arguments = ["show", "--style", "compact", "--predicate", "processIdentifier == \(pid)"]
+            let heading: String
+            if until != nil {
+                // A second either side: the launch and exit times are minirun's, not the kernel's.
+                arguments += ["--start", formatter.string(from: start.addingTimeInterval(-1)), "--end", formatter.string(from: end.addingTimeInterval(1))]
+                heading = "--- unified log for pid \(pid), until it quit at \(formatter.string(from: end)) ---"
+            } else {
+                let window = max(1, Int(end.timeIntervalSince(start).rounded(.up)))
+                arguments += ["--last", "\(window)s"]
+                heading = "--- unified log, last \(window)s ---"
+            }
+            let result = try await Shell.run("/usr/bin/log", arguments, timeout: 45)
+            if result.succeeded {
+                // The first line is a column header.
+                let lines = result.stdout.split(separator: "\n").filter { !$0.hasPrefix("Timestamp") }
+                let output = keep(lines)
+                parts.append(heading + "\n" + (output.isEmpty ? "(nothing\(filter == nil ? "" : " matching"))" : output))
+            } else {
+                parts.append("--- unified log ---\n(log show failed: \(result.timedOut ? "timed out" : result.tail(500)))")
+            }
         } else {
-            parts.append("--- unified log ---\n(log show failed: \(result.timedOut ? "timed out" : result.tail(500)))")
+            parts.append("--- unified log ---\n(minirun has no pid recorded for this app, so it can't tell its log lines from other copies'. Launch it again.)")
         }
         if let pid, let exit = exitDescription(pid: pid) { parts.append("The app \(exit).") }
         return parts.joined(separator: "\n\n")

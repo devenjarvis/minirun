@@ -36,23 +36,29 @@ extension ToolRegistry {
     func quitMacApp(id: String) async throws -> String {
         guard let session = await macApps.session(id) else { throw ToolError(MacToolSupport.unknownApp(id, known: await refreshedMacApps())) }
         let who = [session.id, session.label].compactMap { $0 }.joined(separator: ", ")
-        guard let pid = session.pid, MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) else {
-            await macApps.markExited(session.id)
-            return "\(session.name) (\(who)) isn't running."
+        // Under the app's launch lock, so a launch for this id can't start a copy in between.
+        return try await macLaunches.withLock(session.id) { () async throws -> String in
+            // Read it again inside the lock: a launch that just finished has a new pid.
+            let current = await macApps.session(session.id) ?? session
+            guard let pid = current.pid, MacAppDriver.isRunning(current) else {
+                if let pid = current.pid { await macApps.markExited(current.id, ifPid: pid) }
+                return "\(current.name) (\(who)) isn't running."
+            }
+            await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: current.executablePath, start: current.processStart)
+            await macApps.markExited(current.id, ifPid: pid)
+            await macApps.touch(current.id)
+            return "Quit \(current.name) (\(who))."
         }
-        await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: session.executablePath)
-        await macApps.markExited(session.id)
-        await macApps.touch(session.id)
-        return "Quit \(session.name) (\(who))."
     }
 
     /// `activate_mac_app`: brings the Mac app with this id, and its main window, to the front.
     func activateMacApp(id: String) async throws -> String {
         guard let session = await macApps.session(id) else { throw ToolError(MacToolSupport.unknownApp(id, known: await refreshedMacApps())) }
-        guard let pid = session.pid, MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) else {
+        guard let pid = session.pid, MacAppDriver.isRunning(session) else {
             throw ToolError(MacToolSupport.notRunning(session))
         }
         let window = try? await MacAppDriver.shared.window(pid: pid, .main)
+        // Takes the global input lock, so it can't take the front in the middle of HID input.
         await MacAppDriver.shared.bringToFront(pid: pid, window: window)
         return "Brought \(session.name) to the front."
     }

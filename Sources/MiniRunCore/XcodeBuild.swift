@@ -83,6 +83,36 @@ enum XcodeBuild {
         guard result.succeeded else { throw ToolError(failureReport("xcodegen generate for \(relative(spec, to: dir))", result: result)) }
     }
 
+    /// Changes whenever the files that decide a scheme's platform change: the XcodeGen spec when
+    /// there is one (the project it generates is rewritten on every build), else the project or
+    /// workspace with the projects next to it, or Package.swift. Modification times, so it costs
+    /// no xcodebuild call. Nil when there's nothing to go by.
+    static func projectFingerprint(directory: String, project: String?) -> String? {
+        var files: [String] = []
+        if let spec = xcodeGenSpec(in: directory) {
+            files.append(spec)
+        } else if let container = try? container(in: directory, project: project) {
+            if container.isPackage {
+                files.append((container.workingDirectory ?? directory) + "/Package.swift")
+            } else if let path = container.flags.last {
+                if path.hasSuffix(".xcodeproj") {
+                    files.append(path + "/project.pbxproj")
+                } else {
+                    files.append(path + "/contents.xcworkspacedata")
+                    // The workspace's projects hold the build settings.
+                    let folder = (path as NSString).deletingLastPathComponent
+                    let near = ((try? listDirectories(folder, depth: 0)) ?? []) + ((try? listDirectories(folder, depth: 1)) ?? [])
+                    files += near.filter { $0.hasSuffix(".xcodeproj") }.sorted().map { $0 + "/project.pbxproj" }
+                }
+            }
+        }
+        guard !files.isEmpty else { return nil }
+        return files.map { file in
+            let modified = (try? FileManager.default.attributesOfItem(atPath: file)[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+            return "\(file)@\(modified)"
+        }.joined(separator: "|")
+    }
+
     private static func xcodeGenSpec(in dir: String) -> String? {
         for depth in 0...1 {
             let candidates = (try? listDirectories(dir, depth: depth)) ?? []

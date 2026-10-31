@@ -1,3 +1,5 @@
+import AppKit
+import ApplicationServices
 import Foundation
 import CoreGraphics
 import MiniRunKit
@@ -20,6 +22,95 @@ struct MacInputTarget {
     let windowID: UInt32
     let frame: MacRect
     let path: MacInputPath
+    /// HID input only: checks each event will reach this app before it's posted.
+    var hidGuard: MacHIDGuard? = nil
+}
+
+/// HID events go wherever the system sends real input: the frontmost app for keys, the window
+/// under the cursor for the mouse. Before each one, this checks that's still the target app (and,
+/// for the mouse, that the topmost window at the point is one of its own), so input meant for one
+/// session's app never lands in another app because something else took the front meanwhile.
+/// Once a check fails nothing more is pressed; buttons and keys already down are still released.
+final class MacHIDGuard: @unchecked Sendable {
+    let pid: Int32
+    private(set) var failure: String?
+    private var heldButtons: Set<Int> = []
+    private var heldKeys: Set<Int64> = []
+
+    init(pid: Int32) {
+        self.pid = pid
+    }
+
+    /// Whether to post `event`. Releases of what this input pressed always go through.
+    func allows(_ event: CGEvent) -> Bool {
+        switch event.type {
+        case .leftMouseUp, .rightMouseUp:
+            return heldButtons.remove(event.type == .leftMouseUp ? 0 : 1) != nil
+        case .keyUp:
+            return heldKeys.remove(event.getIntegerValueField(.keyboardEventKeycode)) != nil
+        case .flagsChanged:
+            let code = event.getIntegerValueField(.keyboardEventKeycode)
+            if heldKeys.remove(code) != nil { return true }
+            guard check(at: nil) else { return false }
+            heldKeys.insert(code)
+            return true
+        case .keyDown:
+            guard check(at: nil) else { return false }
+            heldKeys.insert(event.getIntegerValueField(.keyboardEventKeycode))
+            return true
+        case .leftMouseDown, .rightMouseDown:
+            guard check(at: event.location) else { return false }
+            heldButtons.insert(event.type == .leftMouseDown ? 0 : 1)
+            return true
+        default:
+            // Moves, drags and scrolls.
+            return check(at: event.location)
+        }
+    }
+
+    private func check(at point: CGPoint?) -> Bool {
+        if failure != nil { return false }
+        failure = Self.problem(pid: pid, at: point)
+        return failure == nil
+    }
+
+    /// Why HID input wouldn't reach `pid` right now, or nil if it would. `point` is global.
+    static func problem(pid: Int32, at point: CGPoint?) -> String? {
+        let front = frontmostPID()
+        guard front == pid else {
+            let name = front.flatMap { NSRunningApplication(processIdentifier: $0)?.localizedName } ?? "another app"
+            let who = front.map { " (pid \($0))" } ?? ""
+            return "Stopped HID input: \(name)\(who) is in front instead of the app (pid \(pid)), so the events would go to it. " +
+                "Something else took the front (another session, or the person using this Mac). Try again, or use input \"pid\"."
+        }
+        guard let point else { return nil }
+        let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+        // Front to back: the first ordinary window containing the point gets the click.
+        for info in list where (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 {
+            guard let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary), rect.contains(point) else { continue }
+            let owner = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            if owner == pid { return nil }
+            let name = info[kCGWindowOwnerName as String] as? String ?? "another app"
+            let who = owner.map { " (pid \($0))" } ?? ""
+            return "Stopped HID input: a window of \(name)\(who) covers (\(Int(point.x)), \(Int(point.y))) on the screen, so the click would land there. " +
+                "Move it, or use input \"pid\"."
+        }
+        return "Stopped HID input: no window of the app (pid \(pid)) is on screen at (\(Int(point.x)), \(Int(point.y)))."
+    }
+
+    /// The app with keyboard focus. Accessibility asks the window server each time;
+    /// NSWorkspace's `frontmostApplication` is the fallback (a run loop keeps it current, and a
+    /// one-off `minirun call` doesn't run one).
+    static func frontmostPID() -> Int32? {
+        var value: CFTypeRef?
+        if AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), "AXFocusedApplication" as CFString, &value) == .success,
+           let value, CFGetTypeID(value) == AXUIElementGetTypeID() {
+            var pid: pid_t = 0
+            if AXUIElementGetPid(value as! AXUIElement, &pid) == .success { return pid }
+        }
+        return NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
 }
 
 /// Synthesizes mouse, scroll-wheel and keyboard events. Points are window points.
@@ -31,8 +122,11 @@ enum MacInput {
 
     static func post(_ event: CGEvent, to target: MacInputTarget) {
         switch target.path {
-        case .pid: event.postToPid(target.pid)
-        case .hid: event.post(tap: .cghidEventTap)
+        case .pid:
+            event.postToPid(target.pid)
+        case .hid:
+            if let hidGuard = target.hidGuard, !hidGuard.allows(event) { return }
+            event.post(tap: .cghidEventTap)
         }
     }
 

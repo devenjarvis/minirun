@@ -194,15 +194,32 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
                 calls.start(id)
                 stateLock.withLock { state.lastCallAt = Date() }
             }
+            let streamer = self.streamer!
             Task {
-                let result = await registry.call(tool, arguments: arguments)
-                if let id {
-                    // Kept in case this send is lost to a dropped connection (see .pending).
-                    calls.finish(id, result: result)
-                    await send(.string(RelayProtocol.result(id: id, result: result).encodedString()))
-                } else if result.isError {
-                    log("Viewer action \(tool) failed: \(result.content.first.map { "\($0)" } ?? "")")
+                guard let id else {
+                    // A viewer's input (only the relay's own calls carry an id). The Worker already
+                    // drops `input` and `window`; dropped here too, so a viewer can never use the
+                    // HID path (the real cursor and keyboard) or pick another window.
+                    var viewerArguments = arguments.objectValue ?? [:]
+                    viewerArguments["input"] = nil
+                    viewerArguments["window"] = nil
+                    let result = await ToolRegistry.$fromViewer.withValue(true) {
+                        await registry.call(tool, arguments: .object(viewerArguments))
+                    }
+                    if result.isError {
+                        var message = ""
+                        if case .text(let text)? = result.content.first { message = text }
+                        log("Viewer action \(tool) failed: \(message)")
+                        if let device = viewerArguments["device"]?.stringValue, MacAppID.isMacDevice(device) {
+                            await streamer.inputFailed(key: device, message: "\(tool) failed: \(message)")
+                        }
+                    }
+                    return
                 }
+                let result = await registry.call(tool, arguments: arguments)
+                // Kept in case this send is lost to a dropped connection (see .pending).
+                calls.finish(id, result: result)
+                await send(.string(RelayProtocol.result(id: id, result: result).encodedString()))
             }
         case .streams(let requests):
             // Apply stream changes in the order they arrived.
@@ -231,7 +248,12 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         case .touch(let udid, let phase, let x, let y):
             guard SimulatorDriver.TouchPhase(rawValue: phase) != nil else { break }
             let log = self.log
-            Task { await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) }
+            let streamer = self.streamer!
+            Task {
+                await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) { key, message in
+                    await streamer.inputFailed(key: key, message: message)
+                }
+            }
         case .welcome(let bundle):
             stateLock.withLock { state.workerBundle = bundle }
         case .unknown:
@@ -272,7 +294,9 @@ actor TouchQueue {
         self.registry = registry
     }
 
-    func add(_ event: Event, log: @escaping @Sendable (String) -> Void) async {
+    /// `failed` tells a Mac app's viewers when a live click or drag didn't go through (say,
+    /// minirun lacks Accessibility), since they'd otherwise only see nothing happen.
+    func add(_ event: Event, log: @escaping @Sendable (String) -> Void, failed: @escaping @Sendable (_ key: String, _ message: String) async -> Void = { _, _ in }) async {
         pending.append(event)
         guard !draining else { return }
         draining = true
@@ -287,6 +311,7 @@ actor TouchQueue {
                 }
             } catch {
                 log("Live touch failed: \(error.localizedDescription)")
+                if MacAppID.isMacDevice(next.udid) { await failed(next.udid, "The click didn't reach the app: \(error.localizedDescription)") }
             }
         }
         draining = false

@@ -17,6 +17,13 @@ public struct MacAppSession: Codable, Equatable, Sendable {
     public var executablePath: String
     /// Nil when it isn't running.
     public var pid: Int32?
+    /// When the process with `pid` started (from the kernel), so a recycled pid is never taken
+    /// for the app. Nil in entries saved by older versions.
+    public var processStart: MacProcessStart?
+    /// The pid it last ran as, kept after it quits so its logs can still be found by pid.
+    public var lastPid: Int32?
+    /// When minirun saw it quit.
+    public var exitedAt: Date?
     /// Where its stdout and stderr go.
     public var logPath: String?
     public var launchedAt: Date?
@@ -24,7 +31,8 @@ public struct MacAppSession: Codable, Equatable, Sendable {
     public var updatedAt: Date
 
     public init(id: String, label: String? = nil, name: String, bundleID: String? = nil, appPath: String, executablePath: String,
-                pid: Int32? = nil, logPath: String? = nil, launchedAt: Date? = nil, updatedAt: Date = Date()) {
+                pid: Int32? = nil, logPath: String? = nil, launchedAt: Date? = nil, updatedAt: Date = Date(),
+                processStart: MacProcessStart? = nil, lastPid: Int32? = nil, exitedAt: Date? = nil) {
         self.id = id
         self.label = label
         self.name = name
@@ -35,6 +43,9 @@ public struct MacAppSession: Codable, Equatable, Sendable {
         self.logPath = logPath
         self.launchedAt = launchedAt
         self.updatedAt = updatedAt
+        self.processStart = processStart
+        self.lastPid = lastPid ?? pid
+        self.exitedAt = exitedAt
     }
 
     public var isRunning: Bool { pid != nil }
@@ -60,6 +71,18 @@ public struct MacAppSession: Codable, Equatable, Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.string(from: date)
+    }
+}
+
+/// When a process started, as the kernel reports it (`proc_bsdinfo.pbi_start_tvsec/usec`).
+/// Together with the pid it names one process: pids get reused, start times don't repeat.
+public struct MacProcessStart: Codable, Equatable, Sendable {
+    public var seconds: UInt64
+    public var microseconds: UInt64
+
+    public init(seconds: UInt64, microseconds: UInt64) {
+        self.seconds = seconds
+        self.microseconds = microseconds
     }
 }
 
@@ -103,38 +126,45 @@ public enum MacAppID {
 
 /// The Mac apps minirun launched, persisted to ~/.config/minirun/mac-apps.json so a restarted
 /// `minirun serve` still knows which pids are its own.
+///
+/// `minirun serve` and one-off `minirun call`s (the smoke test drives a whole session through
+/// separate `call` processes) share the file, so every read starts from what's on disk and every
+/// change is a read-modify-write of one entry under an exclusive lock on a sidecar lock file,
+/// written atomically. Two processes changing different apps never undo each other's changes.
 public actor MacAppStore {
     private let url: URL?
     private var sessions: [String: MacAppSession] = [:]
-    /// Each app's last-used time as last written to disk.
-    private var saved: [String: Date] = [:]
+    /// Last-used times not written yet (`touch` saves at most once a minute per app). They're
+    /// laid over what's read from disk until the next save.
+    private var unsavedTouches: [String: Date] = [:]
+    /// When each app's last-used time was last written.
+    private var savedTouches: [String: Date] = [:]
 
-    /// `url` nil keeps everything in memory (for tests and `minirun call`). A missing or unreadable
-    /// file starts empty.
+    /// `url` nil keeps everything in memory (for tests). A missing or unreadable file starts empty.
     public init(url: URL?) {
         self.url = url
-        if let url, let data = try? Data(contentsOf: url) {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            sessions = (try? decoder.decode([String: MacAppSession].self, from: data)) ?? [:]
-        }
-        saved = sessions.mapValues(\.updatedAt)
+        if let url { sessions = Self.read(url) }
     }
 
     public static var defaultURL: URL {
         MiniRunConfig.configURL.deletingLastPathComponent().appendingPathComponent("mac-apps.json")
     }
 
-    public func session(_ id: String) -> MacAppSession? { sessions[id.lowercased()] }
+    public func session(_ id: String) -> MacAppSession? {
+        refresh()
+        return sessions[id.lowercased()]
+    }
 
     /// Every session, most recently used first.
     public func all() -> [MacAppSession] {
-        sessions.values.sorted { ($0.updatedAt, $1.id) > ($1.updatedAt, $0.id) }
+        refresh()
+        return sessions.values.sorted { ($0.updatedAt, $1.id) > ($1.updatedAt, $0.id) }
     }
 
     /// The id for `label`: `MacAppID.forLabel(label)`, unless (very rarely) another label already
     /// has that id, in which case the next free one in a stable sequence.
     public func id(forLabel label: String) -> String {
+        refresh()
         var candidate = MacAppID.forLabel(label)
         var attempt = 1
         while let other = sessions[candidate], other.label != label {
@@ -147,51 +177,118 @@ public actor MacAppStore {
     public func upsert(_ session: MacAppSession) {
         var session = session
         session.id = session.id.lowercased()
-        sessions[session.id] = session
-        save()
+        unsavedTouches[session.id] = nil
+        update { sessions in
+            sessions[session.id] = session
+            return true
+        }
     }
 
     /// Marks an app as just used. Saved at most once a minute per app.
     public func touch(_ id: String, now: Date = Date()) {
         let id = id.lowercased()
+        refresh()
         guard sessions[id] != nil else { return }
         sessions[id]?.updatedAt = now
-        if saved[id].map({ now.timeIntervalSince($0) >= 60 }) ?? true { save() }
+        unsavedTouches[id] = now
+        if savedTouches[id].map({ now.timeIntervalSince($0) >= 60 }) ?? true {
+            update { _ in true }
+        }
     }
 
-    /// The app quit (or was quit): keep the entry, so its id and log stay known, without a pid.
-    public func markExited(_ id: String) {
+    /// The app with this id quit (or was quit) while it was `pid`: keeps the entry, so its id and
+    /// logs stay known, without a pid. Compare-and-clear: if the app was relaunched in the
+    /// meantime (its pid is no longer `pid`), nothing changes, so a stale check never forgets a
+    /// live app.
+    public func markExited(_ id: String, ifPid pid: Int32, at date: Date = Date()) {
         let id = id.lowercased()
-        guard sessions[id]?.pid != nil else { return }
-        sessions[id]?.pid = nil
-        save()
+        update { sessions in
+            guard let current = sessions[id], current.pid == pid else { return false }
+            sessions[id]?.pid = nil
+            sessions[id]?.lastPid = pid
+            sessions[id]?.exitedAt = date
+            return true
+        }
     }
 
     public func remove(_ id: String) {
-        guard sessions.removeValue(forKey: id.lowercased()) != nil else { return }
-        save()
+        let id = id.lowercased()
+        unsavedTouches[id] = nil
+        update { sessions in sessions.removeValue(forKey: id) != nil }
     }
 
-    /// After a restart: keeps the pids that `isAlive(pid, executablePath)` says are still the app
-    /// minirun launched, and clears the rest (the process ended, or the pid now belongs to
-    /// something else), so minirun never signals a stranger.
-    public func reconcile(isAlive: (Int32, String) -> Bool) {
-        var changed = false
-        for (id, session) in sessions {
-            guard let pid = session.pid, !isAlive(pid, session.executablePath) else { continue }
-            sessions[id]?.pid = nil
-            changed = true
+    /// After a restart: keeps the pids that `isAlive` says are still the app minirun launched
+    /// (same executable and, when recorded, the same process start time), and clears the rest
+    /// (the process ended, or the pid now belongs to something else), so minirun never signals a
+    /// stranger.
+    public func reconcile(isAlive: (MacAppSession) -> Bool) {
+        update { sessions in
+            var changed = false
+            for (id, session) in sessions {
+                guard let pid = session.pid, !isAlive(session) else { continue }
+                sessions[id]?.pid = nil
+                sessions[id]?.lastPid = pid
+                sessions[id]?.exitedAt = session.exitedAt ?? Date()
+                changed = true
+            }
+            return changed
         }
-        if changed { save() }
+    }
+
+    // MARK: The file
+
+    static func read(_ url: URL) -> [String: MacAppSession] {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([String: MacAppSession].self, from: data)) ?? [:]
+    }
+
+    /// Picks up what other minirun processes wrote, keeping this one's unsaved last-used times.
+    private func refresh() {
+        guard let url else { return }
+        sessions = Self.read(url)
+        for (id, date) in unsavedTouches {
+            guard let current = sessions[id]?.updatedAt else {
+                unsavedTouches[id] = nil
+                continue
+            }
+            if date > current { sessions[id]?.updatedAt = date }
+        }
+    }
+
+    /// Read-modify-write under the file lock. `change` returns whether it changed anything.
+    private func update(_ change: (inout [String: MacAppSession]) -> Bool) {
+        withFileLock {
+            refresh()
+            let changed = change(&sessions)
+            if changed || !unsavedTouches.isEmpty { save() }
+        }
+    }
+
+    private func withFileLock(_ body: () -> Void) {
+        guard let url else { return body() }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fd = open(url.path + ".lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        if fd >= 0 { _ = flock(fd, LOCK_EX) }
+        defer {
+            if fd >= 0 {
+                _ = flock(fd, LOCK_UN)
+                close(fd)
+            }
+        }
+        body()
     }
 
     private func save() {
+        let now = Date()
+        for id in unsavedTouches.keys { savedTouches[id] = now }
+        unsavedTouches = [:]
         guard let url else { return }
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         guard let data = try? encoder.encode(sessions) else { return }
-        saved = sessions.mapValues(\.updatedAt)
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
         // Paths and labels of private repositories.

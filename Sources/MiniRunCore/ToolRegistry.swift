@@ -36,6 +36,16 @@ public final class ToolRegistry: @unchecked Sendable {
     let macApps = MacAppStore(url: MacAppStore.defaultURL)
     /// One macOS test run at a time: UI tests take over the Mac's mouse and keyboard.
     let macTests = KeyedLock()
+    /// One launch or quit at a time per Mac app id, so two calls can't both spawn a copy.
+    let macLaunches = KeyedLock()
+    /// The window each Mac app's live view is showing, by Mac app id, so the viewer's clicks and
+    /// input go to the window the person sees.
+    let streamedMacWindows = StreamedMacWindows()
+    /// The platform each scheme was found to build for, so builds without `platform` don't ask
+    /// xcodebuild every time.
+    let detectedPlatforms = DetectedPlatforms()
+    /// Set while running a call that came from a live viewer (not an MCP client).
+    @TaskLocal static var fromViewer: Bool = false
     let liveMouse = LiveMouse()
     /// What's been shared through the Worker. Kept in a file even for a one-off `minirun call`,
     /// so the storage limit counts every upload.
@@ -220,7 +230,7 @@ public final class ToolRegistry: @unchecked Sendable {
     /// After `minirun serve` starts: forgets the pids of Mac apps that quit while it wasn't
     /// running, or that now belong to another program, so it never signals a stranger.
     public func reconcileMacApps() async {
-        await macApps.reconcile { pid, executable in MacAppDriver.isRunning(pid: pid, executablePath: executable) }
+        await macApps.reconcile { session in MacAppDriver.isRunning(session) }
     }
 
     func shutDownIdleSimulatorsOnce(log: @Sendable (String) -> Void) async throws {
@@ -316,6 +326,40 @@ public final class ToolRegistry: @unchecked Sendable {
             note += abs(Double(shot.width) - size.width) < 2 ? " — image pixels equal points, so use them directly for tap/swipe." : "."
         }
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
+    }
+}
+
+/// The window each Mac app's live view shows (window server ids, by Mac app id). Read from
+/// synchronous code, so a lock rather than an actor.
+final class StreamedMacWindows: @unchecked Sendable {
+    private let lock = NSLock()
+    private var windows: [String: UInt32] = [:]
+
+    subscript(id: String) -> UInt32? {
+        get { lock.withLock { windows[id.lowercased()] } }
+        set { lock.withLock { windows[id.lowercased()] = newValue } }
+    }
+}
+
+/// The platform a scheme builds for, as `XcodeBuild.detectPlatform` found it, per checkout,
+/// project, scheme and arguments. An entry counts only while the project files are as they
+/// were (`fingerprint`); `lastKnown` ignores that, for guessing before the checkout is synced.
+actor DetectedPlatforms {
+    private var entries: [String: (fingerprint: String, platform: BuildPlatform)] = [:]
+
+    func platform(_ key: String, fingerprint: String?) -> BuildPlatform? {
+        guard let fingerprint, let entry = entries[key], entry.fingerprint == fingerprint else { return nil }
+        return entry.platform
+    }
+
+    func lastKnown(_ key: String) -> BuildPlatform? { entries[key]?.platform }
+
+    func record(_ key: String, fingerprint: String?, platform: BuildPlatform) {
+        guard let fingerprint else {
+            entries[key] = nil
+            return
+        }
+        entries[key] = (fingerprint, platform)
     }
 }
 

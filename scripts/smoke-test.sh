@@ -24,7 +24,9 @@ UDID=$(xcrun simctl clone "$TEMPLATE" "minirun-smoke")
 cleanup() {
   # The macOS fixture app, wherever the Mac section stopped.
   if [[ -n "${MAC_ID:-}" ]]; then "$BIN" call terminate_app "{\"device\":\"$MAC_ID\"}" >/dev/null 2>&1 || true; fi
-  pkill -x HelloMacApp 2>/dev/null || true
+  # A last resort on GitHub's throwaway runners only: on a shared Mac another session may be
+  # running its own HelloMacApp, so there terminate_app (by the recorded pid) is all we do.
+  if [[ "${RUNNER_ENVIRONMENT:-}" == "github-hosted" ]]; then pkill -x HelloMacApp 2>/dev/null || true; fi
   local sims; sims=$(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke (minirun ") and not d["name"].endswith(" template)")))')
   [[ -n "${MINIRUN_SMOKE_KEEP:-}" ]] || sims="$UDID $sims"
   for sim in $sims; do xcrun simctl shutdown "$sim" >/dev/null 2>&1 || true; xcrun simctl delete "$sim" >/dev/null 2>&1 || true; done
@@ -85,6 +87,9 @@ run list_mac_apps | expect "$MAC_ID"
 run list_windows "{\"device\":\"$MAC_ID\"}" || true
 mac_logs() { run app_logs "{\"device\":\"$MAC_ID\",\"seconds\":60,\"contains\":\"HelloMacApp:\"}"; }
 mac_logs | expect "HelloMacApp: launched"
+# minirun launches apps responsible for themselves, so the app doesn't get minirun's Screen
+# Recording grant (CI grants it to minirun, and GitHub's runners to /bin/bash).
+mac_logs | expect "HelloMacApp: screen-capture-access=false"
 if out=$("$BIN" call press_button "{\"device\":\"$MAC_ID\",\"button\":\"home\"}"); then echo "FAILED: press_button should refuse a Mac app" >&2; exit 1; fi
 echo "$out" | expect "press_key"
 

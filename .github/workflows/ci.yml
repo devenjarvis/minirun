@@ -139,8 +139,9 @@ jobs:
       - name: Clean up simulators and the Mac fixture app
         if: always()
         run: |
-          # The smoke test quits it, unless it stopped partway.
-          pkill -x HelloMacApp 2>/dev/null || true
+          # The smoke test quits it (terminate_app), unless it stopped partway. Only on GitHub's
+          # runners: on a self-hosted Mac another session may be running its own HelloMacApp.
+          if [[ "$RUNNER_ENVIRONMENT" == "github-hosted" ]]; then pkill -x HelloMacApp 2>/dev/null || true; fi
           for sim in $(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke")))'); do
             xcrun simctl shutdown "$sim" 2>/dev/null || true
             xcrun simctl delete "$sim" 2>/dev/null || true

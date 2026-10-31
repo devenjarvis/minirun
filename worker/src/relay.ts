@@ -440,7 +440,11 @@ export class MacRelay extends DurableObject<Env> {
         // Input always goes to the simulator or Mac app this viewer is watching, never a guess.
         const device = await this.viewerDevice(ws);
         if (!device) return;
-        const args = typeof message.arguments === "object" && message.arguments !== null ? message.arguments : {};
+        const args = typeof message.arguments === "object" && message.arguments !== null ? { ...message.arguments } : {};
+        // A viewer never picks the input path ("hid" moves the Mac's real cursor and types into
+        // whatever is in front) or another window: input goes to the window it's watching.
+        delete (args as Record<string, unknown>).input;
+        delete (args as Record<string, unknown>).window;
         this.agent()?.send(JSON.stringify({ type: "call", tool, arguments: { ...args, device } }));
         break;
       }
