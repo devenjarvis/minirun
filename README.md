@@ -379,8 +379,10 @@ deploys with wrangler, for working on the Worker itself.
 
 Releases: bump `MiniRun.version` (`Sources/MiniRunKit/Version.swift`), `MARKETING_VERSION` in
 `App/project.yml` and `VERSION` in `worker/src/version.ts` (then `npm run bundle`), add a section
-for it to `CHANGELOG.md`, and push a tag like `v0.3.0`. The Release workflow builds the app and
-attaches `minirun-<version>.zip` to a GitHub Release, with that changelog section as its notes.
+for it to `CHANGELOG.md`, and merge. When `main`'s version has no tag yet, the Release workflow
+builds the app and publishes a GitHub Release with `minirun-<version>.zip` and that changelog
+section as its notes, which creates the `v<version>` tag. Pushing a tag or creating a release by
+hand works too.
 
 CI runs all of the above on GitHub's macOS runners. If a run fails, the logs are pushed to the
 `ci-logs` branch.
