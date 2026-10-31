@@ -34,13 +34,17 @@ interface StreamSettings {
 
 /** What a viewer is watching, kept on its socket so it survives hibernation. */
 interface ViewerState extends StreamSettings {
-  /** The simulator UDID the viewer asked for, or "" for whichever simulator is booted. */
+  /** The simulator UDID or Mac app id the viewer asked for, or "" for whichever simulator is booted. */
   key: string;
 }
 
-/** A booted simulator, as the Mac reports it. */
+/**
+ * A booted simulator or a running Mac app, as the Mac reports it. Mac apps (protocol 5) have
+ * kind "mac", their id (e.g. "mac-3f9a2c") in udid and the workspace they're for in reserved_for.
+ */
 export interface SimulatorInfo {
   udid: string;
+  kind?: "simulator" | "mac";
   name: string;
   runtime?: string;
   reserved_for?: string;
@@ -54,7 +58,11 @@ interface Pending {
 }
 
 /** Tools the viewer may call directly (fire-and-forget input). */
-const VIEWER_TOOLS = new Set(["tap", "swipe", "long_press", "type_text", "press_key", "press_button", "open_url"]);
+const VIEWER_TOOLS = new Set([
+  "tap", "swipe", "long_press", "type_text", "press_key", "press_button", "open_url",
+  // Mac apps (protocol 5): wheel scrolling and menu commands.
+  "scroll", "press_menu_item",
+]);
 
 /** Phases of a live touch from the viewer. */
 const TOUCH_PHASES = new Set(["down", "move", "up"]);
@@ -87,7 +95,7 @@ const DEFAULT_STREAM: StreamSettings = { fps: 12, quality: 60, scale: 0.5, codec
 
 const decoder = new TextDecoder();
 
-/** Simulator UDIDs (and "" for the default stream). Anything else is ignored. */
+/** Simulator UDIDs and Mac app ids like "mac-3f9a2c" (and "" for the default stream). Anything else is ignored. */
 export function streamKey(value: unknown): string | null {
   if (value === undefined || value === null || value === "") return "";
   return typeof value === "string" && /^[A-Za-z0-9-]{1,64}$/.test(value) ? value : null;
@@ -96,7 +104,7 @@ export function streamKey(value: unknown): string | null {
 /**
  * One Durable Object per Mac. It holds the Mac's WebSocket ("agent") and any browser viewers,
  * forwards MCP tool calls to the Mac, and fans video frames out to viewers. Each viewer watches
- * one simulator; the Mac runs one stream per simulator being watched.
+ * one simulator or Mac app window; the Mac runs one stream per one being watched.
  *
  * Uses the WebSocket Hibernation API, so an idle connection costs nothing.
  */
@@ -429,7 +437,7 @@ export class MacRelay extends DurableObject<Env> {
       case "input": {
         const tool = String(message.tool);
         if (!VIEWER_TOOLS.has(tool)) return;
-        // Input always goes to the simulator this viewer is watching, never a guess.
+        // Input always goes to the simulator or Mac app this viewer is watching, never a guess.
         const device = await this.viewerDevice(ws);
         if (!device) return;
         const args = typeof message.arguments === "object" && message.arguments !== null ? message.arguments : {};

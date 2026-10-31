@@ -1,7 +1,8 @@
 import { baseStyles } from "./pages";
 
 /**
- * The live viewer: streams the simulator screen and turns touches into taps and swipes.
+ * The live viewer: streams a simulator's screen or a Mac app's window and turns touches into
+ * taps and swipes. On a Mac app it also sends right and double clicks, wheel scrolling and keys.
  * Browsers with WebCodecs get H.264 (decoded onto a canvas); others get JPEG frames.
  */
 export function viewerPage(): string {
@@ -29,6 +30,12 @@ main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px
   background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
 .screen img, .screen canvas { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
 .screen img[hidden], .screen canvas[hidden] { display: none; }
+.screen:focus { outline: none; }
+/* A Mac app's window: any shape (it can be resized while streaming), so it's fitted in both directions. */
+body.mac main { container-type: size; }
+body.mac .screen { height: auto; width: min(100cqw, 100cqh * var(--ratio, 1.6)); aspect-ratio: var(--ratio, 1.6); border-radius: 10px; }
+body.mac .screen:focus-visible, body.mac .screen.focused { box-shadow: 0 0 0 1px var(--accent), 0 20px 60px rgba(0,0,0,.5); }
+footer button[hidden] { display: none; }
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); font-size: 14px; background: rgba(0,0,0,.55); }
 .overlay[hidden] { display: none; }
 .touch { position: absolute; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: rgba(124,196,255,.35); border: 2px solid rgba(124,196,255,.9);
@@ -46,11 +53,11 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   <div class="mark"><i></i>minirun</div>
   <span id="status" class="pill"><i></i><span>Connecting…</span></span>
   <span id="device" class="device"></span>
-  <select id="sim" class="sim" title="Simulator" hidden></select>
+  <select id="sim" class="sim" title="Simulator or Mac app" hidden></select>
 </header>
 <main>
-  <div id="screen" class="screen">
-    <img id="frame" alt="Simulator screen">
+  <div id="screen" class="screen" tabindex="0">
+    <img id="frame" alt="Live screen">
     <canvas id="video" hidden></canvas>
     <div id="overlay" class="overlay">Connecting…</div>
   </div>
@@ -80,9 +87,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   let ws = null, retry = 1000, online = false, live = false;
   // Whether the Mac takes live touches; older ones get whole gestures on finger-up instead.
   let touchLive = false;
-  let screen = null; // { udid, pointWidth, pointHeight, name }
+  let screen = null; // { udid, pointWidth, pointHeight, name, kind? }, the latest for this stream
+  // Booted simulators and running Mac apps ({ udid, name, kind: "mac", reserved_for } for those).
   let simulators = [];
-  // The simulator this page shows: ?device=UDID, or "" for whichever one is booted.
+  // The simulator or Mac app this page shows: ?device=UDID or ?device=mac-…, or "" for whichever simulator is booted.
   let wanted = new URLSearchParams(location.search).get("device") || "";
   let currentURL = null, decoding = false, pendingFrame = null;
   // "h264" once we know this browser can decode it (?codec=jpeg forces JPEG).
@@ -118,18 +126,48 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function send(message) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(message)); }
   function sendStream() { send({ type: "stream", device: wanted, codec, ...presets[codec][$("quality").value] }); }
 
+  // Mac app ids look like "mac-3f9a2c"; the Mac also says so with kind: "mac".
+  function isMacId(udid) {
+    const listed = simulators.find((d) => d.udid === udid);
+    if (listed && listed.kind) return listed.kind === "mac";
+    if (screen && screen.udid === udid && screen.kind) return screen.kind === "mac";
+    return typeof udid === "string" && udid.startsWith("mac-");
+  }
+  // Whether this page shows a Mac app's window rather than a simulator.
+  let mac = false;
+  function noun() { return mac ? "app window" : "simulator"; }
+
+  function applyMode() {
+    mac = isMacId(screen && screen.udid ? screen.udid : wanted);
+    document.body.classList.toggle("mac", mac);
+    $("home").hidden = mac;
+    $("text").placeholder = mac ? "Type into the app (or click its window and type)…" : "Type into the app…";
+  }
+
   function renderSimulators() {
     const current = screen ? screen.udid : wanted;
     const list = simulators.slice();
-    if (current && !list.some((d) => d.udid === current)) list.push({ udid: current, name: screen ? screen.name : "Simulator" });
+    if (current && !list.some((d) => d.udid === current)) {
+      list.push({ udid: current, name: screen ? screen.name : (isMacId(current) ? "Mac app" : "Simulator"), kind: isMacId(current) ? "mac" : undefined });
+    }
     simEl.hidden = list.length < 2;
     deviceEl.hidden = !simEl.hidden;
-    simEl.replaceChildren(...list.map((d) => {
-      const option = document.createElement("option");
-      option.value = d.udid;
-      option.textContent = d.name + (d.reserved_for ? " — " + d.reserved_for : "");
-      return option;
-    }));
+    const sims = list.filter((d) => d.kind !== "mac"), apps = list.filter((d) => d.kind === "mac");
+    const option = (d) => {
+      const element = document.createElement("option");
+      element.value = d.udid;
+      element.textContent = d.name + (d.kind === "mac" && !sims.length ? " (Mac app)" : "") + (d.reserved_for ? " — " + d.reserved_for : "");
+      return element;
+    };
+    const group = (label, devices) => {
+      const element = document.createElement("optgroup");
+      element.label = label;
+      element.append(...devices.map(option));
+      return element;
+    };
+    // Simulators first, then Mac apps, in groups when there are both.
+    if (sims.length && apps.length) simEl.replaceChildren(group("Simulators", sims), group("Mac apps", apps));
+    else simEl.replaceChildren(...list.map(option));
     if (current) simEl.value = current;
   }
 
@@ -140,7 +178,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
     history.replaceState(null, "", url);
     screen = null; live = false; pendingFrame = null; video.needKeyframe = true;
-    setStatus("", "Switching…"); showOverlay("Switching simulator…");
+    applyMode();
+    setStatus("", "Switching…"); showOverlay(mac ? "Opening the app window…" : "Switching simulator…");
     sendStream();
   }
 
@@ -150,21 +189,27 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       online = m.online;
       touchLive = m.touch === true;
       if (!online) { live = false; setStatus("offline", "Mac offline"); showOverlay("Your Mac is offline. Make sure it's awake and minirun is running."); }
-      else { setStatus("", "Starting stream…"); if (!live) showOverlay("Waiting for the simulator…"); }
+      else { setStatus("", "Starting stream…"); if (!live) showOverlay("Waiting for the " + noun() + "…"); }
       if (m.host && m.host.name && !screen) deviceEl.textContent = m.host.name;
     } else if (m.type === "simulators") {
       simulators = Array.isArray(m.devices) ? m.devices : [];
+      applyMode();
       renderSimulators();
+      // Only Mac apps and no simulator booted: open the first app rather than wait for a simulator.
+      if (!wanted && simulators.length && simulators.every((d) => d.kind === "mac")) watch(simulators[0].udid);
     } else if (m.type === "screen") {
       if ((m.key || "") !== wanted) return;
+      // A Mac app's window can be resized mid-stream: the Mac re-sends this with the new size,
+      // and taps are mapped with the latest one.
       screen = m;
+      applyMode();
       deviceEl.textContent = m.name;
       screenEl.style.setProperty("--ratio", String(m.pointWidth / m.pointHeight));
       renderSimulators();
     } else if (m.type === "stream_status") {
       if ((m.key || "") !== wanted) return;
       if (m.status === "live") { live = true; setStatus("live", "Live"); showOverlay(""); }
-      else if (m.status === "error") { setStatus("offline", "Stream error"); showOverlay(m.message || "The simulator stream failed."); }
+      else if (m.status === "error") { setStatus("offline", "Stream error"); showOverlay(m.message || "The " + noun() + " stream failed."); }
     }
   }
 
@@ -277,15 +322,18 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     img.src = url;
   }
 
-  // Touch → tap / long press / swipe, in simulator points.
-  function toPoints(clientX, clientY) {
+  // Touch → tap / long press / swipe, in simulator (or Mac window) points, from the latest screen message.
+  function geometry() {
     const surface = canvas.hidden ? img : canvas;
     const rect = surface.getBoundingClientRect();
     const naturalWidth = canvas.hidden ? img.naturalWidth : canvas.width, naturalHeight = canvas.hidden ? img.naturalHeight : canvas.height;
-    const w = screen ? screen.pointWidth : naturalWidth / 3, h = screen ? screen.pointHeight : naturalHeight / 3;
+    const w = screen ? screen.pointWidth : naturalWidth / (mac ? 1 : 3), h = screen ? screen.pointHeight : naturalHeight / (mac ? 1 : 3);
     // object-fit: contain — account for letterboxing.
     const scale = Math.min(rect.width / w, rect.height / h);
-    const offsetX = (rect.width - w * scale) / 2, offsetY = (rect.height - h * scale) / 2;
+    return { rect, w, h, scale, offsetX: (rect.width - w * scale) / 2, offsetY: (rect.height - h * scale) / 2 };
+  }
+  function toPoints(clientX, clientY) {
+    const { rect, w, h, scale, offsetX, offsetY } = geometry();
     const x = (clientX - rect.left - offsetX) / scale, y = (clientY - rect.top - offsetY) / scale;
     return { x: Math.round(Math.max(0, Math.min(w, x)) * 10) / 10, y: Math.round(Math.max(0, Math.min(h, y)) * 10) / 10 };
   }
@@ -298,20 +346,48 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     screenEl.appendChild(dot);
     setTimeout(() => dot.remove(), 500);
   }
-  function input(tool, args) { if (online) send({ type: "input", tool, arguments: args }); }
+  // Characters typed on a Mac app's window, sent together as one type_text. Anything else sent
+  // goes after them, so keys and clicks keep their order.
+  let typed = "", typedTimer = null;
+  function flushText() {
+    clearTimeout(typedTimer);
+    typedTimer = null;
+    const text = typed;
+    typed = "";
+    if (text) input("type_text", { text });
+  }
+  function input(tool, args) {
+    if (typed) flushText();
+    if (online) send({ type: "input", tool, arguments: args });
+  }
 
   // Live touches: down, moves (at most one per animation frame) and up are sent as they happen,
   // so drags and long presses track the finger. Without them, the gesture is sent on finger-up.
+  // On a Mac app they're the mouse: the Mac turns them into mouse down, drag and up.
   let start = null, moved = null, moveQueued = false;
-  function touch(phase, point) { if (online) send({ type: "touch", phase, x: point.x, y: point.y }); }
+  // The last plain mouse click on a Mac app, so a second one soon after becomes a double click.
+  let lastClick = null, lastPointerType = "";
+  function touch(phase, point) {
+    if (typed) flushText();
+    if (online) send({ type: "touch", phase, x: point.x, y: point.y });
+  }
   function flushMove() {
     moveQueued = false;
     if (start && start.live && moved) { touch("move", moved); moved = null; }
   }
   screenEl.addEventListener("pointerdown", (e) => {
+    lastPointerType = e.pointerType;
     if (!live) return;
+    const mouse = mac && e.pointerType === "mouse";
+    // Right clicks (and control-clicks on a Mac browser) arrive as contextmenu.
+    if (mouse && (e.button !== 0 || (e.ctrlKey && /Mac/.test(navigator.platform)))) return;
+    if (mac) { screenEl.focus({ preventScroll: true }); screenEl.classList.add("focused"); }
     screenEl.setPointerCapture(e.pointerId);
-    start = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId, live: touchLive };
+    const now = performance.now();
+    // The second click of a double click isn't sent live: it goes as tap {count: 2} on mouse up.
+    const double = mouse && lastClick !== null && now - lastClick.t < 400 && Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) < 6;
+    start = { x: e.clientX, y: e.clientY, t: now, id: e.pointerId, live: touchLive && !double, mouse, double };
+    lastClick = null;
     moved = null;
     e.preventDefault();
     if (start.live) {
@@ -326,17 +402,19 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   });
   screenEl.addEventListener("pointerup", (e) => {
     if (!start || e.pointerId !== start.id) return;
+    const dt = performance.now() - start.t, distance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
     if (start.live) {
       moved = null;
       touch("up", toPoints(e.clientX, e.clientY));
+      if (start.mouse && distance < 6 && dt < 500) lastClick = { t: performance.now(), x: e.clientX, y: e.clientY };
       start = null;
       return;
     }
-    const dt = performance.now() - start.t, distance = Math.hypot(e.clientX - start.x, e.clientY - start.y);
     const from = toPoints(start.x, start.y);
     ripple(start.x, start.y);
     if (distance < 10) {
-      if (dt > 500) input("long_press", { ...from, duration: Math.min(dt / 1000, 5) });
+      if (start.double) input("tap", { ...from, count: 2 });
+      else if (dt > 500) input("long_press", { ...from, duration: Math.min(dt / 1000, 5) });
       else input("tap", from);
     } else {
       const to = toPoints(e.clientX, e.clientY);
@@ -348,6 +426,76 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     if (start && start.live && e.pointerId === start.id) touch("up", toPoints(e.clientX, e.clientY));
     start = null; moved = null;
   });
+
+  // Mac apps: right click, wheel and trackpad scrolling, and keys.
+  screenEl.addEventListener("contextmenu", (e) => {
+    if (!mac) return;
+    e.preventDefault();
+    // A long press on a touch screen also fires contextmenu; that one is already a touch.
+    if (!live || lastPointerType === "touch" || lastPointerType === "pen") return;
+    ripple(e.clientX, e.clientY);
+    input("tap", { ...toPoints(e.clientX, e.clientY), button: "right" });
+  });
+
+  // Wheel deltas add up and go as one scroll at most every 33 ms, in window points (positive dy
+  // scrolls down, as in the browser), at the pointer.
+  let wheel = null, wheelTimer = null, wheelSent = 0;
+  function flushWheel() {
+    wheelTimer = null;
+    if (!wheel) return;
+    const { x, y } = wheel, dx = Math.round(wheel.dx * 10) / 10, dy = Math.round(wheel.dy * 10) / 10;
+    wheel = null;
+    wheelSent = performance.now();
+    if (dx || dy) input("scroll", { x, y, dx, dy });
+  }
+  screenEl.addEventListener("wheel", (e) => {
+    if (!mac) return;
+    e.preventDefault();
+    // Control + wheel is a trackpad pinch, not a scroll.
+    if (!live || e.ctrlKey) return;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? screenEl.clientHeight : 1;
+    const perPoint = geometry().scale || 1;
+    const at = toPoints(e.clientX, e.clientY);
+    wheel = { x: at.x, y: at.y, dx: (wheel ? wheel.dx : 0) + e.deltaX * unit / perPoint, dy: (wheel ? wheel.dy : 0) + e.deltaY * unit / perPoint };
+    if (!wheelTimer) wheelTimer = setTimeout(flushWheel, Math.max(0, 33 - (performance.now() - wheelSent)));
+  }, { passive: false });
+
+  // Keys typed while the page (not a text field) has focus go to a Mac app: printable characters
+  // as type_text, everything else, and anything with command, control or option, as press_key.
+  const keyNames = {
+    Enter: "return", Backspace: "delete", Delete: "forwarddelete", Tab: "tab", Escape: "escape", " ": "space",
+    ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end", PageUp: "pageup", PageDown: "pagedown",
+  };
+  const codeNames = { Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\\\", Semicolon: ";", Quote: "'", Comma: ",", Period: ".", Slash: "/", Backquote: "\`" };
+  function keyName(e) {
+    if (keyNames[e.key]) return keyNames[e.key];
+    if (/^F([1-9]|1[0-2])$/.test(e.key)) return e.key.toLowerCase();
+    // With option or shift held, e.key is the character it makes ("å", "A"); the key itself is what's pressed (US layout).
+    if (e.code.startsWith("Key") && e.code.length === 4) return e.code.slice(3).toLowerCase();
+    if (e.code.startsWith("Digit") && e.code.length === 6) return e.code.slice(5);
+    if (codeNames[e.code]) return codeNames[e.code];
+    return e.key.length === 1 ? e.key.toLowerCase() : null;
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!mac || !live || e.isComposing) return;
+    if (e.target instanceof Element && e.target.closest("input, textarea, select")) return;
+    const altGraph = e.getModifierState && e.getModifierState("AltGraph");
+    if (e.key.length === 1 && (altGraph || (!e.metaKey && !e.ctrlKey && !e.altKey))) {
+      typed += e.key;
+      if (!typedTimer) typedTimer = setTimeout(flushText, 60);
+    } else {
+      const key = keyName(e);
+      if (!key) return; // a modifier on its own, or a key the Mac doesn't know
+      const modifiers = [];
+      if (e.metaKey) modifiers.push("command");
+      if (e.ctrlKey) modifiers.push("control");
+      if (e.altKey) modifiers.push("option");
+      if (e.shiftKey) modifiers.push("shift");
+      input("press_key", modifiers.length ? { key, modifiers } : { key });
+    }
+    e.preventDefault();
+  });
+  screenEl.addEventListener("blur", () => screenEl.classList.remove("focused"));
 
   $("home").onclick = () => input("press_button", { button: "home" });
   $("enter").onclick = () => input("press_key", { key: "return" });
