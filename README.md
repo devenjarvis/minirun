@@ -276,9 +276,32 @@ minirun version; `mac_status` says whether the Mac and the Worker run the same m
 
 ## Screenshots and recordings in PRs
 
-GitHub only shows images it can fetch from a public URL, so minirun hosts them on your Worker.
 `screenshot {device, share: true}`, or `start_recording` → tap around → `stop_recording`, uploads
-the result and returns markdown to paste into a PR description:
+the result and returns markdown to paste into a PR description. Where it goes depends on the repo
+the simulator or Mac app is reserved for:
+
+- **The repo's `pr-media` branch**, when the repo has one. minirun commits the file there with the
+  Mac's `gh` sign-in (the REST contents API; no checkout is touched) and returns a github.com embed
+  pinned to that commit: `![…](https://github.com/<owner>/<repo>/blob/<commit>/<folder>/<name>.jpg?raw=true)`.
+  These render for anyone who can see the repo, private repos included, don't expire, and survive
+  the GitHub tools agents post with. Pass `folder` (default: the branch name) and `name` (default:
+  from the caption) to choose the path. Sharing a `before` and an `after` in one folder also returns
+  a before/after table. Recordings commit only the GIF.
+- **Your Worker**, otherwise. The GitHub tools strip images hosted outside github.com, so these
+  links show up as plain links in a PR description, and they expire. They're for checking work and
+  for chat, and the share result says so.
+
+To opt a repo in, create the branch once (an orphan branch keeps it apart from your code):
+
+```sh
+git switch --orphan pr-media && git commit --allow-empty -m "PR media" && git push -u origin pr-media
+```
+
+Set `githubMedia` to false in `config.json` to always use the Worker, or `githubMediaBranch` to use
+another branch name. A file on the branch is part of the repo's history: `delete_media` removes it
+from the branch tip, but links pinned to earlier commits keep working.
+
+What the Worker stores:
 
 - A screenshot is a JPEG at 2x points.
 - A recording is a looping GIF (about 10 fps, 320 px wide) that links to a player page for the
@@ -290,7 +313,7 @@ them by itself; old PRs then show a broken image. The Mac keeps a list of what i
 `~/.config/minirun/media.json` and deletes the oldest files to stay under
 `mediaStorageLimitMB` (500). The menu bar app lists them, with Open, Copy link and Delete.
 
-Links are long and random, but anyone who has one can open it until it expires, even for a
+Worker links are long and random, but anyone who has one can open it until it expires, even for a
 private repository. GitHub's image proxy may keep showing a copy for a while after you delete it.
 
 **How large can a GIF be?** GitHub's image proxy has a size limit that isn't documented. The Worker

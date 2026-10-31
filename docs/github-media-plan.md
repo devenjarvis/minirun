@@ -203,6 +203,10 @@ replaceable. Revisit a one-call version only if agents keep getting the state wr
 
 ## Order of work
 
+Status: the MVP (1 and 2 in MiniRunKit and the tools, plus the before/after table) is built.
+Recordings commit only the GIF for now. Still to do: the Settings pane for `githubMedia` /
+`githubMediaBranch` (they're config.json keys today), the MP4 next to the GIF, and (3).
+
 1. (2) Reworded text and instructions. One PR.
 2. (1) GitHub upload with the before/after table. One PR in MiniRunKit + tools, one for the
    Settings pane and the menu's Shared media rows. Release.

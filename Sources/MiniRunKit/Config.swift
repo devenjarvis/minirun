@@ -31,6 +31,11 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     public var maxRecordingSeconds: Int
     /// The largest GIF to embed in a PR; recordings are shrunk to fit.
     public var mediaInlineLimitMB: Int
+    /// Shares for a repo that has the media branch are committed there (github.com embeds that
+    /// the GitHub tools keep and that don't expire) instead of going to the Worker.
+    public var githubMedia: Bool
+    /// The branch a repo creates to opt in (see `mediaBranch`).
+    public var githubMediaBranch: String
 
     public init(
         relayURL: String? = nil,
@@ -46,7 +51,9 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         mediaRetentionDays: Int = 7,
         mediaStorageLimitMB: Int = 500,
         maxRecordingSeconds: Int = 60,
-        mediaInlineLimitMB: Int = 5
+        mediaInlineLimitMB: Int = 5,
+        githubMedia: Bool = true,
+        githubMediaBranch: String = MiniRunConfig.defaultMediaBranch
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -62,6 +69,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.mediaStorageLimitMB = mediaStorageLimitMB
         self.maxRecordingSeconds = maxRecordingSeconds
         self.mediaInlineLimitMB = mediaInlineLimitMB
+        self.githubMedia = githubMedia
+        self.githubMediaBranch = githubMediaBranch
     }
 
     public init(from decoder: Decoder) throws {
@@ -80,6 +89,16 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         mediaStorageLimitMB = try c.decodeIfPresent(Int.self, forKey: .mediaStorageLimitMB) ?? 500
         maxRecordingSeconds = try c.decodeIfPresent(Int.self, forKey: .maxRecordingSeconds) ?? 60
         mediaInlineLimitMB = try c.decodeIfPresent(Int.self, forKey: .mediaInlineLimitMB) ?? 5
+        githubMedia = try c.decodeIfPresent(Bool.self, forKey: .githubMedia) ?? true
+        githubMediaBranch = try c.decodeIfPresent(String.self, forKey: .githubMediaBranch) ?? MiniRunConfig.defaultMediaBranch
+    }
+
+    public static let defaultMediaBranch = "pr-media"
+
+    /// `githubMediaBranch`, or the default when the setting isn't a usable branch name.
+    public var mediaBranch: String {
+        let branch = githubMediaBranch.trimmingCharacters(in: .whitespacesAndNewlines)
+        return GitHubMedia.isValidBranch(branch) ? branch : Self.defaultMediaBranch
     }
 
     // The media settings as minirun uses them, kept within what the Worker and KV accept.

@@ -23,8 +23,10 @@ Tests:
 
 To show your work in a PR, put a screenshot or recording in the PR description:
 - Set configure_simulator {status_bar: "demo"} first, for a clean 9:41 status bar.
-- screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown to paste into the description.
-- Never share screens showing credentials or personal data. Anyone with the link can see it until it expires.
+- screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown for the description.
+- When the repo has a pr-media branch, the file is committed there and the markdown is a github.com embed: paste it. Pass folder (e.g. a ticket id) and name (e.g. "before", "after"); sharing both a before and an after in one folder also gives a before/after table.
+- Otherwise it goes to the user's Worker. The GitHub tools turn those links into plain links and they expire, so don't paste them as PR images: follow the repo's own instructions for media, or ask the user to create a pr-media branch.
+- Never share screens showing credentials or personal data. Worker links are public to anyone who has them; files on pr-media stay in the repo's history.
 - delete_media {id} takes back a wrong upload.
 - For a Mac app, screenshot {device: "mac-…", share: true} shares its window; recordings aren't supported for Mac apps yet.
 

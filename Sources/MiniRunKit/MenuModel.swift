@@ -87,7 +87,8 @@ public struct MenuSnapshot: Equatable, Sendable {
 
         public init(_ item: MediaItem, now: Date) {
             id = item.id
-            title = [item.label ?? "untagged", item.kind.rawValue, SimulatorPicker.ago(item.createdAt, now: now)].joined(separator: " · ")
+            title = [item.label ?? "untagged", item.kind.rawValue + (item.isOnGitHub ? " on GitHub" : ""), SimulatorPicker.ago(item.createdAt, now: now)]
+                .joined(separator: " · ")
             url = item.url
         }
     }
