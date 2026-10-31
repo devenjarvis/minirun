@@ -101,8 +101,7 @@ if grep -q "✓ Accessibility (for macOS apps)" <<< "$HOST"; then
   run tap "{\"device\":\"$MAC_ID\",\"id\":\"incrementButton\"}" | expect "Pressed"
   sleep 1
   mac_logs | expect "HelloMacApp: count=1"
-  # A click at the button's window point (not through Accessibility), posted to the app's pid,
-  # then through the HID tap if the app ignored that.
+  # The button's center in window points.
   at=$(run describe_ui "{\"device\":\"$MAC_ID\",\"format\":\"json\"}" | python3 -c '
 import json, sys
 def find(nodes):
@@ -112,40 +111,14 @@ def find(nodes):
         if found: return found
 f = find(json.load(sys.stdin))["frame"]
 print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[1:-1])')
-  # What Accessibility finds at that point, and what the window looks like, for when clicks miss.
-  run describe_ui "{\"device\":\"$MAC_ID\",$at}" || true
-  shot=$(run screenshot "{\"device\":\"$MAC_ID\"}" | sed -n 's/.*image saved to \(.*\)]/\1/p'); cp "$shot" /tmp/minirun-mac-before-click.jpg || true
-  # Each path is tried once; the count says which clicks arrived. At least one must.
-  run tap "{\"device\":\"$MAC_ID\",$at}" | expect "Clicked"
+  # A tap at the button's window point presses it through Accessibility (SwiftUI controls ignore
+  # clicks posted to the app); with input hid it's a real click.
+  run tap "{\"device\":\"$MAC_ID\",$at}" | expect "through Accessibility"
   sleep 1
-  pid_clicks=$(mac_logs | grep -c "HelloMacApp: count=" || true)
+  mac_logs | expect "HelloMacApp: count=2"
   run tap "{\"device\":\"$MAC_ID\",$at,\"input\":\"hid\"}" | expect "moved the real cursor"
   sleep 1
-  all_clicks=$(mac_logs | grep -c "HelloMacApp: count=" || true)
-  echo "MAC CLICK: pid $([[ $pid_clicks -ge 2 ]] && echo works || echo "didn't reach the button"), hid $([[ $all_clicks -gt $pid_clicks ]] && echo works || echo "didn't reach the button")"
-  if [[ $all_clicks -lt 2 ]]; then
-    # Tell a minirun bug from a Mac that drops synthetic clicks: click with a minimal program.
-    origin=$(run list_windows "{\"device\":\"$MAC_ID\"}" | sed -n 's/^0: .* at (\([0-9-]*\), \([0-9-]*\)).*/\1 \2/p')
-    cat > /tmp/minirun-click.swift <<'SWIFT'
-import CoreGraphics
-import Foundation
-let a = CommandLine.arguments.dropFirst().compactMap(Double.init)
-let p = CGPoint(x: a[0], y: a[1])
-CGWarpMouseCursorPosition(p)
-usleep(100_000)
-for type in [CGEventType.mouseMoved, .leftMouseDown, .leftMouseUp] {
-    CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: p, mouseButton: .left)?.post(tap: .cghidEventTap)
-    usleep(80_000)
-}
-print("posted at \(p); post access: \(CGPreflightPostEventAccess())")
-SWIFT
-    xcrun swiftc -O /tmp/minirun-click.swift -o /tmp/minirun-click 2>&1 | tail -3 || true
-    point=$(python3 -c "import json; p=json.loads('{'+'''$at'''+'}'); o='$origin'.split(); print(int(o[0])+p['x'], int(o[1])+p['y'])")
-    /tmp/minirun-click $point || true
-    sleep 1
-    echo "MAC CLICK: independent HID click from a plain program: $([[ $(mac_logs | grep -c "HelloMacApp: count=" || true) -ge 2 ]] && echo works || echo "didn't reach the button either")"
-    echo "FAILED: neither a pid nor a hid click at the button's window point reached it" >&2; mac_logs >&2; exit 1
-  fi
+  mac_logs | expect "HelloMacApp: count=3"
   run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked Counter > Reset Counter"
   sleep 1
   mac_logs | expect "HelloMacApp: reset count=0"
@@ -163,6 +136,8 @@ SWIFT
   fi
   run describe_ui "{\"device\":\"$MAC_ID\"}" | expect "Hello, Claude"
   run press_key "{\"device\":\"$MAC_ID\",\"key\":\"r\",\"modifiers\":[\"command\"]}" | expect "Pressed command+r"
+  run scroll "{\"device\":\"$MAC_ID\",\"direction\":\"down\"}" | expect "Scrolled"
+  run swipe "{\"device\":\"$MAC_ID\",\"direction\":\"left\"}" | expect "Dragged"
 else
   echo "Skipping describe_ui, tap, menus and typing on HelloMacApp: no Accessibility grant on this runner."
 fi

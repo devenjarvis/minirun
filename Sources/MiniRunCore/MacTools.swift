@@ -279,7 +279,16 @@ extension ToolRegistry {
             return try await afterMacAction("Pressed the element at (\(Int(point.x)), \(Int(point.y))).", session: session, args: args)
         }
         let x = try args.requireDouble("x"), y = try args.requireDouble("y")
-        let path = try await MacAppDriver.shared.click(pid: pid, window: macWindow(args), x: x, y: y, button: button, count: count, path: try macInput(args))
+        let input = try macInput(args)
+        let chosen: MacInputPath
+        if let input { chosen = input } else { chosen = await MacAppDriver.shared.inputPath(pid: pid) }
+        // Clicks posted to the pid don't work on SwiftUI controls, so a plain click on a button or
+        // text field presses (or focuses) it through Accessibility instead.
+        if chosen == .pid, button == .left, count == 1,
+           let pressed = try await MacAppDriver.shared.pressElement(pid: pid, window: macWindow(args), x: x, y: y) {
+            return try await afterMacAction("Pressed \(pressed) at (\(Int(x)), \(Int(y))) through Accessibility.", session: session, args: args)
+        }
+        let path = try await MacAppDriver.shared.click(pid: pid, window: macWindow(args), x: x, y: y, button: button, count: count, path: input)
         let what = count >= 2 ? "Double-clicked" : (button == .right ? "Right-clicked" : "Clicked")
         return try await afterMacAction("\(what) (\(Int(x)), \(Int(y))).\(MacToolSupport.inputNote(path.rawValue))", session: session, args: args)
     }
@@ -405,11 +414,31 @@ extension ToolRegistry {
 
     // MARK: Live view
 
-    /// One step of a viewer's live mouse gesture on a Mac app's window.
+    /// One step of a viewer's live mouse gesture on a Mac app's window. The button goes down only
+    /// once the pointer moves (a drag); a click without movement presses the control under it
+    /// through Accessibility, since SwiftUI controls ignore clicks posted to the app, and is posted
+    /// as a click only where there's no control.
     func macMouse(id: String, phase: String, x: Double, y: Double) async throws {
         guard let session = await macApps.session(id), let pid = session.pid else { throw ToolError("No running Mac app with id \(id).") }
         await macApps.touch(id)
-        try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: phase, x: x, y: y)
+        switch await liveMouse.step(id: id, phase: phase, x: x, y: y) {
+        case .none:
+            break
+        case .post(let events):
+            for event in events { try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: event.phase, x: event.x, y: event.y) }
+        case .click(let x, let y):
+            if try await MacAppDriver.shared.pressElement(pid: pid, x: x, y: y) == nil {
+                try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: "down", x: x, y: y)
+                try await MacAppDriver.shared.mouse(pid: pid, window: .main, phase: "up", x: x, y: y)
+            }
+        }
+    }
+
+    /// Where viewers' live mouse gestures on Mac apps are (see `MacLiveMouse`).
+    actor LiveMouse {
+        private var state = MacLiveMouse()
+        func step(id: String, phase: String, x: Double, y: Double) -> MacLiveMouse.Action { state.step(id: id, phase: phase, x: x, y: y) }
+        func reset() { state = MacLiveMouse() }
     }
 
     /// Running Mac apps as `simulators` message entries, for the viewer's picker.

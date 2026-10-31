@@ -1,5 +1,63 @@
 import Foundation
 
+/// Turns a viewer's live touches on a Mac app's window into mouse input. The button only goes
+/// down once the pointer has moved a few points (then it's a drag, posted as down, drags, up). A
+/// touch that comes up where it went down is a click, which the caller performs as a whole: it
+/// presses the control there through Accessibility, since SwiftUI controls ignore clicks posted
+/// to the app.
+public struct MacLiveMouse: Sendable {
+    public struct Event: Equatable, Sendable {
+        public let phase: String
+        public let x: Double
+        public let y: Double
+
+        public init(_ phase: String, _ x: Double, _ y: Double) {
+            self.phase = phase
+            self.x = x
+            self.y = y
+        }
+    }
+
+    public enum Action: Equatable, Sendable {
+        case none
+        /// Mouse events to post, in order.
+        case post([Event])
+        /// A click at this window point.
+        case click(x: Double, y: Double)
+    }
+
+    /// How far the pointer moves before a press becomes a drag, in points.
+    public static let slop = 3.0
+
+    /// Where a button is down but not posted yet, by app id.
+    private var pressed: [String: (x: Double, y: Double)] = [:]
+    /// Apps whose button is down and posted (a drag in progress).
+    private var dragging: Set<String> = []
+
+    public init() {}
+
+    public mutating func step(id: String, phase: String, x: Double, y: Double) -> Action {
+        switch phase {
+        case "down":
+            if dragging.remove(id) != nil { pressed[id] = (x, y); return .post([Event("up", x, y)]) }
+            pressed[id] = (x, y)
+            return .none
+        case "move":
+            if dragging.contains(id) { return .post([Event("move", x, y)]) }
+            guard let start = pressed[id], abs(x - start.x) >= Self.slop || abs(y - start.y) >= Self.slop else { return .none }
+            pressed[id] = nil
+            dragging.insert(id)
+            return .post([Event("down", start.x, start.y), Event("move", x, y)])
+        case "up":
+            if dragging.remove(id) != nil { return .post([Event("up", x, y)]) }
+            guard let start = pressed.removeValue(forKey: id) else { return .none }
+            return .click(x: start.x, y: start.y)
+        default:
+            return .none
+        }
+    }
+}
+
 /// The parts of the Mac app tools that are plain logic and text: argument parsing, routing and
 /// the sentences results are made of. Kept here so they're tested on Linux.
 public enum MacToolSupport {

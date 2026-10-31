@@ -74,7 +74,7 @@ enum MacInput {
         let location = global(point, in: target)
         let types = mouseTypes(button)
         mouse(.mouseMoved, at: location, button: .left, target: target, source: source)
-        await pause(0.01)
+        await pause(0.05)
         let clicks = min(3, max(1, count))
         for click in 1...clicks {
             mouse(types.down, at: location, button: types.button, clickState: click, target: target, source: source)

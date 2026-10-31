@@ -445,6 +445,18 @@ public final class MacAppDriver {
         }
     }
 
+    /// Presses the button-like element at a window point through Accessibility, or focuses the
+    /// text field there, without the mouse. Returns what it pressed, or nil when there's nothing
+    /// there to press that way (then a click is needed). SwiftUI controls ignore clicks posted to
+    /// the app's pid (they check where the real cursor is), so pid clicks on controls come here.
+    public func pressElement(pid: Int32, window selector: MacWindowSelector = .main, x: Double, y: Double) async throws -> String? {
+        try MacPermissions.requireAccessibility(for: "press buttons in Mac apps")
+        let window = try await self.window(pid: pid, selector)
+        try checkInside(window, x, y)
+        let frame = window.frame
+        return try await Task.detached { try MacAccessibility.pressElement(pid: pid, frame: frame, at: (x, y)) }.value
+    }
+
     /// Picks a menu bar item by its title path, e.g. ["File", "New Window"]. Titles match
     /// case-insensitively, exactly or by prefix, ignoring a trailing "…". Returns the path pressed,
     /// like "File > New Window".
@@ -480,6 +492,9 @@ public final class MacAppDriver {
             bringToFront(pid: pid, window: window)
             await MacInput.pause(0.2)
             await body(target)
+            // The app handles the events after they're posted, and controls check where the
+            // cursor is when the button comes up: put it back only once they've had time to.
+            await MacInput.pause(0.4)
             if let cursor { CGWarpMouseCursorPosition(cursor) }
             await MacInputLock.shared.unlock()
         }

@@ -98,6 +98,25 @@ final class MacToolsTests: XCTestCase {
         }
     }
 
+    func testLiveMouse() {
+        var mouse = MacLiveMouse()
+        // A click: nothing until the button comes up, then one click where it went down.
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "down", x: 10, y: 10), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "move", x: 11, y: 11), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "up", x: 11, y: 11), .click(x: 10, y: 10))
+        // A drag: down where it started once it moves, then moves, then up.
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "down", x: 10, y: 10), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "move", x: 30, y: 10), .post([.init("down", 10, 10), .init("move", 30, 10)]))
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "move", x: 40, y: 10), .post([.init("move", 40, 10)]))
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "up", x: 40, y: 12), .post([.init("up", 40, 12)]))
+        // Stray events, and apps kept apart.
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "up", x: 0, y: 0), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "move", x: 0, y: 0), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "down", x: 1, y: 1), .none)
+        XCTAssertEqual(mouse.step(id: "mac-b", phase: "up", x: 1, y: 1), .none)
+        XCTAssertEqual(mouse.step(id: "mac-a", phase: "up", x: 1, y: 1), .click(x: 1, y: 1))
+    }
+
     func testPermissionMessage() {
         let granted = MacPermissionReport(screenRecording: true, accessibility: true, hasDisplay: true, binaryPath: "/bin/minirun")
         XCTAssertTrue(MacToolSupport.permissionRequestMessage(granted).contains("are granted"))

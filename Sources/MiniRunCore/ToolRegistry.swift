@@ -36,6 +36,7 @@ public final class ToolRegistry: @unchecked Sendable {
     let macApps = MacAppStore(url: MacAppStore.defaultURL)
     /// One macOS test run at a time: UI tests take over the Mac's mouse and keyboard.
     let macTests = KeyedLock()
+    let liveMouse = LiveMouse()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL

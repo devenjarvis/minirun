@@ -296,5 +296,6 @@ actor TouchQueue {
         pending.removeAll()
         await SimulatorDriver.shared.releaseTouches()
         await MacAppDriver.shared.releaseMouse()
+        await registry.liveMouse.reset()
     }
 }

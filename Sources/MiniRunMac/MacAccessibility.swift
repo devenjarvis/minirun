@@ -356,6 +356,40 @@ enum MacAccessibility {
         return .click(x: center.x, y: center.y)
     }
 
+    /// Roles a click means "press" for.
+    static let pressableRoles: Set<String> = [
+        "AXButton", "AXCheckBox", "AXRadioButton", "AXPopUpButton", "AXMenuButton", "AXLink", "AXDisclosureTriangle", "AXIncrementor",
+    ]
+
+    /// Presses the button-like element at a window point (or one of its first ancestors) through
+    /// Accessibility, or focuses the text field there. Returns what it pressed, like
+    /// `Button "Increment" id=incrementButton`, or nil when there's nothing there to press this way.
+    static func pressElement(pid: Int32, frame: MacRect, at point: (x: Double, y: Double)) throws -> String? {
+        let global = MacGeometry.toGlobal(windowPoint: point, window: frame)
+        var hit: AXUIElement?
+        let error = AXUIElementCopyElementAtPosition(application(pid), Float(global.x), Float(global.y), &hit)
+        if error == .cannotComplete { throw notResponding(pid) }
+        guard error == .success, var current = hit else { return nil }
+        for _ in 0..<3 {
+            let read = values(current, ["AXRole", "AXEnabled", "AXTitle", "AXDescription", "AXIdentifier"]).values
+            let role = string(read["AXRole"]) ?? ""
+            var name = role.hasPrefix("AX") ? String(role.dropFirst(2)) : role
+            if let label = string(read["AXTitle"]) ?? string(read["AXDescription"]), !label.isEmpty { name += " \"\(label)\"" }
+            if let id = string(read["AXIdentifier"]), !id.isEmpty { name += " id=\(id)" }
+            if textRoles.contains(role) {
+                return AXUIElementSetAttributeValue(current, "AXFocused" as CFString, kCFBooleanTrue) == .success ? name : nil
+            }
+            if pressableRoles.contains(role) {
+                guard bool(read["AXEnabled"]) ?? true, actions(current).contains("AXPress") else { return nil }
+                let result = AXUIElementPerformAction(current, "AXPress" as CFString)
+                return result == .success || result == .cannotComplete ? name : nil
+            }
+            guard let parent = element(value(current, "AXParent")) else { return nil }
+            current = parent
+        }
+        return nil
+    }
+
     static func describe(_ found: Found) -> String {
         var text = found.role.hasPrefix("AX") ? String(found.role.dropFirst(2)) : found.role
         if let label = found.label, !label.isEmpty { text += " \"\(label)\"" }
