@@ -20,11 +20,15 @@ csrutil status || true
 DBS=("/Library/Application Support/com.apple.TCC/TCC.db" "$HOME/Library/Application Support/com.apple.TCC/TCC.db")
 now=$(date +%s)
 
+# Screen Recording, Accessibility, and posting input events through the HID tap (`input: "hid"`),
+# which macOS tracks separately as PostEvent.
+SERVICES=(kTCCServiceScreenCapture kTCCServiceAccessibility kTCCServicePostEvent)
+
 grant() {
   local client=$1 db service
   for db in "${DBS[@]}"; do
     [[ -f "$db" ]] || continue
-    for service in kTCCServiceScreenCapture kTCCServiceAccessibility; do
+    for service in "${@:2}"; do
       # Named columns, so it works whatever columns newer macOS versions add (they have defaults).
       if sudo sqlite3 "$db" "INSERT OR REPLACE INTO access
         (service, client, client_type, auth_value, auth_reason, auth_version, csreq, policy_id,
@@ -48,24 +52,38 @@ granted() {
   grep -q "✓ Screen Recording" <<< "$checks" && grep -q "✓ Accessibility" <<< "$checks"
 }
 
+# What the image already allows, which shows the process macOS checks.
 for db in "${DBS[@]}"; do
-  [[ -f "$db" ]] && { echo "$db columns:"; sudo sqlite3 "$db" "PRAGMA table_info(access);" | cut -d'|' -f2 | tr '\n' ' '; echo; }
+  [[ -f "$db" ]] || continue
+  echo "$db columns:"; sudo sqlite3 "$db" "PRAGMA table_info(access);" | cut -d'|' -f2 | tr '\n' ' '; echo
+  sudo sqlite3 "$db" "SELECT service, client, auth_value FROM access WHERE service IN ('kTCCServiceScreenCapture','kTCCServiceAccessibility','kTCCServicePostEvent');"
 done
 
 echo "== Before granting anything"
-granted && { echo "minirun already has both permissions."; exit 0; }
+if granted; then
+  # The image already allows whichever process macOS checks here. PostEvent can't be checked from
+  # the command line, so give it to the same clients that have Accessibility, and to minirun.
+  echo "minirun already has both permissions; adding PostEvent alongside Accessibility."
+  for db in "${DBS[@]}"; do
+    [[ -f "$db" ]] || continue
+    while IFS= read -r client; do grant "$client" kTCCServicePostEvent; done < <(sudo sqlite3 "$db" "SELECT client FROM access WHERE service='kTCCServiceAccessibility' AND auth_value=2;")
+  done
+  grant "$BIN" kTCCServicePostEvent
+  sudo killall tccd 2>/dev/null || true
+  exit 0
+fi
 
 echo "== Granting the minirun binary"
-grant "$BIN"
+grant "$BIN" "${SERVICES[@]}"
 real="$(cd "$(dirname "$BIN")" && pwd -P)/$(basename "$BIN")"
-[[ "$real" != "$BIN" ]] && grant "$real"
+[[ "$real" != "$BIN" ]] && grant "$real" "${SERVICES[@]}"
 granted && { echo "Granting the minirun binary was enough."; exit 0; }
 
 echo "== Granting the processes minirun runs under"
 pid=$$
 while [[ "$pid" -gt 1 ]]; do
   exe=$(ps -o comm= -p "$pid" 2>/dev/null | sed 's/^ *//')
-  [[ "$exe" == /* ]] && grant "$exe"
+  [[ "$exe" == /* ]] && grant "$exe" "${SERVICES[@]}"
   pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
   [[ -n "$pid" ]] || break
 done
