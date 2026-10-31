@@ -169,13 +169,14 @@ extension ToolRegistry {
                 let output = try await self.whileUsing(sim.udid) {
                     try await self.withCheckout(args, log: log) { () async throws -> XcodeBuild.TestOutput in
                         let dir = try await self.sourceDirectory(args, log: log)
-                        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, log: log)
+                        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, platform: .ios, log: log)
                         options.configuration = args.string("configuration") ?? "Debug"
                         options.extraArgs = args.strings("extra_args")
                         return try await XcodeBuild.test(options, onlyTesting: args.strings("only_testing"), skipTesting: args.strings("skip_testing"))
                     }
                 }
                 var text = "Scheme \(output.scheme): \(output.passed ? "passed" : "FAILED") on \(sim.name) (\(sim.udid))\n\(output.summary)\nResult bundle: \(output.resultBundle)\nLog: \(log.path)"
+                text += output.notes.map { "\n" + $0 }.joined()
                 if let note { text += "\n" + note }
                 return ToolResult([.text(text)], isError: !output.passed)
             }
@@ -311,7 +312,7 @@ extension ToolRegistry {
     /// Syncs and builds. Call inside `withCheckout`.
     func buildApp(_ args: ToolArguments, udid: String, log: URL) async throws -> XcodeBuild.BuildOutput {
         let dir = try await sourceDirectory(args, log: log)
-        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: udid, log: log)
+        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: udid, platform: .ios, log: log)
         options.configuration = args.string("configuration") ?? "Debug"
         options.extraArgs = args.strings("extra_args")
         return try await XcodeBuild.build(options)
@@ -327,6 +328,7 @@ extension ToolRegistry {
             lines.append("\(output.warnings.count) warning(s), e.g.:")
             lines += output.warnings.prefix(5).map { "  " + $0.line }
         }
+        lines += output.notes
         lines.append("Log: \(log.path)")
         return lines.joined(separator: "\n")
     }

@@ -59,6 +59,22 @@ jobs:
         run: sudo mdutil -a -i off
       - name: Install XcodeGen
         run: brew install xcodegen
+      - name: HelloMacApp fixture check (temporary)
+        working-directory: Tests/Fixtures/HelloMacApp
+        run: |
+          set -x
+          xcodegen generate
+          xcodebuild -list -json
+          xcodebuild -project HelloMacApp.xcodeproj -scheme HelloMacApp -showBuildSettings -json -derivedDataPath /tmp/hmdd \
+            | python3 -c 'import json,sys; [print(e["target"], {k: e["buildSettings"].get(k) for k in ["SUPPORTED_PLATFORMS","WRAPPER_EXTENSION","TARGET_BUILD_DIR","WRAPPER_NAME","EXECUTABLE_NAME","EXECUTABLE_PATH","PRODUCT_BUNDLE_IDENTIFIER","PRODUCT_NAME"]}) for e in json.load(sys.stdin)]'
+          xcodebuild -project HelloMacApp.xcodeproj -scheme HelloMacApp -destination "platform=macOS,arch=arm64" -derivedDataPath /tmp/hmdd build | tail -5
+          xcodebuild -project HelloMacApp.xcodeproj -scheme HelloMacApp -destination "platform=macOS,arch=arm64" -derivedDataPath /tmp/hmdd test | tail -15
+          /tmp/hmdd/Build/Products/Debug/HelloMacApp.app/Contents/MacOS/HelloMacApp > /tmp/hello-mac.log 2>&1 &
+          pid=$!
+          sleep 8
+          kill $pid || true
+          cat /tmp/hello-mac.log
+          grep -q "HelloMacApp: launched" /tmp/hello-mac.log
       - name: Restore frameworks
         id: frameworks
         uses: actions/cache/restore@v4
