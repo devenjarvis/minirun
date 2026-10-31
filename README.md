@@ -38,10 +38,14 @@ open ports, and no tunnel to run.
   and the viewer decodes them with WebCodecs. Frames are only sent when the screen changes. A
   browser without WebCodecs gets JPEG frames instead, and so does everyone watching that simulator
   with it, since one stream serves all of a simulator's viewers.
-- **Long work runs as jobs.** `build`, `build_and_run`, `run_tests` and `run_command` return
-  within `wait_seconds` (default 45, max 50, under the MCP client's 60-second request timeout).
-  If the work is still going they return a `job_id`, and Claude waits on it with `get_job`. Long
-  builds never hit request timeouts.
+- **Long work runs as jobs.** `build`, `build_and_run`, `run_tests`, `swift_test` and
+  `run_command` return within `wait_seconds` (default 45, max 50, under the MCP client's 60-second
+  request timeout). If the work is still going they return a `job_id`, and Claude waits on it with
+  `get_job`. Long builds never hit request timeouts.
+- **Stuck work doesn't hold simulators.** Tests that print nothing for `stall_seconds` (default 5
+  minutes; builds 15) are stopped as hung, and `cancel_job` stops a job on demand. Jobs are
+  written to disk, so after a restart `get_job` says what happened to them, and anything the
+  previous run left running (a hung `xcodebuild`) is stopped when minirun starts.
 
 ## Setup
 
@@ -129,7 +133,10 @@ a logged-in GUI session; `minirun serve` already blocks idle sleep while it runs
    app, then returns a screenshot. If the build fails, it returns the errors with `file:line`.
 3. `describe_ui` gives the accessibility tree, then `tap {id: "loginButton"}`, `type_text`,
    `swipe`, and `screenshot` to look. `app_logs` reads the app's output.
-4. `run_tests` runs the tests and reports pass/fail with failure messages.
+4. `run_tests` runs the tests on the simulator and reports pass/fail with failure messages. For a
+   package in a subfolder, `project` is its folder: `run_tests {repo: "you/app", ref: "my-branch",
+   project: "Packages/Core"}`. A package that builds for macOS can skip the simulator:
+   `swift_test {repo: "you/app", ref: "my-branch", package: "Packages/Core"}`.
 5. `build_and_run` and `boot_simulator` include a live view link for that simulator to share with
    you (`mac_status` gives it too).
 
@@ -165,12 +172,12 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 
 | Area | Tools |
 | --- | --- |
-| Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, location, demo status bar, permissions) |
+| Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, text size including accessibility sizes, increase contrast, location, demo status bar, permissions) |
 | Seeing | `screenshot` (sized so pixels = points), `describe_ui` (compact text or full JSON) |
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
-| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests`, `run_command` (opt-in) |
-| Jobs | `get_job`, `job_log`, `list_jobs` |
+| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests`, `swift_test` (package tests, no simulator), `run_command` (opt-in) |
+| Jobs | `get_job`, `job_log`, `list_jobs`, `cancel_job` |
 | Host | `host_info`, `mac_status` (served by the Worker) |
 
 Try any tool locally: `minirun call describe_ui` or `minirun call tap '{"label":"General"}'`. The
@@ -270,7 +277,9 @@ new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
 - Viewers log in with the same password (30-day signed cookie). They can only send touch and
   keyboard input, not run tools like `build` or `run_command`.
 - `run_command` is off by default. Turning it on lets anyone holding a connector token run shell
-  commands on your Mac, so keep the password private.
+  commands on your Mac, so keep the password private. Building and testing a repository
+  (`build`, `run_tests`, `swift_test`) runs that repository's own code too: build scripts,
+  package plugins and tests. Only point minirun at repositories you trust.
 - Rotate secrets with `minirun worker deploy --new-password` or `--new-token`. A new token is
   saved on the Mac and `minirun serve` reloads its settings and reconnects with it.
 - The saved Cloudflare API token can deploy and change Workers on your account. Delete it with

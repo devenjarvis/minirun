@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+Fixes for test runs that hung and held every simulator, from a report of several sessions
+sharing one Mac.
+
+- **Hung tests are stopped.** `run_tests` stops xcodebuild when it prints nothing for
+  `stall_seconds` (default 300) or runs past `timeout_seconds` (default 1800, was 90 minutes), and
+  says it was treated as hung. Builds are stopped after 15 silent minutes. Either way the
+  simulator is no longer busy.
+- **Tests run on the reserved simulator only.** `run_tests` passes `-parallel-testing-enabled NO`
+  (parallel testing clones the simulator outside minirun's reservations, a common cause of hangs
+  after the build) and a 5-minute per-test time allowance, unless `extra_args` set them.
+- **`cancel_job`** stops a job and the commands it started. A job cancelled while it waits for
+  its checkout no longer starts.
+- **Restarts don't lose jobs.** Jobs are kept in `~/.config/minirun/jobs.json`: after a restart
+  `get_job` gives the result, or says the job was cut off by the restart. xcodebuild and other
+  commands a previous run left behind are stopped when `minirun serve` starts.
+- **`swift_test`** runs a Swift package's tests with `swift test` on the Mac, without a simulator
+  or `allowShell`, and reports totals and failures with `file:line`.
+- **Packages in subfolders.** `project` takes a package's folder (or its `Package.swift`) and
+  xcodebuild runs there; before, pointing at `Package.swift` built the checkout's top level.
+  `path` accepts a `Package.swift` too. `run_tests` on a package prefers its `-Package` scheme.
+- **`configure_simulator`** sets `text_size` (all Dynamic Type sizes, including the accessibility
+  ones) and `increase_contrast`.
+- When every simulator is taken, the error points to `list_jobs` and `cancel_job` instead of
+  suggesting shutting down someone else's simulator.
+- The instructions Claude gets explain package tests, `cancel_job` and the stall timeout.
+
 ## 0.3.0
 
 minirun is now a Mac menu bar app. Install it once and it runs `minirun serve`, sets up the

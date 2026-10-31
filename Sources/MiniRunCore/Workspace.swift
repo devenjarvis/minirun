@@ -69,7 +69,9 @@ enum Workspace {
         if let path {
             let expanded = (path as NSString).expandingTildeInPath
             let resolved = expanded.hasPrefix("/") ? expanded : config.workspaceRoot + "/" + expanded
-            let standardized = URL(fileURLWithPath: resolved).standardizedFileURL.path
+            var standardized = URL(fileURLWithPath: resolved).standardizedFileURL.path
+            // A Swift package is built from its folder: accept a path to its Package.swift too.
+            if (standardized as NSString).lastPathComponent == "Package.swift" { standardized = (standardized as NSString).deletingLastPathComponent }
             guard FileManager.default.fileExists(atPath: standardized) else { throw ToolError("No such directory: \(standardized)") }
             return standardized
         }

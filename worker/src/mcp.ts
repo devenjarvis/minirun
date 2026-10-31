@@ -13,7 +13,13 @@ const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators on you
 const INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
 Then exercise the app: describe_ui to find elements, tap by id/label (or x,y in points), type_text, swipe, screenshot to look.
-Long builds return a job_id after at most 50 seconds; call get_job (repeatedly if need be) to wait for it. If a call ever times out, the work keeps running on the Mac: list_jobs finds it.
+Long builds return a job_id after at most 50 seconds; call get_job (repeatedly if need be) to wait for it. If a call ever times out, the work keeps running on the Mac: list_jobs finds it. A job of yours that's stuck or no longer needed: cancel_job stops it and frees its simulator. Jobs survive a restart of minirun; one cut off by a restart reports that.
+
+Tests:
+- A Swift package that builds for macOS: swift_test {repo, ref, package: "Packages/Core"} runs \`swift test\` with no simulator. Quickest, and use it to watch a test fail before you fix the code.
+- iOS tests: run_tests {repo, ref, scheme?, project?}. For a package in a subfolder, project is the package's folder, relative to the checkout: run_tests {repo: "you/app", ref: "my-branch", project: "Packages/Core"}. Leave path out when you pass repo; path is only for a folder on the Mac that isn't a checkout.
+- A run that prints nothing for stall_seconds (default 300) is stopped as hung and says so; that's usually the Mac, not your code.
+- configure_simulator sets text_size (including accessibility-* sizes), increase_contrast and appearance; don't tap through the Settings app for them.
 
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.

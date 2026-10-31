@@ -9,14 +9,18 @@ public struct ShellResult: Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
+    /// Stopped for running too long, or (see `stalled`) for going quiet too long.
     public let timedOut: Bool
+    /// Stopped because it wrote no output for the stall timeout. `timedOut` is set too.
+    public let stalled: Bool
     public let duration: TimeInterval
 
-    public init(exitCode: Int32, stdout: String, stderr: String = "", timedOut: Bool = false, duration: TimeInterval = 0) {
+    public init(exitCode: Int32, stdout: String, stderr: String = "", timedOut: Bool = false, stalled: Bool = false, duration: TimeInterval = 0) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
-        self.timedOut = timedOut
+        self.timedOut = timedOut || stalled
+        self.stalled = stalled
         self.duration = duration
     }
 
@@ -32,12 +36,15 @@ public struct ShellResult: Sendable {
 public enum Shell {
     /// Runs a program and waits for it. Output is captured in memory and, if `logURL` is set,
     /// also appended to that file as it arrives. Cancelling the calling task stops the program.
+    /// With `stallTimeout`, the program is also stopped once it has written nothing for that long:
+    /// a hung xcodebuild otherwise holds its simulator until the overall `timeout`.
     public static func run(
         _ executable: String,
         _ arguments: [String],
         cwd: String? = nil,
         environment: [String: String]? = nil,
         timeout: TimeInterval = 120,
+        stallTimeout: TimeInterval? = nil,
         logURL: URL? = nil,
         stdin: Data? = nil
     ) async throws -> ShellResult {
@@ -82,6 +89,7 @@ public enum Shell {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 process.terminationHandler = { finished in
+                    ChildProcessLedger.shared.remove(finished.processIdentifier)
                     exit.set(finished.terminationStatus)
                     continuation.resume()
                 }
@@ -92,6 +100,11 @@ public enum Shell {
                     continuation.resume(throwing: error)
                     return
                 }
+                // Only long-running work is worth recording (builds, tests, commands); the quick
+                // simctl calls behind taps and screenshots would just rewrite the file.
+                if timeout > 120 {
+                    ChildProcessLedger.shared.add(process.processIdentifier, names: ChildProcessLedger.names(executable: executable, arguments: arguments))
+                }
                 // Cancelled before the program started: onCancel found nothing to stop.
                 if Task.isCancelled { stop(process) }
                 // Watchdog: terminate, then kill, if the deadline passes.
@@ -99,6 +112,9 @@ public enum Shell {
                     guard process.isRunning else { return }
                     exit.markTimedOut()
                     stop(process)
+                }
+                if let stallTimeout, stallTimeout > 0 {
+                    watchForStall(process, collector: collector, exit: exit, after: stallTimeout)
                 }
             }
         } onCancel: {
@@ -124,8 +140,24 @@ public enum Shell {
             stdout: out,
             stderr: err,
             timedOut: exit.timedOut,
+            stalled: exit.stalled,
             duration: Date().timeIntervalSince(started)
         )
+    }
+
+    /// Checks every few seconds whether `process` has gone `seconds` without output, and stops it
+    /// if so. Ends when the process does.
+    private static func watchForStall(_ process: Process, collector: OutputCollector, exit: ExitBox, after seconds: TimeInterval) {
+        let interval = min(10, max(1, seconds / 6))
+        DispatchQueue.global().asyncAfter(deadline: .now() + interval) {
+            guard process.isRunning else { return }
+            if Date().timeIntervalSince(collector.lastOutputAt) >= seconds {
+                exit.markStalled()
+                stop(process)
+            } else {
+                watchForStall(process, collector: collector, exit: exit, after: seconds)
+            }
+        }
     }
 
     /// Terminates a running program and its direct children (e.g. the command a shell is
@@ -178,10 +210,13 @@ final class ExitBox: @unchecked Sendable {
     private let lock = NSLock()
     private var _code: Int32 = -1
     private var _timedOut = false
+    private var _stalled = false
     func set(_ code: Int32) { lock.lock(); _code = code; lock.unlock() }
     func markTimedOut() { lock.lock(); _timedOut = true; lock.unlock() }
+    func markStalled() { lock.lock(); _stalled = true; lock.unlock() }
     var code: Int32 { lock.lock(); defer { lock.unlock() }; return _code }
     var timedOut: Bool { lock.lock(); defer { lock.unlock() }; return _timedOut }
+    var stalled: Bool { lock.lock(); defer { lock.unlock() }; return _stalled }
 }
 
 /// Thread-safe accumulator for process output.
@@ -190,6 +225,7 @@ final class OutputCollector: @unchecked Sendable {
     private var stdout = Data()
     private var stderr = Data()
     private let logHandle: FileHandle?
+    private var _lastOutputAt = Date()
 
     init(logURL: URL?) {
         if let logURL {
@@ -205,11 +241,19 @@ final class OutputCollector: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if isError { stderr.append(data) } else { stdout.append(data) }
+        _lastOutputAt = Date()
         // Keep memory bounded for very chatty builds; the log file keeps everything.
         let cap = 8 * 1024 * 1024
         if stdout.count > cap { stdout = stdout.suffix(cap / 2) }
         if stderr.count > cap { stderr = stderr.suffix(cap / 2) }
         logHandle?.write(data)
+    }
+
+    /// When the program last wrote anything (or started, if it hasn't yet).
+    var lastOutputAt: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return _lastOutputAt
     }
 
     var byteCount: Int {
