@@ -131,6 +131,9 @@ final class UpdateCheckTests: XCTestCase {
         // mac_status compares it with the version the Mac reports.
         let worker = try String(contentsOf: root.appendingPathComponent("worker/src/version.ts"), encoding: .utf8)
         XCTAssertTrue(worker.contains("export const VERSION = \"\(MiniRun.version)\";"), "worker/src/version.ts's VERSION must be \(MiniRun.version)")
+        // The Release workflow uses this section as the release notes.
+        let changelog = try String(contentsOf: root.appendingPathComponent("CHANGELOG.md"), encoding: .utf8)
+        XCTAssertTrue(changelog.components(separatedBy: "\n").contains("## \(MiniRun.version)"), "CHANGELOG.md needs a \"## \(MiniRun.version)\" section")
     }
 }
 

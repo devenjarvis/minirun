@@ -377,9 +377,10 @@ cd worker && npm run bundle      # rebuild worker/dist after changing the Worker
 generated from `wrangler.jsonc`. CI fails if it doesn't match the source. `worker/setup.sh` still
 deploys with wrangler, for working on the Worker itself.
 
-Releases: bump `MiniRun.version` (`Sources/MiniRunKit/Version.swift`) and `MARKETING_VERSION` in
-`App/project.yml`, then push a tag like `v0.2.0`. The Release workflow builds the app and attaches
-`minirun-<version>.zip` to a GitHub Release.
+Releases: bump `MiniRun.version` (`Sources/MiniRunKit/Version.swift`), `MARKETING_VERSION` in
+`App/project.yml` and `VERSION` in `worker/src/version.ts` (then `npm run bundle`), add a section
+for it to `CHANGELOG.md`, and push a tag like `v0.3.0`. The Release workflow builds the app and
+attaches `minirun-<version>.zip` to a GitHub Release, with that changelog section as its notes.
 
 CI runs all of the above on GitHub's macOS runners. If a run fails, the logs are pushed to the
 `ci-logs` branch.

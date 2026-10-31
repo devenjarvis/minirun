@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 (it must match MiniRun.version and worker/src/version.ts) to build minirun.app with the daemon,
+# Push a tag like v0.3.0 (it must match MiniRun.version and worker/src/version.ts) to build minirun.app with the daemon,
 # frameworks and Worker inside, and attach it to a GitHub Release. The build is ad-hoc signed
 # and not notarized; the README says how to open it.
 
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build (e.g. v0.2.0)
+        description: Existing tag to build (e.g. v0.3.0)
         required: true
 
 jobs:
@@ -70,6 +70,13 @@ jobs:
             echo "(or open it once, then allow it under System Settings → Privacy & Security → Open Anyway)."
             echo "The app sets up minirun serve and walks you through the Worker. After that it installs new"
             echo "releases by itself (Settings → General → Install updates automatically)."
+            # This version's section of CHANGELOG.md, without its heading.
+            changes=$(awk -v v="## $VERSION" '$0 == v { on = 1; next } on && /^## / { exit } on' CHANGELOG.md)
+            if [[ -n "$changes" ]]; then
+              echo
+              echo "## What's new"
+              echo "$changes"
+            fi
           } > notes.md
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "minirun-$VERSION.zip" "minirun-$VERSION.zip.sha256" --clobber
