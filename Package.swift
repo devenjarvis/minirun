@@ -5,6 +5,7 @@ import PackageDescription
 // MiniRunKit is plain Swift and builds anywhere (its tests run on Linux CI).
 // Everything that drives simulators needs macOS plus the FBSimulatorControl frameworks, which
 // `scripts/build-frameworks.sh` builds into Vendor/ from AXe's pinned fork of idb.
+// MiniRunMac drives native macOS apps with public Apple frameworks only.
 
 var products: [Product] = [.library(name: "MiniRunKit", targets: ["MiniRunKit"])]
 var targets: [Target] = [
@@ -31,14 +32,20 @@ targets += [
         swiftSettings: [.unsafeFlags(privateHeaderFlags)]
     ),
     .target(
+        name: "MiniRunMac",
+        dependencies: ["MiniRunKit"],
+        path: "Sources/MiniRunMac",
+        linkerSettings: ["AppKit", "ApplicationServices", "ScreenCaptureKit", "VideoToolbox", "CoreMedia"].map { LinkerSetting.linkedFramework($0) }
+    ),
+    .target(
         name: "MiniRunCore",
-        dependencies: ["MiniRunKit", "MiniRunSim"],
+        dependencies: ["MiniRunKit", "MiniRunSim", "MiniRunMac"],
         path: "Sources/MiniRunCore",
         swiftSettings: [.unsafeFlags(privateHeaderFlags)]
     ),
     .executableTarget(
         name: "minirun",
-        dependencies: ["MiniRunCore", "MiniRunKit", "MiniRunSim"],
+        dependencies: ["MiniRunCore", "MiniRunKit", "MiniRunSim", "MiniRunMac"],
         path: "Sources/minirun",
         swiftSettings: [.unsafeFlags(privateHeaderFlags)],
         linkerSettings: [
