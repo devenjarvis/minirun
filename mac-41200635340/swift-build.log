@@ -1,0 +1,413 @@
+Building for debugging...
+[0/13] Write sources
+[4/13] Write minirun-entitlement.plist
+[5/13] Copying FBSimulatorControl.framework
+[5/13] Copying XCTestBootstrap.framework
+[7/13] Copying FBControlCore.framework
+[7/13] Copying FBDeviceControl.framework
+[9/13] Write swift-version-7974D3F7F03D5E95.txt
+[11/50] Compiling MiniRunSim HIDBroker+Connection.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[12/50] Compiling MiniRunSim HIDBroker.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[13/50] Compiling MiniRunSim HIDBrokerReadiness.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[14/50] Compiling MiniRunSim HIDInteractor.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[15/50] Compiling MiniRunSim KeyCode.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[16/50] Compiling MiniRunSim OrientationAwareCoordinates.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[17/50] Compiling MiniRunSim Setup.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[18/50] Compiling MiniRunSim SimulatorOrientationReader.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[19/50] Compiling MiniRunKit Status.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+338 |                 try await work()
+339 |             } catch {
+340 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+341 |                 throw error
+342 |             }
+343 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+344 |         }
+345 |         running[udid] = task
+[20/58] Emitting module MiniRunKit
+[21/58] Compiling MiniRunSim AccessibilityElement.swift
+[22/58] Compiling MiniRunSim AccessibilityFetcher.swift
+[23/58] Compiling MiniRunSim AccessibilityPoller.swift
+[24/58] Compiling MiniRunSim AccessibilityTargetResolver.swift
+[25/58] Compiling MiniRunSim AxeLogger.swift
+[26/58] Compiling MiniRunSim CoordinateHelpers.swift
+[27/58] Compiling MiniRunSim Errors.swift
+[28/58] Compiling MiniRunSim EventReporter.swift
+[29/58] Compiling MiniRunSim GlobalSetup.swift
+[30/58] Compiling MiniRunKit SwiftTestReport.swift
+[31/58] Compiling MiniRunKit Tools.swift
+[32/58] Compiling MiniRunKit Version.swift
+[33/58] Compiling MiniRunKit WorkerCommand.swift
+[34/58] Compiling MiniRunKit WorkerDeploy.swift
+[35/58] Compiling MiniRunKit WorkerManager.swift
+[36/58] Compiling MiniRunKit Workspaces.swift
+[37/58] Compiling MiniRunKit XcodeParsing.swift
+[38/58] Emitting module MiniRunSim
+[56/66] Compiling MiniRunSim SimulatorUtilities.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[57/66] Compiling MiniRunSim StandardError.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[58/66] Compiling MiniRunSim TapStyle.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[59/66] Compiling MiniRunSim TextToHIDEvents.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[60/66] Compiling MiniRunSim OrientationCoordinateMath.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[61/66] Compiling MiniRunSim MainDisplays.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[62/66] Compiling MiniRunSim ScreenEncoder.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[63/66] Compiling MiniRunSim SimulatorDriver.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:123:18: warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+121 |         switch source {
+122 |         case .framebuffer:
+123 |             lock.lock()
+    |                  `- warning: instance method 'lock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+124 |             current = surface
+125 |             lock.unlock()
+
+Foundation.NSLock.lock:2:11: note: 'lock()' declared here
+1 | class NSLock {
+2 | open func lock()}
+  |           `- note: 'lock()' declared here
+3 | 
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunSim/ScreenEncoder.swift:125:18: warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+123 |             lock.lock()
+124 |             current = surface
+125 |             lock.unlock()
+    |                  `- warning: instance method 'unlock' is unavailable from asynchronous contexts; Use async-safe scoped locking instead; this is an error in the Swift 6 language mode
+126 |         case .displays(let displays):
+127 |             current = displays.currentSurface()
+
+Foundation.NSLock.unlock:2:11: note: 'unlock()' declared here
+1 | class NSLock {
+2 | open func unlock()}
+  |           `- note: 'unlock()' declared here
+3 | 
+[64/75] Compiling MiniRunCore ServeControl.swift
+[65/75] Compiling MiniRunCore Server.swift
+[66/75] Compiling MiniRunCore Simctl.swift
+[67/75] Compiling MiniRunCore SimulatorTools.swift
+[68/78] Emitting module MiniRunCore
+[69/78] Compiling MiniRunCore AppTools.swift
+[70/78] Compiling MiniRunCore CodeTools.swift
+[71/78] Compiling MiniRunCore FrameStreamer.swift
+[72/78] Compiling MiniRunCore RelayClient.swift
+[73/78] Compiling MiniRunCore ToolRegistry.swift
+[74/78] Compiling MiniRunCore Workspace.swift
+[75/78] Compiling MiniRunCore XcodeBuild.swift
+[76/80] Compiling minirun main.swift
+[77/80] Emitting module minirun
+[77/80] Write Objects.LinkFileList
+[78/80] Linking minirun
+[79/80] Applying minirun
+Build complete! (24.00s)

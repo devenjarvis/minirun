@@ -1,0 +1,40 @@
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+                await self.finished(udid)
+                ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+            await self.finished(udid)
+            ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:340:17: warning: no 'async' operations occur within 'await' expression
+                await self.finished(udid)
+                ^
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:13: warning: no 'async' operations occur within 'await' expression
+            await self.finished(udid)
+            ^
+/Users/runner/work/minirun/minirun/App/Sources/AppServices.swift:92:13: warning: capture of 'center' with non-Sendable type 'UNUserNotificationCenter' in a '@Sendable' closure
+            center.add(UNNotificationRequest(identifier: note.id, content: content, trigger: nil))
+            ^
+/Applications/Xcode_26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/UserNotifications.framework/Headers/UNUserNotificationCenter.h:39:12: note: class 'UNUserNotificationCenter' does not conform to the 'Sendable' protocol
+@interface UNUserNotificationCenter : NSObject
+           ^
+/Users/runner/work/minirun/minirun/App/Sources/AppServices.swift:4:1: warning: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'UserNotifications'
+import UserNotifications
+^
+@preconcurrency 
+/Users/runner/work/minirun/minirun/App/Sources/AppServices.swift:92:13: warning: capture of 'center' with non-Sendable type 'UNUserNotificationCenter' in a '@Sendable' closure
+            center.add(UNNotificationRequest(identifier: note.id, content: content, trigger: nil))
+            ^
+/Applications/Xcode_26.6.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk/System/Library/Frameworks/UserNotifications.framework/Headers/UNUserNotificationCenter.h:39:12: note: class 'UNUserNotificationCenter' does not conform to the 'Sendable' protocol
+@interface UNUserNotificationCenter : NSObject
+           ^
+/Users/runner/work/minirun/minirun/App/Sources/AppServices.swift:4:1: warning: add '@preconcurrency' to suppress 'Sendable'-related warnings from module 'UserNotifications'
+import UserNotifications
+^
+@preconcurrency 
+note: Using codesigning identity override: -
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app/Contents/Frameworks/FBControlCore.framework: replacing existing signature
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app/Contents/Frameworks/FBSimulatorControl.framework: replacing existing signature
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app/Contents/Frameworks/FBDeviceControl.framework: replacing existing signature
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app/Contents/Frameworks/XCTestBootstrap.framework: replacing existing signature
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app/Contents/Helpers/minirun: replacing existing signature
+/Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app: replacing existing signature
+Built /Users/runner/work/minirun/minirun/.build/app/Build/Products/Release/minirun.app
