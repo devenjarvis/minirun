@@ -212,7 +212,7 @@ public enum UpdateCheck {
 /// downloads, verifies and swaps the bundle (App/Sources/AppUpdater.swift).
 public enum Updater {
     /// How often the app looks for a release while it updates itself.
-    public static let checkInterval: TimeInterval = 6 * 3600
+    public static let checkInterval: TimeInterval = 3600
 
     public enum Decision: Equatable, Sendable {
         case nothing

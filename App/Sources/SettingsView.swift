@@ -83,7 +83,7 @@ struct GeneralTab: View {
                 LabeledContent("This app") { Text(MiniRun.version) }
                 LabeledContent("minirun serve") { Text(store.menu.snapshot.daemonVersion ?? "not running") }
                 Toggle("Install updates automatically", isOn: Binding(get: { store.menu.autoUpdate }, set: { store.menu.setAutoUpdate($0) }))
-                Text("Checks GitHub every 6 hours. Updates wait until no job is running and nobody is using a simulator, then restart minirun serve for a moment. The Worker is updated too, with the saved API token.")
+                Text("Checks GitHub every hour. Updates wait until no job is running and nobody is using a simulator, then restart minirun serve for a moment. The Worker is updated too, with the saved API token.")
                     .font(.callout).foregroundStyle(.secondary)
                 if let status = store.menu.updateStatus {
                     Text(status).font(.callout)
