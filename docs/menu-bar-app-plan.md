@@ -311,7 +311,7 @@ releases come from this repository's own workflow. Safeguards in place of a sign
   `minirun serve` (`launchctl kickstart -k`) and relaunches the app.
 - After an update, the app redeploys the Worker if it runs other code, using the saved API token
   (once per launch; failures are notified, not retried in a loop).
-- On by default and checked every 6 hours. The app turns Open at login on once, at its first
+- On by default and checked every hour. The app turns Open at login on once, at its first
   launch from `/Applications`. Both can be switched off in Settings → General.
 The logic is in `Updater` (MiniRunKit, tested on Linux); the download and swap are in
 `App/Sources/AppUpdater.swift`. Still manual: pushing the release tag.

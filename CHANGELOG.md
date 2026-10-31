@@ -41,6 +41,7 @@ sharing one Mac.
 - When every simulator is taken, the error points to `list_jobs` and `cancel_job` instead of
   suggesting shutting down someone else's simulator.
 - The instructions Claude gets explain package tests, `cancel_job` and the stall timeout.
+- Automatic updates check GitHub every hour instead of every 6 hours.
 
 ## 0.3.0
 

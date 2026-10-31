@@ -145,7 +145,7 @@ final class MenuStore {
         }
     }
 
-    /// Checks GitHub for a newer release: every 6 hours while updating automatically, else daily.
+    /// Checks GitHub for a newer release: every hour while updating automatically, else daily.
     func checkForUpdates(force: Bool = false) async {
         let key = "lastUpdateCheck"
         let interval = autoUpdate ? Updater.checkInterval : 86400

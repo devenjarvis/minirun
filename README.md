@@ -253,7 +253,7 @@ mini needs (automatic login, no sleep).
   Copy diagnostics (versions, state and settings without secrets); Reveal config in Finder.
 
 **Automatic updates.** An app in `/Applications` keeps itself current, so the Mac needs no
-visits: every 6 hours it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
+visits: every hour it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
 When it finds one, it waits until no job is running and nobody is using a simulator. Then it
 downloads `minirun-<version>.zip`, checks it against the SHA-256 GitHub reports for it (or the
 `.sha256` file next to it), and checks the unzipped app: the bundle id, the version, the
