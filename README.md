@@ -180,7 +180,8 @@ See what the running `minirun serve` is doing with `minirun status`: the relay c
 simulators and who each is reserved for, and recent jobs. `minirun status --json` gives the same as
 JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that only your user can open.
 `minirun doctor` checks Xcode, the simulators, the daemon and the settings, and says how to fix
-each problem (`--json` for scripts).
+each problem (`--json` for scripts). Claude gets the same checks from `host_info`, along with the
+minirun version; `mac_status` says whether the Mac and the Worker run the same minirun.
 
 ## The menu bar app
 

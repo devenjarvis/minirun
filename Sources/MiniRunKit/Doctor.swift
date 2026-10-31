@@ -36,12 +36,13 @@ public struct Doctor: Sendable {
     public var run: Runner
     /// Loads the simulator frameworks: nil when they load, otherwise the error.
     public var loadFrameworks: @Sendable () async -> String?
-    /// The running `minirun serve`'s status, or nil if it isn't answering.
-    public var serveStatus: @Sendable () async -> ServeStatus?
+    /// The running `minirun serve`'s status, or nil if it isn't answering. Leave the closure out
+    /// to skip that check, as `minirun serve` does when it runs the checks itself for host_info.
+    public var serveStatus: (@Sendable () async -> ServeStatus?)?
 
     public static let kickstart = "launchctl kickstart -k gui/$(id -u)/\(LaunchAgent.label)"
 
-    public init(run: @escaping Runner = Doctor.shell, loadFrameworks: @escaping @Sendable () async -> String?, serveStatus: @escaping @Sendable () async -> ServeStatus?) {
+    public init(run: @escaping Runner = Doctor.shell, loadFrameworks: @escaping @Sendable () async -> String?, serveStatus: (@Sendable () async -> ServeStatus?)? = nil) {
         self.run = run
         self.loadFrameworks = loadFrameworks
         self.serveStatus = serveStatus
@@ -85,7 +86,7 @@ public struct Doctor: Sendable {
             checks.append(DoctorCheck(id: "simulators", title: "Simulators", ok: false, detail: "simctl failed", fix: "Check that Xcode is installed and selected: xcode-select -p"))
         }
 
-        if let status = await serveStatus() {
+        if let serveStatus, let status = await serveStatus() {
             let relay = status.relay
             let connected = relay.state == .connected
             let state = connected ? "connected to the relay" : relay.state.rawValue + (relay.problem.map { ": \($0)" } ?? "")
@@ -93,7 +94,7 @@ public struct Doctor: Sendable {
                 id: "serve", title: "minirun serve", ok: connected, detail: "running (pid \(status.pid)), \(state)",
                 fix: connected ? nil : (relay.problem == nil ? "Wait a few seconds; it reconnects by itself." : "Check the relay URL and agent token, then: minirun worker deploy")
             ))
-        } else {
+        } else if serveStatus != nil {
             checks.append(DoctorCheck(id: "serve", title: "minirun serve", ok: false, detail: "not running", fix: Self.kickstart))
         }
 

@@ -1,5 +1,6 @@
 import { relayStub, type Env } from "./env";
 import { streamKey, type ToolDefinition, type ToolResult } from "./relay";
+import { compareVersions, VERSION } from "./version";
 
 /**
  * A minimal MCP server over Streamable HTTP (JSON responses, no SSE). Every tool except
@@ -7,7 +8,7 @@ import { streamKey, type ToolDefinition, type ToolResult } from "./relay";
  */
 
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators on your Mac", version: "0.1.0" };
+const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators on your Mac", version: VERSION };
 
 const INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
@@ -23,7 +24,7 @@ The user can watch and touch your simulator live in their browser: share the liv
 
 const MAC_STATUS_TOOL: ToolDefinition = {
   name: "mac_status",
-  description: "Check whether the Mac is online, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it.",
+  description: "Check whether the Mac is online and which minirun version it and this relay run, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it. For Xcode, simulator and setup problems on the Mac, call host_info.",
   inputSchema: {
     type: "object",
     properties: { device: { type: "string", description: "UDID of your simulator. The link opens straight to it." } },
@@ -118,6 +119,7 @@ async function macStatus(env: Env, origin: string, device: unknown): Promise<Too
   const link = key ? `${origin}/?device=${encodeURIComponent(key)}` : `${origin}/`;
   const lines = [
     status.online ? `The Mac is online${status.host?.name ? ` (${status.host.name})` : ""}.` : "The Mac is offline.",
+    versionLine(status.host?.minirun),
     key
       ? `Live view of simulator ${key}: ${link} — the user can watch and tap it there (they'll be asked for the minirun password).`
       : `Live view: ${link} — the user can watch and tap a simulator there and switch between booted ones (they'll be asked for the minirun password). Pass device to get a link that opens on your simulator.`,
@@ -127,6 +129,17 @@ async function macStatus(env: Env, origin: string, device: unknown): Promise<Too
     lines.push("Ask the user to check that the Mac is awake and that `minirun serve` is running.");
   }
   return { content: [{ type: "text", text: lines.join("\n") }], isError: false };
+}
+
+/** Which minirun the Mac runs (as of its last connection) and the relay runs, and what to do if they differ. */
+function versionLine(mac: string | undefined): string {
+  if (!mac) return `Relay: minirun ${VERSION}. The Mac hasn't said which minirun it runs.`;
+  const order = compareVersions(mac, VERSION);
+  if (order === 0) return `minirun ${VERSION} on the Mac and the relay.`;
+  const fix = order > 0
+    ? "Ask the user to update the Worker: Update Worker in minirun's Settings → Cloudflare, or `minirun worker deploy`."
+    : "Ask the user to update minirun on the Mac (Check for Updates in minirun's Settings).";
+  return `minirun ${mac} on the Mac, but the relay is from minirun ${VERSION}. ${fix}`;
 }
 
 function rpcResult(id: string | number, result: unknown): RpcResponse {

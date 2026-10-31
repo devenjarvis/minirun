@@ -5716,9 +5716,22 @@ function clamp(value, min, max) {
 }
 __name(clamp, "clamp");
 
+// src/version.ts
+var VERSION = "0.2.0";
+function compareVersions(a, b) {
+  const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
+  const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+__name(compareVersions, "compareVersions");
+
 // src/mcp.ts
 var SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-var SERVER_INFO = { name: "minirun", title: "minirun \u2014 iOS simulators on your Mac", version: "0.1.0" };
+var SERVER_INFO = { name: "minirun", title: "minirun \u2014 iOS simulators on your Mac", version: VERSION };
 var INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
 Then exercise the app: describe_ui to find elements, tap by id/label (or x,y in points), type_text, swipe, screenshot to look.
@@ -5732,7 +5745,7 @@ Other Claude sessions may be using the same Mac at the same time, on other apps 
 The user can watch and touch your simulator live in their browser: share the live view link from build_and_run or boot_simulator, or call mac_status with your device.`;
 var MAC_STATUS_TOOL = {
   name: "mac_status",
-  description: "Check whether the Mac is online, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it.",
+  description: "Check whether the Mac is online and which minirun version it and this relay run, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it. For Xcode, simulator and setup problems on the Mac, call host_info.",
   inputSchema: {
     type: "object",
     properties: { device: { type: "string", description: "UDID of your simulator. The link opens straight to it." } },
@@ -5813,6 +5826,7 @@ async function macStatus(env, origin, device) {
   const link = key ? `${origin}/?device=${encodeURIComponent(key)}` : `${origin}/`;
   const lines = [
     status.online ? `The Mac is online${status.host?.name ? ` (${status.host.name})` : ""}.` : "The Mac is offline.",
+    versionLine(status.host?.minirun),
     key ? `Live view of simulator ${key}: ${link} \u2014 the user can watch and tap it there (they'll be asked for the minirun password).` : `Live view: ${link} \u2014 the user can watch and tap a simulator there and switch between booted ones (they'll be asked for the minirun password). Pass device to get a link that opens on your simulator.`,
     `Viewers connected: ${status.viewers}. Tools available: ${status.toolCount}.` + (status.location ? ` The relay runs in Cloudflare's ${status.location} data center.` : "")
   ];
@@ -5822,6 +5836,14 @@ async function macStatus(env, origin, device) {
   return { content: [{ type: "text", text: lines.join("\n") }], isError: false };
 }
 __name(macStatus, "macStatus");
+function versionLine(mac) {
+  if (!mac) return `Relay: minirun ${VERSION}. The Mac hasn't said which minirun it runs.`;
+  const order = compareVersions(mac, VERSION);
+  if (order === 0) return `minirun ${VERSION} on the Mac and the relay.`;
+  const fix = order > 0 ? "Ask the user to update the Worker: Update Worker in minirun's Settings \u2192 Cloudflare, or `minirun worker deploy`." : "Ask the user to update minirun on the Mac (Check for Updates in minirun's Settings).";
+  return `minirun ${mac} on the Mac, but the relay is from minirun ${VERSION}. ${fix}`;
+}
+__name(versionLine, "versionLine");
 function rpcResult(id, result) {
   return { jsonrpc: "2.0", id, result };
 }

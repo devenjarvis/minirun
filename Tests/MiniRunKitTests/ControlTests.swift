@@ -271,6 +271,13 @@ final class DoctorTests: XCTestCase {
         XCTAssertTrue(Doctor.format(checks).contains("✗ Xcode: the Xcode license hasn't been accepted\n    fix: sudo xcodebuild -license accept"))
     }
 
+    func testWithoutServeStatusTheServeCheckIsLeftOut() async {
+        // minirun serve runs the checks itself for host_info, where "is serve running" is moot.
+        let doctor = Doctor(run: { _, _, _ in nil }, loadFrameworks: { nil })
+        let checks = await doctor.checks(config: MiniRunConfig(relayURL: "wss://h/agent", agentToken: "t", workspaceRoot: NSTemporaryDirectory() + "minirun-doctor"))
+        XCTAssertEqual(checks.map(\.id), ["xcode", "frameworks", "simulators", "relay", "token", "workspaces", "shell", "github"])
+    }
+
     func testKickstartArguments() {
         XCTAssertEqual(LaunchAgent.kickstartArguments(uid: 501, restart: false), ["kickstart", "gui/501/dev.minirun.agent"])
         XCTAssertEqual(LaunchAgent.kickstartArguments(uid: 501, restart: true), ["kickstart", "-k", "gui/501/dev.minirun.agent"])

@@ -73,18 +73,7 @@ struct ServeControl: ControlCommands {
     }
 
     func doctor() async -> [DoctorCheck] {
-        let doctor = Doctor(
-            loadFrameworks: {
-                do {
-                    try await SimulatorDriver.shared.prepare()
-                    return nil
-                } catch {
-                    return error.localizedDescription
-                }
-            },
-            serveStatus: { await self.status() }
-        )
-        return await doctor.checks(config: registry.config)
+        await registry.doctorChecks(serveStatus: { await self.status() })
     }
 
     /// Folders in use by a sync, build or command, standardized like the checkout paths.
