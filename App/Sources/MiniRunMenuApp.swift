@@ -237,6 +237,21 @@ final class MenuStore {
         Task { await model.dismissNotice() }
     }
 
+    /// Polls the daemon now, e.g. after asking it for the macOS app permissions.
+    func refresh() {
+        Task { await model.refresh() }
+    }
+
+    /// Brings a Mac app minirun launched to the front. This app is active while its menu is
+    /// open, so it can hand activation over itself; otherwise minirun serve does it.
+    func bringToFront(_ app: MenuSnapshot.MacAppRow) {
+        if let pid = app.pid, let running = NSRunningApplication(processIdentifier: pid_t(pid)) {
+            NSApp.yieldActivation(to: running)
+            if running.activate(options: [.activateAllWindows]) { return }
+        }
+        perform(.activateMacApp(app.id))
+    }
+
     /// Asks before deleting every shared screenshot and recording, since old PRs lose their images.
     func confirmDeleteAllMedia() {
         let alert = NSAlert()

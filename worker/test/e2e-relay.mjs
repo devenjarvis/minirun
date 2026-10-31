@@ -128,5 +128,71 @@ const h264 = await new Promise((resolve, reject) => {
 });
 console.log(`  ${h264.frames} frames, ${h264.bytes} bytes, ${h264.codec}`);
 video.close();
+
+// A macOS app through the relay: build and launch the fixture, stream its window as H.264, click
+// its button with live mouse touches and check the app saw it. Needs Screen Recording and
+// Accessibility for minirun (CI grants them), so it only runs when MINIRUN_E2E_MAC_FIXTURE is set.
+const macFixture = process.env.MINIRUN_E2E_MAC_FIXTURE;
+if (macFixture) {
+  const text = (result) => result.content.filter((c) => c.type === "text").map((c) => c.text).join("\n");
+  async function call(name, args) {
+    let result = await rpc("tools/call", { name, arguments: args });
+    for (let i = 0; i < 20; i++) {
+      const job = text(result).match(/is still running.*?(job_[0-9a-f]{8})/s);
+      if (!job) break;
+      result = await rpc("tools/call", { name: "get_job", arguments: { job_id: job[1], wait_seconds: 45 } });
+    }
+    return result;
+  }
+
+  step("macOS app: build_and_run through the relay");
+  const built = await call("build_and_run", { path: macFixture, scheme: "HelloMacApp", platform: "macos", wait_seconds: 45 });
+  assert(!built.isError, text(built).slice(-1500));
+  const macId = text(built).match(/id (mac-[0-9a-f]{6})\./)?.[1];
+  assert(macId, "build_and_run gave a Mac app id");
+  console.log(`  ${macId}: ${text(built).split("\n").find((l) => l.startsWith("Launched"))}`);
+
+  const tree = JSON.parse(text(await call("describe_ui", { device: macId, format: "json" })));
+  const find = (nodes) => { for (const n of nodes) { if (n.AXIdentifier === "incrementButton") return n; const c = find(n.children || []); if (c) return c; } return null; };
+  const button = find(tree);
+  assert(button && button.frame, "incrementButton is in the window's tree");
+  const at = { x: button.frame.x + button.frame.width / 2, y: button.frame.y + button.frame.height / 2 };
+
+  step("macOS app: H.264 live view and live mouse");
+  const mac = new WebSocket(`${base.replace(/^http/, "ws")}/viewer/ws`, { headers: { Cookie: cookie } });
+  mac.on("open", () => mac.send(JSON.stringify({ type: "stream", device: macId, codec: "h264", fps: 15, quality: 55, scale: 0.5 })));
+  const live = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("no Mac app frames within 30s")), 30000);
+    let screen = null, frames = 0, clicked = false, picker = false;
+    mac.on("message", (data, isBinary) => {
+      if (!isBinary) {
+        const m = JSON.parse(data.toString());
+        if (m.type === "screen" && m.key === macId) screen = m;
+        if (m.type === "simulators" && (m.devices || []).some((d) => d.udid === macId && d.kind === "mac")) picker = true;
+        return;
+      }
+      if (data[0] !== 3 || data.subarray(6, 6 + data[5]).toString() !== macId) return;
+      const keyframe = (data[6 + data[5]] & 1) === 1;
+      if (frames === 0) assert(keyframe, "first Mac H.264 frame is a keyframe");
+      frames++;
+      mac.send(JSON.stringify({ type: "ack", seq: data.readUInt32BE(1) }));
+      if (!clicked && screen) {
+        clicked = true;
+        mac.send(JSON.stringify({ type: "touch", phase: "down", ...at }));
+        setTimeout(() => mac.send(JSON.stringify({ type: "touch", phase: "up", ...at })), 150);
+        setTimeout(() => { clearTimeout(timer); resolve({ screen, frames, picker }); }, 3000);
+      }
+    });
+    mac.on("error", reject);
+  });
+  mac.close();
+  assert(live.screen.kind === "mac", `screen message says kind mac: ${JSON.stringify(live.screen)}`);
+  console.log(`  ${live.frames} frames; screen ${live.screen.name} ${live.screen.pointWidth}x${live.screen.pointHeight} pt, ${live.screen.pixelWidth}x${live.screen.pixelHeight} px; in the picker: ${live.picker}`);
+  const logs = text(await call("app_logs", { device: macId, seconds: 60, contains: "HelloMacApp:" }));
+  assert(logs.includes("HelloMacApp: count=1"), `a live click on incrementButton reached the app:\n${logs}`);
+  console.log("  live click reached the app (count=1)");
+  const quit = await call("terminate_app", { device: macId });
+  assert(!quit.isError && text(quit).includes("Quit HelloMacApp"), text(quit));
+}
 console.log("E2E relay test passed.");
 process.exit(0);

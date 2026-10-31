@@ -103,6 +103,41 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         }
     }
 
+    /// A macOS app minirun launched on this Mac.
+    public struct MacApp: Codable, Equatable, Sendable {
+        /// The Mac app id, e.g. "mac-3f9a2c": the `device` for tools, and the live view's stream.
+        public var id: String
+        public var name: String
+        public var bundleID: String?
+        /// Nil when it isn't running.
+        public var pid: Int32?
+        public var running: Bool
+        /// Who it's for: "owner/app@branch", or the folder for `path`.
+        public var reservedFor: String?
+        public var lastUsed: Date?
+        /// A job is using it or someone is watching it live.
+        public var busy: Bool
+        public var viewerURL: String?
+
+        public init(id: String, name: String, bundleID: String? = nil, pid: Int32? = nil, running: Bool, reservedFor: String? = nil,
+                    lastUsed: Date? = nil, busy: Bool = false, viewerURL: String? = nil) {
+            self.id = id
+            self.name = name
+            self.bundleID = bundleID
+            self.pid = pid
+            self.running = running
+            self.reservedFor = reservedFor
+            self.lastUsed = lastUsed
+            self.busy = busy
+            self.viewerURL = viewerURL
+        }
+
+        public init(_ session: MacAppSession, busy: Bool = false, viewerURL: String? = nil) {
+            self.init(id: session.id, name: session.name, bundleID: session.bundleID, pid: session.pid, running: session.isRunning,
+                      reservedFor: session.label, lastUsed: session.updatedAt, busy: busy, viewerURL: viewerURL)
+        }
+    }
+
     public var version: String
     public var pid: Int32
     public var startedAt: Date
@@ -115,9 +150,14 @@ public struct ServeStatus: Codable, Equatable, Sendable {
     public var jobs: [Job]
     /// What's shared through the Worker. Nil from daemons that predate sharing.
     public var media: MediaSummary?
+    /// macOS apps minirun launched, running or not. Empty from daemons older than Mac app support.
+    public var macApps: [MacApp]
+    /// What macOS lets `minirun serve` do with macOS apps. Nil when unknown (older daemons, or a
+    /// daemon that can't read them).
+    public var macPermissions: MacPermissionReport?
 
     public init(version: String, pid: Int32, startedAt: Date, relay: Relay, simulators: [Simulator] = [], simulatorError: String? = nil, jobs: [Job] = [],
-                media: MediaSummary? = nil) {
+                media: MediaSummary? = nil, macApps: [MacApp] = [], macPermissions: MacPermissionReport? = nil) {
         self.version = version
         self.pid = pid
         self.startedAt = startedAt
@@ -126,6 +166,27 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         self.simulatorError = simulatorError
         self.jobs = jobs
         self.media = media
+        self.macApps = macApps
+        self.macPermissions = macPermissions
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case version, pid, startedAt, relay, simulators, simulatorError, jobs, media, macApps, macPermissions
+    }
+
+    /// Also decodes what older daemons send: they may have no `media`, `macApps` or `macPermissions`.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        version = try container.decode(String.self, forKey: .version)
+        pid = try container.decode(Int32.self, forKey: .pid)
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        relay = try container.decode(Relay.self, forKey: .relay)
+        simulators = try container.decode([Simulator].self, forKey: .simulators)
+        simulatorError = try container.decodeIfPresent(String.self, forKey: .simulatorError)
+        jobs = try container.decode([Job].self, forKey: .jobs)
+        media = try container.decodeIfPresent(MediaSummary.self, forKey: .media)
+        macApps = try container.decodeIfPresent([MacApp].self, forKey: .macApps) ?? []
+        macPermissions = try container.decodeIfPresent(MacPermissionReport.self, forKey: .macPermissions)
     }
 
     /// The text `minirun status` prints.
@@ -157,6 +218,22 @@ public struct ServeStatus: Codable, Equatable, Sendable {
                 if let used = sim.lastUsed { parts.append("used \(SimulatorPicker.ago(used, now: now))") }
                 lines.append("  \(sim.name) (\(sim.runtime)) \(sim.udid) — " + parts.joined(separator: ", "))
             }
+        }
+
+        if !macApps.isEmpty {
+            lines.append("")
+            lines.append("Mac apps:")
+            for app in macApps {
+                var parts = [app.running ? (app.pid.map { "running (pid \($0))" } ?? "running") : "not running"]
+                parts.append(app.reservedFor.map { "for \($0)" } ?? "not reserved")
+                if app.busy { parts.append("busy") }
+                if let used = app.lastUsed { parts.append("used \(SimulatorPicker.ago(used, now: now))") }
+                lines.append("  \(app.name) \(app.id)" + (app.bundleID.map { " (\($0))" } ?? "") + " — " + parts.joined(separator: ", "))
+            }
+        }
+        if let missing = macPermissions?.missing, !missing.isEmpty {
+            lines.append("")
+            lines.append("macOS apps need \(missing.joined(separator: " and ")); run minirun doctor for how. iOS apps don't need them.")
         }
 
         let running = jobs.filter { $0.status == JobStore.Status.running.rawValue }
@@ -191,17 +268,19 @@ public struct ServeStatus: Codable, Equatable, Sendable {
 public enum ControlProtocol {
     /// Goes up when commands are added, so the menu bar app can tell it's talking to an older
     /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest; 3 added
-    /// shared media and recordings.
-    public static let version = 3
+    /// shared media and recordings; 4 added the macOS app commands (request_mac_permissions,
+    /// quit_mac_app, activate_mac_app).
+    public static let version = 4
 
     public struct Request: Codable, Equatable, Sendable {
         /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
         /// workspaces, delete_workspace, doctor, list_media, delete_media, delete_all_media,
-        /// stop_recording.
+        /// stop_recording, request_mac_permissions, quit_mac_app, activate_mac_app.
         public var command: String
         /// The simulator for shutdown_simulator, release_simulator and stop_recording.
         public var udid: String?
-        /// The job for cancel_job, the item for delete_media.
+        /// The job for cancel_job, the item for delete_media, or the Mac app id (mac-…) for
+        /// quit_mac_app and activate_mac_app.
         public var id: String?
         /// The checkout folder for delete_workspace.
         public var path: String?
@@ -299,12 +378,23 @@ public enum ControlProtocol {
                 return encode(Response(ok: true, message: try await commands.deleteAllMedia()))
             case "stop_recording":
                 return encode(Response(ok: true, message: try await commands.stopRecording(udid: required(request.udid, "udid"))))
+            case "request_mac_permissions":
+                return encode(Response(ok: true, message: try await commands.requestMacPermissions()))
+            case "quit_mac_app":
+                return encode(Response(ok: true, message: try await commands.quitMacApp(id: macAppID(required(request.id, "id")))))
+            case "activate_mac_app":
+                return encode(Response(ok: true, message: try await commands.activateMacApp(id: macAppID(required(request.id, "id")))))
             default:
                 return encode(Response.failure("Unknown command \(request.command)."))
             }
         } catch {
             return encode(Response.failure(error.localizedDescription))
         }
+    }
+
+    private static func macAppID(_ id: String) throws -> String {
+        guard MacAppID.isMacDevice(id), id.lowercased() != "mac" else { throw ToolError("\(id) isn't a Mac app id (they look like mac-3f9a2c).") }
+        return id.lowercased()
     }
 
     /// Sends one request to the running `minirun serve` and decodes the answer. Blocks, so call
@@ -336,4 +426,17 @@ public protocol ControlCommands: Sendable {
     func deleteAllMedia() async throws -> String
     /// Stops a simulator's recording. The video is kept for the agent's stop_recording call.
     func stopRecording(udid: String) async throws -> String
+    /// Asks macOS for Screen Recording and Accessibility for `minirun serve` itself, so the prompts
+    /// and the System Settings entries name the daemon. Returns what to do next.
+    func requestMacPermissions() async throws -> String
+    /// Quits a Mac app minirun launched (never anyone else's process).
+    func quitMacApp(id: String) async throws -> String
+    /// Brings a Mac app minirun launched to the front.
+    func activateMacApp(id: String) async throws -> String
+}
+
+extension ControlCommands {
+    public func requestMacPermissions() async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
+    public func quitMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
+    public func activateMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
 }

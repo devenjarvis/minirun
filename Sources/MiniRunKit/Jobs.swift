@@ -164,7 +164,7 @@ public actor JobStore {
         tasks.removeValue(forKey: id)?.cancel()
         job.status = .cancelled
         job.finishedAt = Date()
-        job.result = .error("Cancelled. Its commands were stopped, so the simulator it used is no longer busy (it stays reserved for the same repo + ref).")
+        job.result = .error("Cancelled. Its commands were stopped, so the simulator (or Mac app) it used is no longer busy (it stays reserved for the same repo + ref).")
         jobs[id] = job
         save()
         for waiter in waiters.removeValue(forKey: id) ?? [] { waiter.continuation.resume() }

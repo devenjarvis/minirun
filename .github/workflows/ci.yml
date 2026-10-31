@@ -96,10 +96,16 @@ jobs:
       - name: Install simulator template
         if: steps.template-cache.outputs.cache-hit == 'true'
         run: scripts/sim-template.sh restore ~/sim-template
+      - name: Grant minirun Screen Recording and Accessibility
+        # So the smoke test's macOS app steps run instead of skipping. GitHub's images allow
+        # writing TCC.db (SIP is off); a self-hosted Mac keeps whatever grants it has.
+        if: runner.environment == 'github-hosted'
+        run: scripts/ci-grant-tcc.sh "$PWD/.build/debug/minirun"
       - name: Simulator smoke test
         # Leaves its first simulator booted so the relay test below doesn't wait for another boot.
         env:
           MINIRUN_SMOKE_KEEP: "1"
+          MINIRUN_SMOKE_REQUIRE_MAC_GRANTS: ${{ runner.environment == 'github-hosted' && '1' || '' }}
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
       - name: Stage simulator template
         id: template-stage
@@ -114,6 +120,9 @@ jobs:
           path: ~/sim-template
           key: ${{ steps.template.outputs.key }}
       - name: Relay end-to-end test (wrangler dev + minirun serve)
+        env:
+          # The Mac app part (live view and live mouse) needs the grants made above.
+          MINIRUN_E2E_MAC_FIXTURE: ${{ runner.environment == 'github-hosted' && format('{0}/Tests/Fixtures/HelloMacApp', github.workspace) || '' }}
         run: |
           (cd worker && npm ci)
           scripts/ci-step.sh e2e-relay ./scripts/e2e-relay.sh
@@ -127,9 +136,12 @@ jobs:
           cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
           cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
           scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
-      - name: Clean up simulators
+      - name: Clean up simulators and the Mac fixture app
         if: always()
         run: |
+          # The smoke test quits it (terminate_app), unless it stopped partway. Only on GitHub's
+          # runners: on a self-hosted Mac another session may be running its own HelloMacApp.
+          if [[ "$RUNNER_ENVIRONMENT" == "github-hosted" ]]; then pkill -x HelloMacApp 2>/dev/null || true; fi
           for sim in $(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke")))'); do
             xcrun simctl shutdown "$sim" 2>/dev/null || true
             xcrun simctl delete "$sim" 2>/dev/null || true

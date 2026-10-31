@@ -1,5 +1,6 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
+import { streamKey } from "../src/relay";
 import { probeStream } from "../src/media";
 import { compareVersions, VERSION } from "../src/version";
 
@@ -365,6 +366,84 @@ describe("minirun worker", () => {
     b.close();
     expect(JSON.parse(await lifted)).toEqual({ type: "touch", phase: "up", device: "SIM-B", x: 7, y: 8 });
     expect(JSON.parse(await stop).action).toBe("stop");
+    agent.close();
+  });
+
+  it("streams Mac app windows and sends their input, scrolling and menus there", async () => {
+    expect(streamKey("mac-3f9a2c")).toBe("mac-3f9a2c");
+    expect(streamKey("mac")).toBe("mac");
+    expect(streamKey("mac/../x")).toBeNull();
+
+    const form = new FormData();
+    form.set("password", "test-password");
+    const login = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
+    const page = await SELF.fetch(`${ORIGIN}/?device=mac-3f9a2c`, { headers: { Cookie: cookie } });
+    expect(page.status).toBe(200);
+
+    const agent = (await connectAgent()) as WebSocket;
+    agent.send(JSON.stringify({ type: "hello", version: 5, host: { name: "Test Mac" }, tools: [] }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Mac apps are in the picker list, next to simulators; it's kept for viewers that join later.
+    const devices = [
+      { udid: "SIM-A", name: "iPhone 17 Pro" },
+      { udid: "mac-3f9a2c", kind: "mac", name: "Fetch", reserved_for: "you/fetch@main" },
+    ];
+    agent.send(JSON.stringify({ type: "simulators", devices }));
+    agent.send(JSON.stringify({ type: "screen", key: "mac-3f9a2c", udid: "mac-3f9a2c", kind: "mac", name: "Fetch", pointWidth: 800, pointHeight: 600, pixelWidth: 1600, pixelHeight: 1200 }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    const streamSet = nextMessage(agent, (d) => d.includes('"set"'));
+    const response = await SELF.fetch(`${ORIGIN}/viewer/ws?device=mac-3f9a2c`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+    const viewer = response.webSocket!;
+    const listed = nextMessage(viewer, (d) => d.includes('"simulators"'));
+    const screen = nextMessage(viewer, (d) => d.includes('"screen"'));
+    viewer.accept();
+    expect(JSON.parse(await listed).devices).toEqual(devices);
+    expect(JSON.parse(await screen)).toMatchObject({ udid: "mac-3f9a2c", pointWidth: 800 });
+    expect(JSON.parse(await streamSet).streams).toEqual([{ udid: "mac-3f9a2c", fps: 12, quality: 60, scale: 0.5, codec: "jpeg" }]);
+
+    // A resized window re-announces its size to the viewers watching it.
+    const resized = nextMessage(viewer, (d) => d.includes('"screen"'));
+    agent.send(JSON.stringify({ type: "screen", key: "mac-3f9a2c", udid: "mac-3f9a2c", kind: "mac", name: "Fetch", pointWidth: 1024, pointHeight: 700, pixelWidth: 2048, pixelHeight: 1400 }));
+    expect(JSON.parse(await resized).pointWidth).toBe(1024);
+
+    // Mac input from the viewer keeps its arguments and goes to the Mac app being watched.
+    const calls: Array<{ tool: string; arguments: Record<string, unknown> }> = [];
+    agent.addEventListener("message", (event) => {
+      if (typeof event.data !== "string" || event.data === "pong") return;
+      const message = JSON.parse(event.data);
+      if (message.type === "call") calls.push(message);
+    });
+    const inputs: Array<[string, Record<string, unknown>]> = [
+      ["tap", { x: 10, y: 20, button: "right" }],
+      ["tap", { x: 10, y: 20, count: 2 }],
+      ["scroll", { x: 400, y: 300, dx: 0, dy: 42.5 }],
+      ["press_key", { key: "n", modifiers: ["command", "shift"] }],
+      ["type_text", { text: "hello" }],
+      ["press_menu_item", { path: ["File", "New Window"], device: "SIM-A" }],
+      // A viewer can't pick the HID path (the real cursor and keyboard) or another window.
+      ["tap", { x: 1, y: 2, input: "hid", window: "Settings" }],
+      ["run_command", { command: "rm -rf /" }],
+    ];
+    for (const [tool, args] of inputs) viewer.send(JSON.stringify({ type: "input", tool, arguments: args }));
+    const touched = nextMessage(agent, (d) => d.includes('"touch"'));
+    viewer.send(JSON.stringify({ type: "touch", phase: "down", x: 5, y: 6 }));
+    expect(JSON.parse(await touched)).toEqual({ type: "touch", device: "mac-3f9a2c", phase: "down", x: 5, y: 6 });
+    viewer.send(JSON.stringify({ type: "touch", phase: "up", x: 5, y: 6 }));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(calls.map((c) => [c.tool, c.arguments])).toEqual([
+      ...inputs.slice(0, 6).map(([tool, args]) => [tool, { ...args, device: "mac-3f9a2c" }]),
+      ["tap", { x: 1, y: 2, device: "mac-3f9a2c" }],
+    ]);
+
+    // mac_status links straight to a Mac app.
+    const token = await getAccessToken();
+    const status = await rpc(token, "tools/call", { name: "mac_status", arguments: { device: "mac-3f9a2c" } });
+    expect(status.result.content[0].text).toContain(`Live view of Mac app mac-3f9a2c: ${ORIGIN}/?device=mac-3f9a2c`);
+
+    viewer.close();
     agent.close();
   });
 

@@ -9,6 +9,10 @@ import Glibc
 /// they start and stop. If minirun dies, they keep running as orphans: a hung `xcodebuild test`
 /// goes on holding its simulator and checkout with nothing left to stop it. On the next start,
 /// `reapOrphans` stops whatever the file still lists.
+///
+/// Mac apps minirun launches are spawned directly (MiniRunMac), not through `Shell` or
+/// `BackgroundProcess`, so they're never listed here: they're meant to outlive a restart, and
+/// `MacAppStore` reconciles them by pid and executable.
 public final class ChildProcessLedger: @unchecked Sendable {
     public struct Entry: Codable, Equatable, Sendable {
         public var pid: Int32

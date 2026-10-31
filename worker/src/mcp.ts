@@ -8,9 +8,9 @@ import { compareVersions, VERSION } from "./version";
  */
 
 const SUPPORTED_VERSIONS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
-const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators on your Mac", version: VERSION };
+const SERVER_INFO = { name: "minirun", title: "minirun — iOS simulators and Mac apps on your Mac", version: VERSION };
 
-const INSTRUCTIONS = `minirun drives iOS simulators and Xcode on the user's Mac.
+const INSTRUCTIONS = `minirun drives iOS simulators, macOS apps and Xcode on the user's Mac.
 Typical loop: push your branch to GitHub, call build_and_run with repo + ref, read any errors (they come back with file:line), fix, push, repeat.
 Then exercise the app: describe_ui to find elements, tap by id/label (or x,y in points), type_text, swipe, screenshot to look.
 Long builds return a job_id after at most 50 seconds; call get_job (repeatedly if need be) to wait for it. If a call ever times out, the work keeps running on the Mac: list_jobs finds it. A job of yours that's stuck or no longer needed: cancel_job stops it and frees its simulator. Jobs survive a restart of minirun; one cut off by a restart reports that.
@@ -26,20 +26,23 @@ To show your work in a PR, put a screenshot or recording in the PR description:
 - screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown to paste into the description.
 - Never share screens showing credentials or personal data. Anyone with the link can see it until it expires.
 - delete_media {id} takes back a wrong upload.
+- For a Mac app, screenshot {device: "mac-…", share: true} shares its window; recordings aren't supported for Mac apps yet.
 
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
 - build_and_run picks the simulator reserved for your repo + ref (or reserves one) and its result gives that simulator's UDID. You can also get one up front with boot_simulator {label: "owner/repo@branch"}.
 - Pass that UDID as device on every simulator call (tap, screenshot, describe_ui, launch_app, …). Without it, a call fails when several simulators are booted rather than guessing.
 - Never shut down or reuse a simulator reserved for something else; list_simulators shows who each one is reserved for.
-The user can watch and touch your simulator live in their browser: share the live view link from build_and_run or boot_simulator, or call mac_status with your device.`;
+
+macOS apps work the same way: pass platform: "macos" to build_and_run (or build, run_tests). The app runs on the Mac itself and the result gives a Mac app id like mac-3f9a2c; pass it as device on later calls (screenshot, describe_ui, tap, type_text, press_key with modifiers, scroll, press_menu_item, app_logs, …). list_mac_apps shows the Mac apps minirun launched and who each is for; only quit your own.
+The user can watch and control your simulator or Mac app live in their browser: share the live view link from build_and_run or boot_simulator, or call mac_status with your device.`;
 
 const MAC_STATUS_TOOL: ToolDefinition = {
   name: "mac_status",
-  description: "Check whether the Mac is online and which minirun version it and this relay run, and get the link where the user can watch and control a simulator live in a browser. Pass your simulator's UDID as device so the link opens on it. For Xcode, simulator and setup problems on the Mac, call host_info.",
+  description: "Check whether the Mac is online and which minirun version it and this relay run, and get the link where the user can watch and control a simulator or Mac app live in a browser. Pass your simulator's UDID or your Mac app id as device so the link opens on it. For Xcode, simulator and setup problems on the Mac, call host_info.",
   inputSchema: {
     type: "object",
-    properties: { device: { type: "string", description: "UDID of your simulator. The link opens straight to it." } },
+    properties: { device: { type: "string", description: "UDID of your simulator, or your Mac app id (mac-…). The link opens straight to it." } },
     additionalProperties: false,
   },
 };
@@ -127,14 +130,15 @@ async function handleMessage(message: RpcRequest, env: Env, origin: string): Pro
 async function macStatus(env: Env, origin: string, device: unknown): Promise<ToolResult> {
   const status = await relayStub(env).status();
   const key = streamKey(device);
-  if (key === null) return { content: [{ type: "text", text: "device must be a simulator UDID (from build_and_run, boot_simulator or list_simulators)." }], isError: true };
+  if (key === null) return { content: [{ type: "text", text: "device must be a simulator UDID (from build_and_run, boot_simulator or list_simulators) or a Mac app id (from build_and_run or list_mac_apps)." }], isError: true };
   const link = key ? `${origin}/?device=${encodeURIComponent(key)}` : `${origin}/`;
+  const what = key.startsWith("mac-") ? `Mac app ${key}` : `simulator ${key}`;
   const lines = [
     status.online ? `The Mac is online${status.host?.name ? ` (${status.host.name})` : ""}.` : "The Mac is offline.",
     versionLine(status.host?.minirun),
     key
-      ? `Live view of simulator ${key}: ${link} — the user can watch and tap it there (they'll be asked for the minirun password).`
-      : `Live view: ${link} — the user can watch and tap a simulator there and switch between booted ones (they'll be asked for the minirun password). Pass device to get a link that opens on your simulator.`,
+      ? `Live view of ${what}: ${link} — the user can watch and control it there (they'll be asked for the minirun password).`
+      : `Live view: ${link} — the user can watch and control a simulator there and switch between booted ones and Mac apps (they'll be asked for the minirun password). Pass device to get a link that opens on yours.`,
     `Viewers connected: ${status.viewers}. Tools available: ${status.toolCount}.` + (status.location ? ` The relay runs in Cloudflare's ${status.location} data center.` : ""),
   ];
   if (!status.online) {

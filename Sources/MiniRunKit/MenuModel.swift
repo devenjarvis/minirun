@@ -40,6 +40,33 @@ public struct MenuSnapshot: Equatable, Sendable {
         }
     }
 
+    /// A macOS app minirun launched on this Mac.
+    public struct MacAppRow: Equatable, Sendable, Identifiable {
+        public enum Activity: String, Sendable {
+            case busy, idle
+            case notRunning = "not running"
+        }
+
+        /// The Mac app id, e.g. "mac-3f9a2c".
+        public var id: String
+        public var name: String
+        public var bundleID: String?
+        /// Nil when it isn't running.
+        public var pid: Int32?
+        public var reservedFor: String?
+        public var activity: Activity
+        /// "used 3 min ago".
+        public var lastUsed: String?
+        public var viewerURL: String?
+
+        public var isRunning: Bool { activity != .notRunning }
+
+        /// "for you/app@main · used 2 min ago"
+        public var subtitle: String {
+            [reservedFor.map { "for \($0)" } ?? "not reserved", lastUsed].compactMap { $0 }.joined(separator: " · ")
+        }
+    }
+
     public struct JobRow: Equatable, Sendable, Identifiable {
         public var id: String
         public var title: String
@@ -91,6 +118,10 @@ public struct MenuSnapshot: Equatable, Sendable {
     public var canStart: Bool
     public var simulators: [SimulatorRow]
     public var simulatorError: String?
+    /// macOS apps minirun launched: running ones first, then by last use.
+    public var macApps: [MacAppRow] = []
+    /// What macOS lets the daemon do with macOS apps, when it says.
+    public var macPermissions: MacPermissionReport?
     /// Running jobs, then the most recent finished ones.
     public var jobs: [JobRow]
     public var viewerURL: String?
@@ -213,6 +244,16 @@ public struct MenuSnapshot: Equatable, Sendable {
                 recording: sim.recording
             )
         }
+        snapshot.macPermissions = status.macPermissions
+        snapshot.macApps = status.macApps
+            .sorted { ($0.running ? 1 : 0, $0.lastUsed ?? .distantPast) > ($1.running ? 1 : 0, $1.lastUsed ?? .distantPast) }
+            .map { app in
+                MacAppRow(
+                    id: app.id, name: app.name, bundleID: app.bundleID, pid: app.running ? app.pid : nil, reservedFor: app.reservedFor,
+                    activity: !app.running ? .notRunning : (app.busy ? .busy : .idle),
+                    lastUsed: app.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: app.viewerURL
+                )
+            }
         snapshot.recording = status.simulators.contains(where: \.recording)
         snapshot.mediaSummary = status.media.map(summarize)
         snapshot.mediaCount = status.media?.count ?? 0
@@ -245,6 +286,12 @@ public enum MenuAction: Equatable, Sendable {
     case releaseSimulator(String)
     case shutdownSimulator(String)
     case cancelJob(String)
+    /// Bring a Mac app minirun launched to the front.
+    case activateMacApp(String)
+    /// Quit a Mac app minirun launched.
+    case quitMacApp(String)
+    /// Have the daemon ask macOS for Screen Recording and Accessibility.
+    case requestMacPermissions
     case stopRecording(String)
     case deleteMedia(String)
     case deleteAllMedia
@@ -392,6 +439,9 @@ public actor MenuModel {
         case .releaseSimulator(let udid): request = ControlProtocol.Request(command: "release_simulator", udid: udid)
         case .shutdownSimulator(let udid): request = ControlProtocol.Request(command: "shutdown_simulator", udid: udid)
         case .cancelJob(let id): request = ControlProtocol.Request(command: "cancel_job", id: id)
+        case .activateMacApp(let id): request = ControlProtocol.Request(command: "activate_mac_app", id: id)
+        case .quitMacApp(let id): request = ControlProtocol.Request(command: "quit_mac_app", id: id)
+        case .requestMacPermissions: request = ControlProtocol.Request(command: "request_mac_permissions")
         case .stopRecording(let udid): request = ControlProtocol.Request(command: "stop_recording", udid: udid)
         case .deleteMedia(let id): request = ControlProtocol.Request(command: "delete_media", id: id)
         case .deleteAllMedia: request = ControlProtocol.Request(command: "delete_all_media")
@@ -410,7 +460,8 @@ public actor MenuModel {
             let response = try await environment.send(request)
             if response.ok {
                 notice = MenuSnapshot.Notice(response.message ?? "Done.")
-            } else if response.controlVersion == nil {
+            } else if response.controlVersion == nil
+                        || ((response.controlVersion ?? 0) < ControlProtocol.version && response.error?.hasPrefix("Unknown command") == true) {
                 notice = MenuSnapshot.Notice("This minirun serve is older than the app and can't do that. Restart it to update.", isError: true)
             } else {
                 notice = MenuSnapshot.Notice(response.error ?? "minirun serve couldn't do that.", isError: true)

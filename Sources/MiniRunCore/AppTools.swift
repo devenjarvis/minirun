@@ -1,5 +1,6 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 extension ToolRegistry {
@@ -12,6 +13,7 @@ extension ToolRegistry {
             properties: device.merging(["app_path": Schema.string("Absolute path to the .app on the Mac.")]) { a, _ in a },
             required: ["app_path"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("install_app")) }
             let sim = try await self.device(args)
             let path = try args.requireString("app_path")
             try await Simctl.install(sim.udid, appPath: path)
@@ -21,14 +23,17 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "launch_app",
-            description: "Launch an installed app by bundle id (relaunching it if already running) and return a screenshot.",
+            description: "Launch an installed app by bundle id (relaunching it if already running) and return a screenshot. " +
+                "For a macOS app, pass device \"mac\" with app_path (a .app on the Mac) or bundle_id; the result gives its Mac app id. " +
+                "With a Mac app id it relaunches that app (quitting the copy minirun started for it).",
             properties: device.merging([
                 "bundle_id": Schema.string("Bundle identifier, e.g. com.apple.Preferences."),
+                "app_path": Schema.string("Mac apps: the .app to run, e.g. one build produced."),
                 "arguments": Schema.stringArray("Launch arguments."),
                 "environment": ["type": "object", "additionalProperties": ["type": "string"], "description": "Environment variables for the app."],
-            ]) { a, _ in a },
-            required: ["bundle_id"]
+            ]) { a, _ in a }.merging(Self.isolatedHomeProperty) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macLaunchApp(args) }
             let sim = try await self.device(args)
             let bundle = try args.requireString("bundle_id")
             let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
@@ -42,10 +47,10 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "terminate_app",
-            description: "Quit a running app.",
-            properties: device.merging(["bundle_id": Schema.string("Bundle identifier.")]) { a, _ in a },
-            required: ["bundle_id"]
+            description: "Quit a running app. With a Mac app id, quits that app (politely, then forced after 5 seconds); only quit your own.",
+            properties: device.merging(["bundle_id": Schema.string("Bundle identifier (simulators).")]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macTerminate(args) }
             let sim = try await self.device(args)
             try await Simctl.terminate(sim.udid, bundleID: try args.requireString("bundle_id"))
             return .text("Terminated \(args.string("bundle_id")!).")
@@ -57,6 +62,7 @@ extension ToolRegistry {
             properties: device.merging(["bundle_id": Schema.string("Bundle identifier.")]) { a, _ in a },
             required: ["bundle_id"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("uninstall_app")) }
             let sim = try await self.device(args)
             try await Simctl.uninstall(sim.udid, bundleID: try args.requireString("bundle_id"))
             return .text("Uninstalled \(args.string("bundle_id")!).")
@@ -64,14 +70,16 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "app_logs",
-            description: "Read recent log output (print/os_log/NSLog) from the simulator, filtered to an app. Use after reproducing a bug.",
+            description: "Read recent log output (print/os_log/NSLog) from the simulator, filtered to an app. Use after reproducing a bug. " +
+                "With a Mac app id: what the app printed to stdout/stderr since its last launch, then unified logging for its process.",
             properties: device.merging([
                 "bundle_id": Schema.string("Filter to this app's process."),
                 "process": Schema.string("Or filter by process name."),
-                "seconds": Schema.integer("How far back to read (default 60).", minimum: 1, maximum: 3600),
+                "seconds": Schema.integer("How far back to read (default 60; Mac apps 300, and never before launch).", minimum: 1, maximum: 3600),
                 "contains": Schema.string("Only lines containing this text (case-insensitive)."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macAppLogs(args) }
             let sim = try await self.device(args)
             var process = args.string("process")
             if process == nil, let bundle = args.string("bundle_id") {
@@ -88,6 +96,7 @@ extension ToolRegistry {
             properties: device.merging(["paths": Schema.stringArray("Absolute paths on the Mac.")]) { a, _ in a },
             required: ["paths"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("add_media")) }
             let sim = try await self.device(args)
             let paths = args.strings("paths")
             guard !paths.isEmpty else { throw ToolError("Pass at least one path.") }

@@ -1,5 +1,6 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 /// Screenshots and recordings shared through the Worker for PR descriptions (docs/pr-media-plan.md).
@@ -17,6 +18,7 @@ extension ToolRegistry {
                 "max_seconds": Schema.integer("Stop by itself after this many seconds (default and limit: the Mac's Longest recording setting, 60 unless changed).", minimum: 5, maximum: 300),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("start_recording")) }
             let sim = try await self.device(args)
             let limit = config.recordingSecondsLimit
             let seconds = min(limit, max(MiniRunConfig.recordingSecondsRange.lowerBound, args.int("max_seconds") ?? limit))
@@ -38,6 +40,7 @@ extension ToolRegistry {
                 "caption": Schema.string("Short description, used as the image's alt text, e.g. \"Onboarding flow\"."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("stop_recording")) }
             let sim = try await self.device(args, boot: false)
             let share = args.bool("share") ?? true
             let caption = args.string("caption")
@@ -49,7 +52,7 @@ extension ToolRegistry {
         register(ToolDefinition(
             name: "delete_media",
             description: "Take back something you shared with screenshot {share} or stop_recording: its link stops working. " +
-                "Only media shared for your simulator's repo + ref can be deleted. GitHub may keep showing a cached copy for a while.",
+                "Only media shared for your simulator's (or Mac app's) repo + ref can be deleted. GitHub may keep showing a cached copy for a while.",
             properties: device.merging([
                 "id": Schema.string("The id from the share result."),
             ]) { a, _ in a },
@@ -59,10 +62,20 @@ extension ToolRegistry {
             guard MediaItem.isValidID(id), let item = await media.item(id) else {
                 throw ToolError("No shared media with id \(id). It may have expired already.")
             }
-            let sim = try await self.device(args, boot: false)
-            let label = await claims.claim(sim.udid)?.label
+            // A Mac app's shares carry its workspace label, as a simulator's carry its reservation's.
+            let name: String
+            let label: String?
+            if MacAppID.isMacDevice(args.string("device")) {
+                let session = try await macApp(args, running: false)
+                name = session.name
+                label = session.label
+            } else {
+                let sim = try await self.device(args, boot: false)
+                name = sim.name
+                label = await claims.claim(sim.udid)?.label
+            }
             guard item.label == label else {
-                throw ToolError("\(id) was shared for \(item.label ?? "no repo"), but \(sim.name) is reserved for \(label ?? "nothing"), " +
+                throw ToolError("\(id) was shared for \(item.label ?? "no repo"), but \(name) is reserved for \(label ?? "nothing"), " +
                     "so it isn't yours to delete. The user can delete it from the menu bar app.")
             }
             try await MediaUploader(config: config).delete(id: id)
@@ -86,14 +99,33 @@ extension ToolRegistry {
                 shot = try await SimulatorDriver.shared.screenshotJPEG(udid: udid, scale: 2.0 / 3.0, quality: 85) // 3x screens: ≈ 2x points
             }
             let label = await claims.claim(udid)?.label
-            let (item, deleted) = try await MediaSharing.share(
-                kind: .screenshot, files: [.init(ext: "jpg", data: shot.data)], caption: caption, label: label,
-                config: config, ledger: media, uploader: uploader
-            )
-            return MediaSharing.report(item, deleted: deleted)
+            return try await uploadScreenshot(shot.data, label: label, caption: caption, uploader: uploader)
         } catch {
             return "Not shared: \(error.localizedDescription)"
         }
+    }
+
+    /// screenshot {share} for a Mac app: a copy of its window at two pixels per point, shared for
+    /// the app's workspace label.
+    func shareMacScreenshot(_ session: MacAppSession, window: MacWindowSelector, caption: String?) async -> String {
+        let config = self.config
+        guard config.shareMedia else { return MediaSharing.disabledMessage }
+        do {
+            guard let pid = session.pid else { throw ToolError(MacToolSupport.notRunning(session)) }
+            let uploader = try MediaUploader(config: config)
+            let shot = try await MacAppDriver.shared.screenshotJPEG(pid: pid, window: window, scale: 2, quality: 85)
+            return try await uploadScreenshot(shot.data, label: session.label, caption: caption, uploader: uploader)
+        } catch {
+            return "Not shared: \(error.localizedDescription)"
+        }
+    }
+
+    private func uploadScreenshot(_ jpeg: Data, label: String?, caption: String?, uploader: MediaUploader) async throws -> String {
+        let (item, deleted) = try await MediaSharing.share(
+            kind: .screenshot, files: [.init(ext: "jpg", data: jpeg)], caption: caption, label: label,
+            config: config, ledger: media, uploader: uploader
+        )
+        return MediaSharing.report(item, deleted: deleted)
     }
 
     /// stop_recording's work: stop, make the GIF, upload, and hand back stills.

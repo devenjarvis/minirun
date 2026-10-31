@@ -360,7 +360,7 @@ public enum Setup {
     }
 
     public enum Step: Int, CaseIterable, Sendable {
-        case prerequisites, cloudflare, claude, github, headless
+        case prerequisites, cloudflare, claude, github, macApps, headless
 
         public var title: String {
             switch self {
@@ -368,6 +368,7 @@ public enum Setup {
             case .cloudflare: return "Deploy the Worker"
             case .claude: return "Connect Claude"
             case .github: return "GitHub (optional)"
+            case .macApps: return "macOS apps (optional)"
             case .headless: return "Running unattended"
             }
         }
@@ -375,6 +376,17 @@ public enum Setup {
 
     /// The doctor checks the first step shows: the ones that need fixing before anything works.
     public static let prerequisiteChecks: Set<String> = ["xcode", "frameworks", "simulators"]
+
+    /// The doctor checks the macOS apps step shows (Screen Recording, Accessibility, Display).
+    public static let macAppChecks: [String] = Doctor.macCheckIDs
+
+    /// The macOS apps step's rows: worked out from the daemon's latest status (polled, so it turns
+    /// green soon after a grant), or else its checks from the doctor. Empty when neither says (an
+    /// older daemon, or not checked yet).
+    public static func macAppRows(checks: [DoctorCheck], permissions: MacPermissionReport?) -> [DoctorCheck] {
+        if let permissions { return Doctor.macChecks(permissions) }
+        return macAppChecks.compactMap { id in checks.first { $0.id == id } }
+    }
 
     /// Claude has connected: it made a tool call after `since` (when this step opened).
     public static func claudeConnected(_ relay: ServeStatus.Relay?, since: Date) -> Bool {
@@ -427,4 +439,8 @@ public enum SystemSettingsLinks {
     public static let energy = "x-apple.systempreferences:com.apple.Energy-Settings.extension"
     /// Login Items, where "Open at login" can be checked if it didn't take.
     public static let loginItems = "x-apple.systempreferences:com.apple.LoginItems-Settings.extension"
+    /// Privacy & Security → Screen Recording, for macOS app screenshots and the live view.
+    public static let screenRecording = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+    /// Privacy & Security → Accessibility, for reading and driving macOS apps' UI.
+    public static let accessibility = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 }

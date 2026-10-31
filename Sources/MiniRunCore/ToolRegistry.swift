@@ -1,5 +1,6 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 /// All MCP tools minirun exposes, with their handlers.
@@ -31,6 +32,21 @@ public final class ToolRegistry: @unchecked Sendable {
     let checkouts = KeyedLock()
     /// Folders run_command is running in, so a checkout isn't deleted under it.
     let commandFolders = SimulatorActivity()
+    /// The macOS apps minirun launched, by Mac app id. Simulators and Mac apps share `activity`.
+    let macApps = MacAppStore(url: MacAppStore.defaultURL)
+    /// One macOS test run at a time: UI tests take over the Mac's mouse and keyboard.
+    let macTests = KeyedLock()
+    /// One launch or quit at a time per Mac app id, so two calls can't both spawn a copy.
+    let macLaunches = KeyedLock()
+    /// The window each Mac app's live view is showing, by Mac app id, so the viewer's clicks and
+    /// input go to the window the person sees.
+    let streamedMacWindows = StreamedMacWindows()
+    /// The platform each scheme was found to build for, so builds without `platform` don't ask
+    /// xcodebuild every time.
+    let detectedPlatforms = DetectedPlatforms()
+    /// Set while running a call that came from a live viewer (not an MCP client).
+    @TaskLocal static var fromViewer: Bool = false
+    let liveMouse = LiveMouse()
     /// What's been shared through the Worker. Kept in a file even for a one-off `minirun call`,
     /// so the storage limit counts every upload.
     let media = MediaLedger(url: MediaLedger.defaultURL)
@@ -53,6 +69,7 @@ public final class ToolRegistry: @unchecked Sendable {
         registerSimulatorTools()
         registerAppTools()
         registerCodeTools()
+        registerMacTools()
         registerMediaTools()
     }
 
@@ -75,6 +92,9 @@ public final class ToolRegistry: @unchecked Sendable {
     /// The simulator a tool call acts on: `device` if given, else the only booted one.
     /// Fails with a list of booted simulators rather than guessing when several are running.
     func device(_ args: ToolArguments, boot: Bool = true) async throws -> XcodeParsing.SimDevice {
+        if let query = args.string("device"), MacAppID.isMacDevice(query) {
+            throw ToolError("\(query) is a Mac app, and this call needs a simulator.")
+        }
         // An exact UDID that's booted (not still booting) needs no picking: skip simctl, which
         // costs ~100ms on every tap from the live view.
         if let query = args.string("device"), let known = await knownDevices[query],
@@ -190,10 +210,11 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     /// Checks every minute for simulators nobody has used in `idleShutdownMinutes` and shuts them
-    /// down (see `IdleSimulators.plan`). Runs until cancelled. While `idleShutdownMinutes` is 0 it
-    /// does nothing, but keeps checking in case a reload turns it on.
+    /// down (see `IdleSimulators.plan`), and quits idle Mac apps minirun launched. Runs until
+    /// cancelled. While `idleShutdownMinutes` is 0 it does nothing, but keeps checking in case a
+    /// reload turns it on.
     public func shutDownIdleSimulators(log: @escaping @Sendable (String) -> Void) async {
-        if config.idleShutdownMinutes > 0 { log("Shutting down simulators after \(config.idleShutdownMinutes) idle minutes") }
+        if config.idleShutdownMinutes > 0 { log("Shutting down simulators and quitting Mac apps after \(config.idleShutdownMinutes) idle minutes") }
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
             guard config.idleShutdownMinutes > 0 else { continue }
@@ -202,7 +223,14 @@ public final class ToolRegistry: @unchecked Sendable {
             } catch {
                 log("Idle simulator check failed: \(error.localizedDescription)")
             }
+            await quitIdleMacAppsOnce(log: log)
         }
+    }
+
+    /// After `minirun serve` starts: forgets the pids of Mac apps that quit while it wasn't
+    /// running, or that now belong to another program, so it never signals a stranger.
+    public func reconcileMacApps() async {
+        await macApps.reconcile { session in MacAppDriver.isRunning(session) }
     }
 
     func shutDownIdleSimulatorsOnce(log: @Sendable (String) -> Void) async throws {
@@ -235,7 +263,7 @@ public final class ToolRegistry: @unchecked Sendable {
         }
     }
 
-    /// The booted simulators and recent jobs, for the status snapshot.
+    /// The booted simulators and recent jobs, for the status snapshot. Mac apps: `macAppStatus`.
     public func status() async -> (simulators: [ServeStatus.Simulator], simulatorError: String?, jobs: [ServeStatus.Job]) {
         let recent = await self.jobs.list().prefix(20).map { ServeStatus.Job($0) }
         let busy = await activity.busy
@@ -298,6 +326,40 @@ public final class ToolRegistry: @unchecked Sendable {
             note += abs(Double(shot.width) - size.width) < 2 ? " — image pixels equal points, so use them directly for tap/swipe." : "."
         }
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
+    }
+}
+
+/// The window each Mac app's live view shows (window server ids, by Mac app id). Read from
+/// synchronous code, so a lock rather than an actor.
+final class StreamedMacWindows: @unchecked Sendable {
+    private let lock = NSLock()
+    private var windows: [String: UInt32] = [:]
+
+    subscript(id: String) -> UInt32? {
+        get { lock.withLock { windows[id.lowercased()] } }
+        set { lock.withLock { windows[id.lowercased()] = newValue } }
+    }
+}
+
+/// The platform a scheme builds for, as `XcodeBuild.detectPlatform` found it, per checkout,
+/// project, scheme and arguments. An entry counts only while the project files are as they
+/// were (`fingerprint`); `lastKnown` ignores that, for guessing before the checkout is synced.
+actor DetectedPlatforms {
+    private var entries: [String: (fingerprint: String, platform: BuildPlatform)] = [:]
+
+    func platform(_ key: String, fingerprint: String?) -> BuildPlatform? {
+        guard let fingerprint, let entry = entries[key], entry.fingerprint == fingerprint else { return nil }
+        return entry.platform
+    }
+
+    func lastKnown(_ key: String) -> BuildPlatform? { entries[key]?.platform }
+
+    func record(_ key: String, fingerprint: String?, platform: BuildPlatform) {
+        guard let fingerprint else {
+            entries[key] = nil
+            return
+        }
+        entries[key] = (fingerprint, platform)
     }
 }
 

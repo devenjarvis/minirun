@@ -43,6 +43,46 @@ sharing one Mac.
 - The instructions Claude gets explain package tests, `cancel_job` and the stall timeout.
 - Automatic updates check GitHub every hour instead of every 6 hours.
 
+### macOS apps
+
+minirun now builds, runs and drives native macOS apps (AppKit, SwiftUI, Mac Catalyst) on the Mac
+itself, with the same loop as iOS. See [macOS apps](README.md#macos-apps).
+
+- **`platform`** on `build`, `build_and_run` and `run_tests`: `ios`, `macos` or `mac-catalyst`.
+  Left out, a scheme that only builds for macOS is detected. Mac builds don't use a simulator.
+- **`build_and_run` for macOS** quits the copy it launched last time for this repo + ref (only
+  that process), launches the new build, waits for its window and returns a screenshot and a
+  **Mac app id** (`mac-3f9a2c`) to pass as `device`. `isolated_home` gives a non-sandboxed app its
+  own home folder per checkout. If an ad-hoc-signed build quits at launch, the result says its
+  entitlements are the likely cause.
+- **The existing tools take a Mac app id:** `screenshot` and `describe_ui` (with `window`,
+  `include_menus`), `tap` (with `button`, `count`), `swipe`/`long_press` (mouse drags),
+  `type_text`, `press_key` (with `modifiers`), `app_logs`, `open_url`, `set_pasteboard`,
+  `launch_app` (`device: "mac"` with `app_path` or `bundle_id`) and `terminate_app`. Input tools
+  take `input: "hid"` for apps that ignore events posted to their process. Simulator-only tools say
+  what to use instead.
+- **New tools:** `list_mac_apps`, `list_windows`, `scroll` and `press_menu_item`.
+- **Clicks without the cursor:** SwiftUI controls ignore clicks posted to the app, so a tap at a
+  window point, or a click in the live view, on a button or text field presses or focuses it
+  through Accessibility. `input: "hid"` clicks with the real cursor.
+- **Live view of Mac app windows** (H.264, JPEG fallback), with clicks, drags, right and double
+  clicks, wheel scrolling and keys with modifiers. Relay protocol version 5.
+- **Several sessions:** apps are tracked per repo + ref in `~/.config/minirun/mac-apps.json`, kept
+  across `minirun serve` restarts only while their pid still runs the same executable (the
+  cleanup of commands a previous run left behind leaves them running), and quit
+  after `idleShutdownMinutes` unused. macOS test runs go one at a time, since UI tests take over
+  the mouse and keyboard.
+- **Permissions:** `minirun doctor`, `host_info` and the menu bar app check Screen Recording,
+  Accessibility and a display for the daemon; Setup can request them. `minirun status` and the
+  menu list the Mac apps minirun launched. Apps minirun launches are responsible for themselves,
+  so they never get minirun's permissions. `input: "hid"` checks before each event that the app
+  is in front (and its window is under the pointer), and stops otherwise; the live view never
+  uses it. `open_url` goes to the app's own pid.
+- **With the other new features:** Mac builds and tests get the same stall and overall timeouts,
+  `cancel_job` and job records as iOS ones (macOS tests also run without parallel testing and with
+  the per-test allowance). `screenshot {share: true}` with a Mac app id shares its window;
+  recordings aren't supported for Mac apps yet. Control protocol version 4.
+
 ## 0.3.0
 
 minirun is now a Mac menu bar app. Install it once and it runs `minirun serve`, sets up the
