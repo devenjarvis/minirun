@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+**Screenshots and recordings in PR descriptions.** Agents can now show their work in a PR.
+
+- **`screenshot {share: true}`** uploads a 2x screenshot to your Worker and returns markdown for a
+  PR description.
+- **`start_recording` / `stop_recording`** record the simulator (up to 60 s by default) and share a
+  looping GIF that links to a player page for the MP4. `delete_media` takes back a wrong upload.
+- **Stored in a new `MEDIA_KV` namespace** that expires files after 7 days and is kept under
+  500 MB. Redeploy the Worker (Settings → Cloudflare, or `minirun worker deploy`) to get it; no new
+  API token permissions are needed.
+- **Size probes** at `/m/probe/<n>.gif` find the largest GIF GitHub will show; set
+  `mediaInlineLimitMB` to match.
+- **Menu bar app:** a Shared media section, a Sharing settings tab, and a red dot while a
+  simulator is recording.
+
 Fixes for test runs that hung and held every simulator, from a report of several sessions
 sharing one Mac.
 

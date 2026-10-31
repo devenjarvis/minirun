@@ -15,6 +15,7 @@ struct MenuView: View {
             if snapshot.daemonRunning {
                 simulators
                 jobs
+                if snapshot.mediaSummary != nil { sharedMedia }
             } else if snapshot.canStart {
                 notRunning
             }
@@ -156,6 +157,43 @@ struct MenuView: View {
         }
     }
 
+    // MARK: Shared media
+
+    private var sharedMedia: some View {
+        Section {
+            HStack(alignment: .firstTextBaseline) {
+                Image(systemName: "photo.on.rectangle")
+                Text(snapshot.mediaSummary ?? "").font(.callout)
+                Spacer()
+                Menu {
+                    if snapshot.media.isEmpty {
+                        Text("Nothing shared")
+                    }
+                    ForEach(snapshot.media) { row in
+                        Menu(row.title) {
+                            Button("Open") { store.open(row.url) }
+                            Button("Copy link") { store.copy(row.url, note: "Copied the link.") }
+                            Divider()
+                            Button("Delete") { store.perform(.deleteMedia(row.id)) }
+                                .disabled(snapshot.daemonOutdated)
+                        }
+                    }
+                    Divider()
+                    Button("Delete all shared media…") { store.confirmDeleteAllMedia() }
+                        .disabled(snapshot.daemonOutdated || snapshot.mediaCount == 0)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Screenshots and recordings shared for PR descriptions")
+            }
+        } header: {
+            SectionTitle("Shared media")
+        }
+    }
+
     // MARK: Not running
 
     private var notRunning: some View {
@@ -226,6 +264,9 @@ struct SimulatorRowView: View {
                 HStack(spacing: 6) {
                     Text(sim.name).lineLimit(1)
                     ActivityBadge(activity: sim.activity)
+                    if sim.recording {
+                        Image(systemName: "record.circle").foregroundStyle(.red).help("Recording its screen")
+                    }
                 }
                 Text(sim.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
@@ -234,6 +275,10 @@ struct SimulatorRowView: View {
                 Button("Watch live") { store.open(sim.viewerURL) }
                     .disabled(sim.viewerURL == nil)
                 Button("Show in Simulator") { store.showInSimulator(sim.udid) }
+                if sim.recording {
+                    Button("Stop recording") { store.perform(.stopRecording(sim.udid)) }
+                        .disabled(!actionsEnabled)
+                }
                 Divider()
                 Button("Release reservation") { store.perform(.releaseSimulator(sim.udid)) }
                     .disabled(!actionsEnabled || sim.reservedFor == nil)

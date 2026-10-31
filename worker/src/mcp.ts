@@ -21,6 +21,12 @@ Tests:
 - A run that prints nothing for stall_seconds (default 300) is stopped as hung and says so; that's usually the Mac, not your code.
 - configure_simulator sets text_size (including accessibility-* sizes), increase_contrast and appearance; don't tap through the Settings app for them.
 
+To show your work in a PR, put a screenshot or recording in the PR description:
+- Set configure_simulator {status_bar: "demo"} first, for a clean 9:41 status bar.
+- screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown to paste into the description.
+- Never share screens showing credentials or personal data. Anyone with the link can see it until it expires.
+- delete_media {id} takes back a wrong upload.
+
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
 - build_and_run picks the simulator reserved for your repo + ref (or reserves one) and its result gives that simulator's UDID. You can also get one up front with boot_simulator {label: "owner/repo@branch"}.

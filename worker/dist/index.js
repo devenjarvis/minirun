@@ -5539,19 +5539,19 @@ var MacRelay = class extends DurableObject {
         break;
     }
   }
-  onFrame(frame) {
-    if (frame.byteLength < 5) return;
-    const bytes = new Uint8Array(frame);
+  onFrame(frame2) {
+    if (frame2.byteLength < 5) return;
+    const bytes = new Uint8Array(frame2);
     let key = "";
     const video = bytes[0] === 3;
     if (bytes[0] === 2 || video) {
-      if (frame.byteLength < 6 + bytes[5] + (video ? 1 : 0)) return;
+      if (frame2.byteLength < 6 + bytes[5] + (video ? 1 : 0)) return;
       key = decoder.decode(bytes.subarray(6, 6 + bytes[5]));
     } else if (bytes[0] !== 1) {
       return;
     }
     const keyframe = video && (bytes[6 + bytes[5]] & 1) === 1;
-    const sequence = new DataView(frame).getUint32(1);
+    const sequence = new DataView(frame2).getUint32(1);
     for (const viewer of this.viewers()) {
       const viewerState = this.viewerState(viewer);
       if (viewerState.key !== key) continue;
@@ -5574,7 +5574,7 @@ var MacRelay = class extends DurableObject {
       } else if (state.sent - state.acked >= VIEWER_WINDOW) {
         continue;
       }
-      if (safeSend(viewer, frame)) {
+      if (safeSend(viewer, frame2)) {
         state.sent = sequence;
         if (video) state.needsKeyframe = false;
       }
@@ -5742,6 +5742,12 @@ Tests:
 - iOS tests: run_tests {repo, ref, scheme?, project?}. For a package in a subfolder, project is the package's folder, relative to the checkout: run_tests {repo: "you/app", ref: "my-branch", project: "Packages/Core"}. Leave path out when you pass repo; path is only for a folder on the Mac that isn't a checkout.
 - A run that prints nothing for stall_seconds (default 300) is stopped as hung and says so; that's usually the Mac, not your code.
 - configure_simulator sets text_size (including accessibility-* sizes), increase_contrast and appearance; don't tap through the Settings app for them.
+
+To show your work in a PR, put a screenshot or recording in the PR description:
+- Set configure_simulator {status_bar: "demo"} first, for a clean 9:41 status bar.
+- screenshot {device, share: true} for a still, or start_recording {device}, interact, then stop_recording {device} for a recording. Each returns markdown to paste into the description.
+- Never share screens showing credentials or personal data. Anyone with the link can see it until it expires.
+- delete_media {id} takes back a wrong upload.
 
 Other Claude sessions may be using the same Mac at the same time, on other apps or other branches of yours. To stay on your own simulator and checkout:
 - Always pass the same repo + ref. Each repo + ref has its own checkout and build folder.
@@ -5942,6 +5948,367 @@ function messagePage(title, message) {
   return page(title, `<div class="card"><div class="mark"><i></i>minirun</div><h1>${escapeHTML(title)}</h1><p>${escapeHTML(message)}</p></div>`);
 }
 __name(messagePage, "messagePage");
+
+// src/media.ts
+var MAX_BYTES = 25 * 1024 * 1024;
+var MIN_TTL = 60;
+var MAX_TTL = 90 * 86400;
+var MAX_CAPTION = 200;
+var TYPES = { jpg: "image/jpeg", png: "image/png", gif: "image/gif", mp4: "video/mp4" };
+var ID = "[A-Za-z0-9_-]{22}";
+var UPLOAD = new RegExp(`^/media/(${ID})\\.(jpg|png|gif|mp4)$`);
+var DELETE = new RegExp(`^/media/(${ID})$`);
+var FILE = new RegExp(`^/m/(${ID})\\.(jpg|png|gif|mp4)$`);
+var PLAYER = new RegExp(`^/m/(${ID})$`);
+var PROBE = /^\/m\/probe\/([1-9]|1[0-9]|2[0-5])\.gif$/;
+async function handleMedia(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  if (path.startsWith("/media/")) return agentRoute(request, env, url);
+  if (!path.startsWith("/m/")) return null;
+  if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405, headers: { Allow: "GET, HEAD" } });
+  let match;
+  if (match = path.match(PROBE)) return probe(Number(match[1]), request.method === "HEAD");
+  if (match = path.match(FILE)) return serveFile(request, env, match[1], match[2]);
+  if (match = path.match(PLAYER)) return player(env, match[1]);
+  return notFound();
+}
+__name(handleMedia, "handleMedia");
+async function agentRoute(request, env, url) {
+  const token = bearer(request);
+  if (!env.AGENT_TOKEN || !token || !await safeEqual(token, env.AGENT_TOKEN)) {
+    return new Response("Invalid agent token", { status: 401 });
+  }
+  if (request.method === "PUT") return upload(request, env, url);
+  if (request.method === "DELETE") {
+    const id = url.pathname.match(DELETE)?.[1];
+    if (!id) return new Response("Bad media id", { status: 400 });
+    await Promise.all(Object.keys(TYPES).map((ext) => env.MEDIA_KV.delete(`${id}.${ext}`)));
+    return new Response(null, { status: 204 });
+  }
+  return new Response(null, { status: 405, headers: { Allow: "PUT, DELETE" } });
+}
+__name(agentRoute, "agentRoute");
+async function upload(request, env, url) {
+  const match = url.pathname.match(UPLOAD);
+  if (!match) return new Response("Bad media id or extension: use /media/<22 base64url characters>.jpg|png|gif|mp4", { status: 400 });
+  const [, id, ext] = match;
+  const ttlHeader = request.headers.get("X-Minirun-Expires-In") ?? "";
+  const ttl = /^\d+$/.test(ttlHeader) ? Number(ttlHeader) : NaN;
+  if (!(ttl >= MIN_TTL && ttl <= MAX_TTL)) return new Response(`X-Minirun-Expires-In must be ${MIN_TTL} to ${MAX_TTL} seconds`, { status: 400 });
+  let caption;
+  const captionHeader = request.headers.get("X-Minirun-Caption");
+  if (captionHeader) {
+    try {
+      caption = decodeURIComponent(captionHeader).replace(/[\u0000-\u001f\u007f]/g, " ").trim();
+    } catch {
+      return new Response("X-Minirun-Caption must be percent-encoded", { status: 400 });
+    }
+    if ([...caption].length > MAX_CAPTION) return new Response(`X-Minirun-Caption must be at most ${MAX_CAPTION} characters`, { status: 400 });
+    if (!caption) caption = void 0;
+  }
+  const declared = Number(request.headers.get("Content-Length") ?? 0);
+  if (declared > MAX_BYTES) return tooLarge();
+  const body = await readUpTo(request.body, MAX_BYTES);
+  if (!body) return tooLarge();
+  if (body.byteLength === 0) return new Response("Empty body", { status: 400 });
+  const metadata = { type: TYPES[ext], bytes: body.byteLength, created: Date.now() };
+  if (caption) metadata.caption = caption;
+  await env.MEDIA_KV.put(`${id}.${ext}`, body, { expirationTtl: ttl, metadata });
+  return Response.json({ url: `${url.origin}/m/${id}.${ext}` }, { status: 201 });
+}
+__name(upload, "upload");
+function tooLarge() {
+  return new Response(`Too large: the limit is ${MAX_BYTES} bytes`, { status: 413 });
+}
+__name(tooLarge, "tooLarge");
+async function readUpTo(body, limit) {
+  if (!body) return new Uint8Array();
+  const chunks = [];
+  let total = 0;
+  const reader = body.getReader();
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+__name(readUpTo, "readUpTo");
+function publicHeaders(type, length) {
+  return new Headers({
+    "Content-Type": type,
+    "Content-Length": String(length),
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "X-Robots-Tag": "noindex",
+    "X-Content-Type-Options": "nosniff",
+    "Accept-Ranges": "bytes"
+  });
+}
+__name(publicHeaders, "publicHeaders");
+function notFound() {
+  return new Response("Not found", { status: 404, headers: { "X-Robots-Tag": "noindex", "Cache-Control": "no-store" } });
+}
+__name(notFound, "notFound");
+async function serveFile(request, env, id, ext) {
+  const range = request.headers.get("Range");
+  const head = request.method === "HEAD";
+  if (range && !head) {
+    const { value: value2, metadata: metadata2 } = await env.MEDIA_KV.getWithMetadata(`${id}.${ext}`, "arrayBuffer");
+    if (!value2) return notFound();
+    const size = value2.byteLength;
+    const span = parseRange(range, size);
+    const type2 = metadata2?.type ?? TYPES[ext];
+    if (span === "unsatisfiable") {
+      const headers = publicHeaders(type2, 0);
+      headers.set("Content-Range", `bytes */${size}`);
+      headers.set("Cache-Control", "no-store");
+      return new Response(null, { status: 416, headers });
+    }
+    if (span) {
+      const [start, end] = span;
+      const headers = publicHeaders(type2, end - start + 1);
+      headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+      return new Response(value2.slice(start, end + 1), { status: 206, headers });
+    }
+    return new Response(value2, { headers: publicHeaders(type2, size) });
+  }
+  const { value, metadata } = await env.MEDIA_KV.getWithMetadata(`${id}.${ext}`, "stream");
+  if (!value) return notFound();
+  const type = metadata?.type ?? TYPES[ext];
+  if (!metadata?.bytes) {
+    const bytes = await new Response(value).arrayBuffer();
+    return new Response(head ? null : bytes, { headers: publicHeaders(type, bytes.byteLength) });
+  }
+  if (head) {
+    await value.cancel();
+    return new Response(null, { headers: publicHeaders(type, metadata.bytes) });
+  }
+  return new Response(value.pipeThrough(new FixedLengthStream(metadata.bytes)), { headers: publicHeaders(type, metadata.bytes) });
+}
+__name(serveFile, "serveFile");
+function parseRange(header, size) {
+  const match = header.trim().match(/^bytes=(\d*)-(\d*)$/);
+  if (!match || !match[1] && !match[2]) return null;
+  const [, first, last] = match;
+  if (!first) {
+    const suffix = Number(last);
+    if (suffix === 0 || size === 0) return "unsatisfiable";
+    return [Math.max(0, size - suffix), size - 1];
+  }
+  const start = Number(first);
+  const end = last ? Number(last) : size - 1;
+  if (last && end < start) return null;
+  if (start >= size) return "unsatisfiable";
+  return [start, Math.min(end, size - 1)];
+}
+__name(parseRange, "parseRange");
+async function player(env, id) {
+  const { value, metadata } = await env.MEDIA_KV.getWithMetadata(`${id}.mp4`, "stream");
+  if (!value) return playerResponse(missingPage(), 404);
+  await value.cancel();
+  return playerResponse(playerPage(id, metadata?.caption));
+}
+__name(player, "player");
+function playerResponse(body, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": status === 200 ? "public, max-age=300" : "no-store",
+      "X-Robots-Tag": "noindex",
+      "Referrer-Policy": "no-referrer"
+    }
+  });
+}
+__name(playerResponse, "playerResponse");
+function mediaPage(title, body) {
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>${escapeHTML(title)} \xB7 minirun</title><style>${baseStyles}
+  .card.wide { max-width: 520px; margin-top: 6vh; }
+  video { display: block; width: 100%; max-height: 78vh; border-radius: 12px; background: #000; }
+  .caption { margin: 14px 0 0; color: var(--text); }
+</style></head><body>${body}</body></html>`;
+}
+__name(mediaPage, "mediaPage");
+function playerPage(id, caption) {
+  return mediaPage(caption || "Recording", `<div class="card wide">
+  <div class="mark"><i></i>minirun</div>
+  <video src="/m/${id}.mp4" controls playsinline preload="metadata"></video>
+  ${caption ? `<p class="caption">${escapeHTML(caption)}</p>` : ""}
+</div>`);
+}
+__name(playerPage, "playerPage");
+function missingPage() {
+  return mediaPage("Not found", `<div class="card"><div class="mark"><i></i>minirun</div><h1>Not found</h1><p>This recording doesn't exist or has expired.</p></div>`);
+}
+__name(missingPage, "missingPage");
+function probe(mib, head) {
+  const total = mib * 1024 * 1024;
+  const headers = {
+    "Content-Type": "image/gif",
+    "Content-Length": String(total),
+    "Cache-Control": "public, max-age=86400",
+    "X-Robots-Tag": "noindex",
+    "X-Content-Type-Options": "nosniff"
+  };
+  if (head) return new Response(null, { headers });
+  const fixed = new FixedLengthStream(total);
+  probeStream(total).pipeTo(fixed.writable).catch(() => {
+  });
+  return new Response(fixed.readable, { headers });
+}
+__name(probe, "probe");
+var PROBE_SIDE = 32;
+var PADDING_CHUNK = (() => {
+  const chunk = new Uint8Array(256 * 256).fill(32);
+  for (let i = 0; i < chunk.length; i += 256) chunk[i] = 255;
+  return chunk;
+})();
+function probeStream(total) {
+  const { start, end } = probeParts(total);
+  let fullBlocks = (total - start.length - end.length) / 256;
+  let sentStart = false;
+  let sentEnd = false;
+  return new ReadableStream({
+    pull(controller) {
+      if (!sentStart) {
+        sentStart = true;
+        controller.enqueue(start);
+      } else if (fullBlocks > 0) {
+        const blocks = Math.min(fullBlocks, 256);
+        fullBlocks -= blocks;
+        controller.enqueue(PADDING_CHUNK.subarray(0, blocks * 256));
+      } else if (!sentEnd) {
+        sentEnd = true;
+        controller.enqueue(end);
+      } else {
+        controller.close();
+      }
+    }
+  });
+}
+__name(probeStream, "probeStream");
+function probeParts(total) {
+  const side = [PROBE_SIDE, 0];
+  const start = [
+    ...ascii("GIF89a"),
+    ...side,
+    ...side,
+    128,
+    0,
+    0,
+    // logical screen, 2-color global table
+    21,
+    23,
+    28,
+    124,
+    196,
+    255,
+    // dark, accent
+    33,
+    255,
+    11,
+    ...ascii("NETSCAPE2.0"),
+    3,
+    1,
+    0,
+    0,
+    0,
+    // loop forever
+    ...frame(0),
+    ...frame(1),
+    33,
+    254
+    // comment extension
+  ];
+  const rest = total - start.length - 2;
+  if (rest < 0) throw new Error("probe too small");
+  const tail = [];
+  let partial = rest % 256;
+  if (partial === 1) partial = 257;
+  if (partial > 1 && partial < 257) tail.push(...block(partial - 1));
+  if (partial === 257) tail.push(...block(200), ...block(55));
+  tail.push(0, 59);
+  return { start: Uint8Array.from(start), end: Uint8Array.from(tail) };
+}
+__name(probeParts, "probeParts");
+function block(length) {
+  return [length, ...new Array(length).fill(32)];
+}
+__name(block, "block");
+function ascii(text) {
+  return [...text].map((c) => c.charCodeAt(0));
+}
+__name(ascii, "ascii");
+function frame(color) {
+  const side = [PROBE_SIDE, 0];
+  const data = lzw(color, PROBE_SIDE * PROBE_SIDE);
+  const blocks = [];
+  for (let i = 0; i < data.length; i += 255) {
+    const piece = data.slice(i, i + 255);
+    blocks.push(piece.length, ...piece);
+  }
+  return [
+    33,
+    249,
+    4,
+    0,
+    50,
+    0,
+    0,
+    0,
+    // graphic control: 0.5 s
+    44,
+    0,
+    0,
+    0,
+    0,
+    ...side,
+    ...side,
+    0,
+    // image descriptor, no local table
+    2,
+    ...blocks,
+    0
+    // LZW minimum code size 2, data, terminator
+  ];
+}
+__name(frame, "frame");
+function lzw(color, count) {
+  const codes = [];
+  for (let i = 0; i < count; i++) {
+    if (i % 2 === 0) codes.push(4);
+    codes.push(color);
+  }
+  codes.push(5);
+  const bytes = [];
+  let bits = 0;
+  let width = 0;
+  for (const code of codes) {
+    bits |= code << width;
+    width += 3;
+    while (width >= 8) {
+      bytes.push(bits & 255);
+      bits >>= 8;
+      width -= 8;
+    }
+  }
+  if (width > 0) bytes.push(bits & 255);
+  return bytes;
+}
+__name(lzw, "lzw");
 
 // src/viewer.ts
 function viewerPage() {
@@ -6318,6 +6685,8 @@ __name(viewerPage, "viewerPage");
 async function handleDefault(request, env) {
   const url = new URL(request.url);
   const secure = url.protocol === "https:";
+  const media = await handleMedia(request, env);
+  if (media) return media;
   switch (url.pathname) {
     case "/agent": {
       const token = bearer(request);

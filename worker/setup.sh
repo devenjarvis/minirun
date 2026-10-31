@@ -2,7 +2,7 @@
 # Deploys the minirun Worker with wrangler, for working on the Worker itself. Everyone else
 # should use `minirun worker deploy` on the Mac, which needs no node (scripts/install.sh runs it).
 #
-# Prints the settings for the Mac. Safe to re-run: it reuses the KV namespace and keeps existing
+# Prints the settings for the Mac. Safe to re-run: it reuses the KV namespaces and keeps existing
 # secrets unless you pass --new-password or --new-token.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
@@ -26,17 +26,20 @@ if ! npx wrangler whoami 2>/dev/null | grep -q "You are logged in"; then
   npx wrangler login
 fi
 
-if grep -q "REPLACE_WITH_KV_ID" wrangler.jsonc; then
-  echo "==> Creating the KV namespace for OAuth tokens"
-  output=$(npx wrangler kv namespace create OAUTH_KV 2>&1 || true)
+# OAuth tokens, and shared screenshots and recordings.
+for pair in OAUTH_KV:REPLACE_WITH_KV_ID MEDIA_KV:REPLACE_WITH_MEDIA_KV_ID; do
+  binding=${pair%%:*}; placeholder=${pair#*:}
+  grep -q "\"$placeholder\"" wrangler.jsonc || continue
+  echo "==> Creating the $binding KV namespace"
+  output=$(npx wrangler kv namespace create "$binding" 2>&1 || true)
   id=$(echo "$output" | grep -oE '"id": ?"[0-9a-f]{32}"' | grep -oE '[0-9a-f]{32}' | head -1)
   if [[ -z "$id" ]]; then
     # Already exists from an earlier run: look it up.
-    id=$(npx wrangler kv namespace list 2>/dev/null | python3 -c 'import json,sys; print(next((n["id"] for n in json.load(sys.stdin) if n["title"].endswith("OAUTH_KV")), ""))')
+    id=$(npx wrangler kv namespace list 2>/dev/null | BINDING="$binding" python3 -c 'import json,os,sys; print(next((n["id"] for n in json.load(sys.stdin) if n["title"].endswith(os.environ["BINDING"])), ""))')
   fi
-  [[ -n "$id" ]] || { echo "Could not create or find the KV namespace:"; echo "$output"; exit 1; }
-  sed -i.bak "s/REPLACE_WITH_KV_ID/$id/" wrangler.jsonc && rm -f wrangler.jsonc.bak
-fi
+  [[ -n "$id" ]] || { echo "Could not create or find the $binding KV namespace:"; echo "$output"; exit 1; }
+  sed -i.bak "s/\"$placeholder\"/\"$id\"/" wrangler.jsonc && rm -f wrangler.jsonc.bak
+done
 
 echo "==> Deploying the Worker"
 deploy=$(npx wrangler deploy 2>&1 | tee /dev/stderr)

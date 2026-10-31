@@ -83,14 +83,22 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "screenshot",
-            description: "Take a screenshot of the simulator. By default the image is sized so one pixel equals one screen point, matching the coordinates tap, swipe and describe_ui use.",
+            description: "Take a screenshot of the simulator. By default the image is sized so one pixel equals one screen point, matching the coordinates tap, swipe and describe_ui use. " +
+                "To show your work in a PR, pass share: true: a sharper copy is uploaded and you get a public link and ready-to-paste markdown for the PR description. " +
+                "Never share screens showing credentials or personal data.",
             properties: device.merging([
                 "scale": Schema.number("Optional scale relative to native pixels (0.1–1). Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
+                "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description. Anyone with the link can see it until it expires."),
+                "caption": Schema.string("With share: a short description, used as the image's alt text, e.g. \"Settings screen, dark mode\"."),
             ]) { a, _ in a }
         )) { [self] args in
             let sim = try await self.device(args)
-            return ToolResult(try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70))
+            var content = try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70)
+            if args.bool("share") == true {
+                content.append(.text(await shareScreenshot(udid: sim.udid, caption: args.string("caption"))))
+            }
+            return ToolResult(content)
         }
 
         register(ToolDefinition(
@@ -311,6 +319,7 @@ extension ToolRegistry {
     /// Shuts a simulator down and drops its reservation. The shutdown_simulator tool and the menu
     /// bar app's Shut down both come here.
     func shutDownSimulator(_ sim: XcodeParsing.SimDevice) async throws -> String {
+        await recordings.halt(sim.udid, reason: "the simulator was shut down")
         try await Simctl.shutdown(sim.udid)
         await claims.release(sim.udid)
         await SimulatorDriver.shared.reset(udid: sim.udid)
