@@ -1,0 +1,36 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
+Cloned 45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0 from the template F61D032C-5E43-4366-B021-F181800AF6C4
++ minirun call boot_simulator {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  9.99 22.01 11.91 , 73% free]
++ minirun call screenshot {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  150.35 56.60 25.31 , 58% free]
++ minirun call build_and_run {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  147.62 59.08 26.56 , 57% free]
++ minirun call describe_ui {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  326.89 139.10 61.09 , 42% free]
++ minirun call tap {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","id":"tapButton"} [load  341.39 145.23 63.70 , 42% free]
++ minirun call describe_ui {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  341.39 145.23 63.70 , 41% free]
++ minirun call tap {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","id":"nameField"} [load  355.45 151.40 66.36 , 41% free]
++ minirun call type_text {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","text":"Claude"} [load  370.47 157.90 69.15 , 39% free]
++ minirun call describe_ui {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  384.05 164.24 71.91 , 38% free]
++ minirun call screenshot {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0"} [load  396.45 170.46 74.65 , 38% free]
++ minirun call swipe {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","direction":"up"} [load  396.45 170.46 74.65 , 38% free]
++ minirun call press_button {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","button":"home"} [load  408.59 176.73 77.42 , 37% free]
++ minirun call app_logs {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","bundle_id":"dev.minirun.HelloApp","seconds":120} [load  421.51 183.26 80.31 , 37% free]
++ minirun call terminate_app {"device":"45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0","bundle_id":"dev.minirun.HelloApp"} [load  417.63 186.41 82.02 , 39% free]
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} [load  417.63 186.41 82.02 , 39% free]
++ minirun call boot_simulator {"label":"smoke/second"} [load  422.47 294.70 147.77 , 27% free]
++ minirun call list_simulators {"include_shutdown":false} [load  442.61 303.21 152.51 , 27% free]
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  442.96 305.60 154.23 , 27% free]
+./scripts/smoke-test.sh: line 9: 16234 Segmentation fault: 11  "$BIN" call "$@"
+FAILED: expected output to contain: UDID 45201FBD-0AA5-41C2-86BA-7AC29DC8A8A0
+--- output was:
+
