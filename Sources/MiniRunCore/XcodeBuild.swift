@@ -19,6 +19,9 @@ enum XcodeBuild {
         var platform: BuildPlatform = .ios
         var extraArgs: [String] = []
         var log: URL?
+        /// The container and scheme once found, so later steps don't run XcodeGen and
+        /// `xcodebuild -list` again.
+        var resolved: (container: Container, scheme: String)?
     }
 
     /// Finds the workspace/project to build in a checkout, preferring an explicit `project` path.
@@ -96,6 +99,7 @@ enum XcodeBuild {
     }
 
     static func resolveScheme(_ options: Options) async throws -> (Container, String) {
+        if let resolved = options.resolved { return resolved }
         let (container, schemes) = try await schemes(directory: options.directory, project: options.project, log: options.log)
         if let scheme = options.scheme {
             guard schemes.isEmpty || schemes.contains(scheme) else {
@@ -129,9 +133,10 @@ enum XcodeBuild {
     }
 
     /// Picks ios or macos for the scheme from its build settings, read without a destination:
-    /// macos only when the app supports macOS and not iOS.
-    static func detectPlatform(_ options: Options) async throws -> BuildPlatform {
+    /// macos only when the app supports macOS and not iOS. Keeps the scheme it found in `options`.
+    static func detectPlatform(_ options: inout Options) async throws -> BuildPlatform {
         let (container, scheme) = try await resolveScheme(options)
+        options.resolved = (container, scheme)
         let settings = try await Shell.check(
             "/usr/bin/xcrun",
             ["xcodebuild", "-showBuildSettings", "-json"] + baseArgs(container, scheme: scheme, options: options) + options.extraArgs,

@@ -127,9 +127,11 @@ jobs:
           cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
           cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
           scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
-      - name: Clean up simulators
+      - name: Clean up simulators and the Mac fixture app
         if: always()
         run: |
+          # The smoke test quits it, unless it stopped partway.
+          pkill -x HelloMacApp 2>/dev/null || true
           for sim in $(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke")))'); do
             xcrun simctl shutdown "$sim" 2>/dev/null || true
             xcrun simctl delete "$sim" 2>/dev/null || true

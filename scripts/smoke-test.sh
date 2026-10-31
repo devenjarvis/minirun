@@ -22,6 +22,9 @@ UDID=$(xcrun simctl clone "$TEMPLATE" "minirun-smoke")
 # Deletes the smoke simulators: this one (unless MINIRUN_SMOKE_KEEP is set, so a later CI step can
 # reuse it instead of paying for another boot) and the second session's copy. Keeps the template.
 cleanup() {
+  # The macOS fixture app, wherever the Mac section stopped.
+  if [[ -n "${MAC_ID:-}" ]]; then "$BIN" call terminate_app "{\"device\":\"$MAC_ID\"}" >/dev/null 2>&1 || true; fi
+  pkill -x HelloMacApp 2>/dev/null || true
   local sims; sims=$(xcrun simctl list devices --json | python3 -c 'import json,sys; print(" ".join(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("minirun-smoke (minirun ") and not d["name"].endswith(" template)")))')
   [[ -n "${MINIRUN_SMOKE_KEEP:-}" ]] || sims="$UDID $sims"
   for sim in $sims; do xcrun simctl shutdown "$sim" >/dev/null 2>&1 || true; xcrun simctl delete "$sim" >/dev/null 2>&1 || true; done
@@ -67,4 +70,61 @@ echo "$out" | expect "simulators are booted"
 run list_simulators '{"include_shutdown":false}' | expect "smoke/second"
 run build_and_run "{\"path\":\"$ROOT/Tests/Fixtures/HelloApp\",\"scheme\":\"HelloApp\",\"wait_seconds\":600}" | expect "UDID $UDID"
 run shutdown_simulator "{\"device\":\"$UDID2\"}" | expect "Shut down"
+
+# macOS apps: build HelloMacApp, run it on this Mac, read its output, drive it and quit it. Reading
+# its UI and sending input need Accessibility, and screenshots need Screen Recording, granted to
+# the process running minirun; host_info says whether they are, and steps without them are skipped.
+echo "--- macOS app"
+MAC_FIXTURE="$ROOT/Tests/Fixtures/HelloMacApp"
+rm -rf "$MAC_FIXTURE/HelloMacApp.xcodeproj"
+run build_and_run "{\"path\":\"$MAC_FIXTURE\",\"scheme\":\"HelloMacApp\",\"platform\":\"macos\",\"isolated_home\":true,\"wait_seconds\":600}" | tee /tmp/minirun-mac-build.txt | expect "Launched HelloMacApp"
+MAC_ID=$(sed -n 's/^Mac app: .*, id \(mac-[0-9a-f]*\)\..*/\1/p' /tmp/minirun-mac-build.txt | head -1)
+[[ -n "$MAC_ID" ]] || { echo "FAILED: no Mac app id in the build_and_run result" >&2; exit 1; }
+[[ -d "$MAC_FIXTURE/.minirun/home" ]] || { echo "FAILED: isolated_home didn't make $MAC_FIXTURE/.minirun/home" >&2; exit 1; }
+run list_mac_apps | expect "$MAC_ID"
+run list_windows "{\"device\":\"$MAC_ID\"}" || true
+mac_logs() { run app_logs "{\"device\":\"$MAC_ID\",\"seconds\":60,\"contains\":\"HelloMacApp:\"}"; }
+mac_logs | expect "HelloMacApp: launched"
+if out=$("$BIN" call press_button "{\"device\":\"$MAC_ID\",\"button\":\"home\"}"); then echo "FAILED: press_button should refuse a Mac app" >&2; exit 1; fi
+echo "$out" | expect "press_key"
+
+HOST=$(run host_info)
+grep -E "(Screen Recording|Accessibility|Display) \(for macOS apps\)" <<< "$HOST" || true
+if grep -q "✓ Accessibility (for macOS apps)" <<< "$HOST"; then
+  run describe_ui "{\"device\":\"$MAC_ID\"}" | tee /tmp/minirun-mac-ui.txt | expect "incrementButton"
+  run tap "{\"device\":\"$MAC_ID\",\"id\":\"incrementButton\"}" | expect "Pressed"
+  sleep 1
+  mac_logs | expect "HelloMacApp: count=1"
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked Counter > Reset Counter"
+  sleep 1
+  mac_logs | expect "HelloMacApp: reset count=0"
+  run tap "{\"device\":\"$MAC_ID\",\"id\":\"nameField\"}" > /dev/null
+  sleep 1
+  run type_text "{\"device\":\"$MAC_ID\",\"text\":\"Claude\"}" | expect "Typed"
+  sleep 1
+  if ! mac_logs | grep -q "HelloMacApp: name=Claude"; then
+    # Some setups drop keyboard events posted to a process; the HID path is the fallback.
+    echo "NOTE: typing posted to the app's pid didn't reach the field; trying input: hid" >&2
+    run tap "{\"device\":\"$MAC_ID\",\"id\":\"nameField\"}" > /dev/null
+    run type_text "{\"device\":\"$MAC_ID\",\"text\":\"Claude\",\"input\":\"hid\"}" | expect "moved the real cursor"
+    sleep 1
+    mac_logs | expect "HelloMacApp: name=Claude"
+  fi
+  run describe_ui "{\"device\":\"$MAC_ID\"}" | expect "Hello, Claude"
+  run press_key "{\"device\":\"$MAC_ID\",\"key\":\"r\",\"modifiers\":[\"command\"]}" | expect "Pressed command+r"
+else
+  echo "Skipping describe_ui, tap, menus and typing on HelloMacApp: no Accessibility grant on this runner."
+fi
+if grep -q "✓ Screen Recording (for macOS apps)" <<< "$HOST" && grep -q "✓ Display (for macOS apps)" <<< "$HOST"; then
+  run screenshot "{\"device\":\"$MAC_ID\"}" | tee /tmp/minirun-mac-shot.txt | expect "title bar included"
+  shot=$(sed -n 's/.*image saved to \(.*\)]/\1/p' /tmp/minirun-mac-shot.txt)
+  mkdir -p "$ROOT/ci-logs/screens" && cp "$shot" "$ROOT/ci-logs/screens/hello-mac-app.jpg" || true
+else
+  echo "Skipping the HelloMacApp screenshot: no Screen Recording grant (or no display) on this runner."
+fi
+
+run terminate_app "{\"device\":\"$MAC_ID\"}" | expect "Quit HelloMacApp"
+if out=$("$BIN" call tap "{\"device\":\"$MAC_ID\",\"x\":10,\"y\":10}"); then echo "FAILED: tap on a quit Mac app should fail" >&2; exit 1; fi
+echo "$out" | expect "isn't running"
+run run_tests "{\"path\":\"$MAC_FIXTURE\",\"scheme\":\"HelloMacApp\",\"platform\":\"macos\",\"wait_seconds\":600}" | expect "passed on this Mac"
 echo "Smoke test passed."

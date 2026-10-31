@@ -1,43 +1,59 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 
 /// What the control socket, `minirun status` and the menu bar app need from the registry for
-/// macOS apps. The bodies are placeholders until the Mac driver (MiniRunMac) is wired in.
+/// macOS apps.
 extension ToolRegistry {
-    /// The Mac apps minirun launched, for `ServeStatus.macApps`: every `MacAppStore` session as
-    /// `ServeStatus.MacApp(session, busy:, viewerURL: config.viewerURL(device: session.id))`.
+    /// The Mac apps minirun launched, for `ServeStatus.macApps`. Busy ones have a job running or
+    /// someone watching them live.
     func macAppStatus() async -> [ServeStatus.MacApp] {
-        // TODO(integration): read the registry's MacAppStore, mark busy ones (job or live view).
-        []
+        let busy = await activity.busy
+        return await refreshedMacApps().map { session in
+            ServeStatus.MacApp(session, busy: busy.contains(session.id), viewerURL: config.viewerURL(device: session.id))
+        }
     }
 
-    /// The daemon's own macOS app permissions, for `ServeStatus.macPermissions` and the doctor's
-    /// macPermissions closure. Nil when they can't be read.
+    /// This process's macOS app permissions, for `ServeStatus.macPermissions`, the doctor and
+    /// host_info. macOS grants them per program, so it names this executable.
     func macPermissionReport() async -> MacPermissionReport? {
-        // TODO(integration): from MacAppDriver.shared.permissions(), with binaryPath set to
-        // this process's executable (CommandLine.arguments[0] resolved, or Bundle.main.executablePath).
-        nil
+        let status = await MacAppDriver.shared.permissions()
+        let binary = (Bundle.main.executablePath ?? CommandLine.arguments.first).map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        return MacPermissionReport(screenRecording: status.screenRecording, accessibility: status.accessibility, hasDisplay: status.hasDisplay, binaryPath: binary)
     }
 
     /// `request_mac_permissions`: prompts for Screen Recording and Accessibility as this process,
     /// so System Settings lists the daemon. Returns what to do next, for the user.
     func requestMacPermissions() async throws -> String {
-        // TODO(integration): MacAppDriver.shared.requestPermissions(), then report what's still
-        // missing (the Screen Recording grant only takes effect after minirun serve restarts).
-        throw ToolError("macOS app support isn't available in this build of minirun yet.")
+        await MacAppDriver.shared.requestPermissions()
+        guard let report = await macPermissionReport() else { throw ToolError("Couldn't read the macOS permissions.") }
+        return MacToolSupport.permissionRequestMessage(report)
     }
 
-    /// `quit_mac_app`: quits the Mac app with this id if minirun launched it and it's running
-    /// (polite terminate, then force after a grace period). Never touches other processes.
+    /// `quit_mac_app` and terminate_app: quits the Mac app with this id if minirun launched it and
+    /// it's running (polite terminate, then force after 5 seconds). Only its recorded pid, and
+    /// only while that pid still runs the app's executable.
     func quitMacApp(id: String) async throws -> String {
-        // TODO(integration): look the session up in the MacAppStore, MacAppDriver.terminate(pid:),
-        // markExited, and say "Quit Fetch (mac-3f9a2c, you/fetch@main)."
-        throw ToolError("macOS app support isn't available in this build of minirun yet.")
+        guard let session = await macApps.session(id) else { throw ToolError(MacToolSupport.unknownApp(id, known: await refreshedMacApps())) }
+        let who = [session.id, session.label].compactMap { $0 }.joined(separator: ", ")
+        guard let pid = session.pid, MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) else {
+            await macApps.markExited(session.id)
+            return "\(session.name) (\(who)) isn't running."
+        }
+        await MacAppDriver.shared.terminate(pid: pid, grace: 5, executablePath: session.executablePath)
+        await macApps.markExited(session.id)
+        await macApps.touch(session.id)
+        return "Quit \(session.name) (\(who))."
     }
 
-    /// `activate_mac_app`: brings the Mac app with this id to the front.
+    /// `activate_mac_app`: brings the Mac app with this id, and its main window, to the front.
     func activateMacApp(id: String) async throws -> String {
-        // TODO(integration): NSRunningApplication(processIdentifier:)?.activate() for its pid.
-        throw ToolError("macOS app support isn't available in this build of minirun yet.")
+        guard let session = await macApps.session(id) else { throw ToolError(MacToolSupport.unknownApp(id, known: await refreshedMacApps())) }
+        guard let pid = session.pid, MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) else {
+            throw ToolError(MacToolSupport.notRunning(session))
+        }
+        let window = try? await MacAppDriver.shared.window(pid: pid, .main)
+        await MacAppDriver.shared.bringToFront(pid: pid, window: window)
+        return "Brought \(session.name) to the front."
     }
 }

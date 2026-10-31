@@ -1,5 +1,6 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 /// Keeps a WebSocket open to the Cloudflare relay, runs tool calls that arrive on it, and streams
@@ -12,7 +13,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var socket: URLSessionWebSocketTask?
     private var streamer: FrameStreamer!
     private var streamControl: Task<Void, Never>?
-    private let touches = TouchQueue()
+    private let touches: TouchQueue
     /// When the last keep-alive ping went out, to time the round trip to the relay.
     private var pingSentAt: Date?
     private var pingsTimed = 0
@@ -29,6 +30,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         self.config = config
         self.registry = registry
         self.log = log
+        touches = TouchQueue(registry: registry)
         state = ServeStatus.Relay(state: .connecting, host: RelayClient.endpoint(config.current)?.url.host)
         super.init()
         config.observe { [weak self] old, new in
@@ -227,7 +229,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
                 }
             }
         case .touch(let udid, let phase, let x, let y):
-            guard let phase = SimulatorDriver.TouchPhase(rawValue: phase) else { break }
+            guard SimulatorDriver.TouchPhase(rawValue: phase) != nil else { break }
             let log = self.log
             Task { await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) }
         case .welcome(let bundle):
@@ -251,17 +253,24 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
 }
 
 /// Delivers a viewer's live touches to the simulator one at a time, in order. When moves pile up
-/// (the simulator is slower than the finger), only the latest of a run of moves is sent.
+/// (the simulator is slower than the finger), only the latest of a run of moves is sent. Touches on
+/// a Mac app's window (its id starts with "mac-") become mouse down, drag and up.
 actor TouchQueue {
     struct Event: Sendable {
         let udid: String
-        let phase: SimulatorDriver.TouchPhase
+        /// "down", "move" or "up".
+        let phase: String
         let x: Double
         let y: Double
     }
 
+    private let registry: ToolRegistry
     private var pending: [Event] = []
     private var draining = false
+
+    init(registry: ToolRegistry) {
+        self.registry = registry
+    }
 
     func add(_ event: Event, log: @escaping @Sendable (String) -> Void) async {
         pending.append(event)
@@ -269,9 +278,13 @@ actor TouchQueue {
         draining = true
         while !pending.isEmpty {
             let next = pending.removeFirst()
-            if next.phase == .move, let following = pending.first, following.phase == .move, following.udid == next.udid { continue }
+            if next.phase == "move", let following = pending.first, following.phase == "move", following.udid == next.udid { continue }
             do {
-                try await SimulatorDriver.shared.touch(udid: next.udid, phase: next.phase, x: next.x, y: next.y)
+                if MacAppID.isMacDevice(next.udid) {
+                    try await registry.macMouse(id: next.udid, phase: next.phase, x: next.x, y: next.y)
+                } else if let phase = SimulatorDriver.TouchPhase(rawValue: next.phase) {
+                    try await SimulatorDriver.shared.touch(udid: next.udid, phase: phase, x: next.x, y: next.y)
+                }
             } catch {
                 log("Live touch failed: \(error.localizedDescription)")
             }
@@ -282,5 +295,6 @@ actor TouchQueue {
     func releaseAll() async {
         pending.removeAll()
         await SimulatorDriver.shared.releaseTouches()
+        await MacAppDriver.shared.releaseMouse()
     }
 }

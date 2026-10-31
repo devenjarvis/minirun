@@ -1,13 +1,15 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 /// Streams each simulator someone is watching to the relay, as H.264 when its viewers can decode
 /// it and as JPEG frames otherwise (or when H.264 can't start).
 ///
 /// Each stream is keyed by the UDID its viewers asked for, or "" for "whichever simulator is
-/// booted". While anything is streaming, the booted simulators are also sent to the relay so
-/// the viewer can offer a picker.
+/// booted". A Mac app id as the key streams that app's main window instead. While anything is
+/// streaming, the booted simulators and running Mac apps are also sent to the relay so the viewer
+/// can offer a picker.
 ///
 /// Flow control: at most `window` frames of a stream may be unacknowledged, so a slow phone
 /// connection gets fewer, fresher frames instead of a growing backlog. H.264 frames can't be
@@ -82,6 +84,10 @@ actor FrameStreamer {
     private func run(_ stream: Stream) async {
         let settings = stream.request
         let key = settings.key
+        if MacAppID.isMacDevice(key) {
+            await runMac(stream)
+            return
+        }
         let device: XcodeParsing.SimDevice
         do {
             device = try await registry.streamDevice(key.isEmpty ? nil : key)
@@ -210,6 +216,166 @@ actor FrameStreamer {
         return true
     }
 
+    // MARK: Mac apps
+
+    /// A Mac app window's size as last announced to viewers.
+    private struct MacScreen: Equatable {
+        let pointWidth: Double
+        let pointHeight: Double
+        let pixelWidth: Int
+        let pixelHeight: Int
+    }
+
+    /// Streams a Mac app's main window until the stream stops. When the app quits or its window
+    /// closes, it waits for the app to come back (a new build_and_run relaunches it under the same
+    /// id) and picks it up again.
+    private func runMac(_ stream: Stream) async {
+        let key = stream.request.key
+        // Someone is watching, so idle quitting leaves this app alone until they stop.
+        await registry.activity.begin(key)
+        var lastError: String?
+        while !Task.isCancelled {
+            let session: MacAppSession
+            do {
+                session = try await registry.macApp(ToolArguments(["device": .string(key)]))
+            } catch {
+                if error.localizedDescription != lastError {
+                    lastError = error.localizedDescription
+                    await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription))
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                continue
+            }
+            lastError = nil
+            var streamedVideo = false
+            if stream.request.codec == .h264 { streamedVideo = await runMacVideo(stream, session: session) }
+            if !streamedVideo { await runMacJPEG(stream, session: session) }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        await registry.activity.end(key)
+        await registry.macApps.touch(key)
+    }
+
+    private func announce(_ screen: MacScreen, session: MacAppSession, key: String) async {
+        await sendText(RelayProtocol.screen(
+            key: key, udid: session.id, name: session.name, kind: "mac",
+            pointWidth: screen.pointWidth, pointHeight: screen.pointHeight, pixelWidth: screen.pixelWidth, pixelHeight: screen.pixelHeight
+        ))
+    }
+
+    /// Streams the window as H.264 until the app quits or the window goes away (returns true), or
+    /// returns false if the encoder couldn't start or never produced a frame, so the caller can
+    /// fall back to JPEG. A resized window is announced again, followed by a keyframe.
+    private func runMacVideo(_ stream: Stream, session: MacAppSession) async -> Bool {
+        guard let pid = session.pid else { return true }
+        let settings = stream.request
+        let key = settings.key
+        let fps = settings.fps, quality = settings.quality
+        let encoder: MacWindowEncoder
+        do {
+            encoder = try await MacAppDriver.shared.windowEncoder(pid: pid, window: .main, scale: settings.scale, fps: fps) { width, height in
+                H264.bitrate(width: width, height: height, fps: fps, quality: quality)
+            }
+        } catch {
+            return false
+        }
+        defer { encoder.close() }
+        stream.wantsKeyframe = true
+
+        let began = Date()
+        var announced: MacScreen?
+        var failures = 0
+        let interval = 1.0 / Double(fps)
+        while !Task.isCancelled {
+            let started = Date()
+            if announced == nil && started.timeIntervalSince(began) > 5 { return false }
+            if stream.sequence &- stream.lastAcked >= videoWindow && started.timeIntervalSince(stream.lastAckTime) < 2 {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+                continue
+            }
+            var sent = false
+            do {
+                if let frame = try await encoder.encode(forceKeyframe: stream.wantsKeyframe),
+                   let payload = H264.annexB(
+                       lengthPrefixed: frame.nalUnits, lengthSize: frame.lengthSize,
+                       parameterSets: frame.parameterSets.map { $0.first.map { $0 & 0x1f } == 7 ? H264.withoutReordering(sps: $0) : $0 }
+                   ) {
+                    let screen = MacScreen(pointWidth: frame.pointWidth, pointHeight: frame.pointHeight, pixelWidth: frame.sourceWidth, pixelHeight: frame.sourceHeight)
+                    if screen != announced {
+                        await announce(screen, session: session, key: key)
+                        if announced == nil { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+                        announced = screen
+                        // Viewers start decoding afresh at a new size, so the next frame must be a keyframe.
+                        if !frame.isKeyframe {
+                            stream.wantsKeyframe = true
+                            continue
+                        }
+                    }
+                    if Task.isCancelled { break }
+                    if frame.isKeyframe { stream.wantsKeyframe = false }
+                    stream.sequence &+= 1
+                    await sendFrame(RelayProtocol.encodeVideoFrame(key: key, sequence: stream.sequence, keyframe: frame.isKeyframe, payload: payload))
+                    sent = true
+                }
+                failures = 0
+            } catch {
+                failures += 1
+                if announced == nil && failures >= 3 { return false }
+                // The app quit or its window closed: start over with whatever window it has now.
+                if failures >= 3 || !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) { return true }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                continue
+            }
+            // A window only produces frames when it changes, so wait for one rather than polling.
+            let elapsed = Date().timeIntervalSince(started)
+            if sent && elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
+            if !sent { await encoder.waitForChange(timeout: interval) }
+        }
+        return true
+    }
+
+    /// Streams the window as JPEG screenshots until the app quits or captures keep failing.
+    private func runMacJPEG(_ stream: Stream, session: MacAppSession) async {
+        guard let pid = session.pid else { return }
+        let settings = stream.request
+        let key = settings.key
+        var announced: MacScreen?
+        var failures = 0
+        let interval = 1.0 / Double(settings.fps)
+        while !Task.isCancelled {
+            let started = Date()
+            if stream.sequence &- stream.lastAcked >= window && Date().timeIntervalSince(stream.lastAckTime) < 2 {
+                try? await Task.sleep(nanoseconds: 15_000_000)
+                continue
+            }
+            do {
+                // `scale` is relative to the window's pixels, two per point on a Retina display.
+                let shot = try await MacAppDriver.shared.screenshotJPEG(pid: pid, window: .main, scale: settings.scale * 2, quality: settings.quality)
+                let screen = MacScreen(
+                    pointWidth: shot.window.frame.width, pointHeight: shot.window.frame.height,
+                    pixelWidth: Int((Double(shot.width) / settings.scale).rounded()), pixelHeight: Int((Double(shot.height) / settings.scale).rounded())
+                )
+                if screen != announced {
+                    await announce(screen, session: session, key: key)
+                    if announced == nil { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+                    announced = screen
+                }
+                if Task.isCancelled { break }
+                stream.sequence &+= 1
+                await sendFrame(RelayProtocol.encodeFrame(key: key, sequence: stream.sequence, payload: shot.data))
+                failures = 0
+            } catch {
+                failures += 1
+                if failures == 3 { await sendText(RelayProtocol.streamStatus("error", key: key, message: error.localizedDescription)) }
+                if failures >= 5 || !MacAppDriver.isRunning(pid: pid, executablePath: session.executablePath) { return }
+                try? await Task.sleep(nanoseconds: UInt64(min(5.0, 0.5 * Double(failures)) * 1_000_000_000))
+                continue
+            }
+            let elapsed = Date().timeIntervalSince(started)
+            if elapsed < interval { try? await Task.sleep(nanoseconds: UInt64((interval - elapsed) * 1_000_000_000)) }
+        }
+    }
+
     /// Sends the booted simulators whenever they change, so the viewer's picker stays current.
     private func watchSimulators() async {
         var last: JSONValue?
@@ -242,15 +408,17 @@ extension ToolRegistry {
         return try await realize(choice, boot: true).ready()
     }
 
-    /// The booted simulators and what each is reserved for.
+    /// The booted simulators and what each is reserved for, then the running Mac apps (with
+    /// `kind: "mac"` and their Mac app id as `udid`).
     func simulatorsMessage() async -> JSONValue? {
         guard let snapshot = try? await simulators() else { return nil }
         let (all, claims) = snapshot
-        return RelayProtocol.simulators(all.filter(\.isBooted).map { device -> JSONValue in
+        let simulators = all.filter(\.isBooted).map { device -> JSONValue in
             var json = device.json.objectValue ?? [:]
             if let label = claims[device.udid]?.label { json["reserved_for"] = .string(label) }
             if let bundle = claims[device.udid]?.bundleID { json["last_app"] = .string(bundle) }
             return .object(json)
-        })
+        }
+        return RelayProtocol.simulators(simulators + (await macPickerEntries()))
     }
 }

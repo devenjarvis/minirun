@@ -1,5 +1,6 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 extension ToolRegistry {
@@ -94,20 +95,27 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "build",
-            description: "Build an app for the simulator with xcodebuild. Pass repo + ref to sync first. Returns errors with file:line on failure, or the .app path and bundle id. Without device, it uses the simulator reserved for this repo + ref (see build_and_run). Runs as a job: if it's still going after wait_seconds you get a job_id for get_job.",
-            properties: source.merging(device) { a, _ in a }.merging([
+            description: "Build an app with xcodebuild, for the simulator or (platform macos) the Mac. Pass repo + ref to sync first. Returns errors with file:line on failure, or the .app path and bundle id. " +
+                "For iOS without device, it uses the simulator reserved for this repo + ref (see build_and_run). Runs as a job: if it's still going after wait_seconds you get a job_id for get_job.",
+            properties: source.merging(device) { a, _ in a }.merging(Self.platformProperty) { a, _ in a }.merging([
                 "configuration": Schema.string("Build configuration (default Debug)."),
                 "extra_args": Schema.stringArray("Extra xcodebuild arguments, e.g. [\"CODE_SIGNING_ALLOWED=NO\"]."),
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
+            _ = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
             let log = newLogURL("build")
             return await runAsJob(args, title: "build \(workspace)", log: log) { [self] in
-                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
-                let output = try await self.whileUsing(sim.udid) {
-                    try await self.withCheckout(args, log: log) { try await self.buildApp(args, udid: sim.udid, log: log) }
+                try await self.withCheckout(args, log: log) { () async throws -> ToolResult in
+                    let prepared = try await self.prepareBuild(args, workspace: workspace, log: log)
+                    if let sim = prepared.sim {
+                        let output = try await self.whileUsing(sim.udid) { try await XcodeBuild.build(prepared.options) }
+                        return .text([self.describe(output, log: log), prepared.note, self.deviceFooter(sim)].compactMap { $0 }.joined(separator: "\n"))
+                    }
+                    let output = try await XcodeBuild.build(prepared.options)
+                    let next = "To run it, call build_and_run with platform: \"\(output.platform.rawValue)\" and the same repo + ref (or path)."
+                    return .text([self.describe(output, log: log), next].joined(separator: "\n"))
                 }
-                return .text([self.describe(output, log: log), note, self.deviceFooter(sim)].compactMap { $0 }.joined(separator: "\n"))
             }
         }
 
@@ -115,8 +123,11 @@ extension ToolRegistry {
             name: "build_and_run",
             description: "The main loop: sync (if ref given), build, install and launch the app on the simulator, then return a screenshot. Errors come back with file:line so you can fix and push again. " +
                 "Without device, it uses the simulator reserved for this repo + ref, or reserves one for it (booting a separate simulator if the running ones belong to other work). " +
-                "The result names the simulator's UDID: pass it as device to tap, screenshot and the other tools.",
-            properties: source.merging(device) { a, _ in a }.merging([
+                "The result names the simulator's UDID: pass it as device to tap, screenshot and the other tools. " +
+                "For a macOS app (platform macos, or a scheme that only builds for macOS) it quits the copy it launched last time for this repo + ref (never anyone else's), " +
+                "launches the new build on the Mac, waits for its window and returns a screenshot of it plus a Mac app id (mac-…) to pass as device. " +
+                "Copies of one app built from different branches run side by side but share its preferences and files; isolated_home separates non-sandboxed apps.",
+            properties: source.merging(device) { a, _ in a }.merging(Self.platformProperty) { a, _ in a }.merging(Self.isolatedHomeProperty) { a, _ in a }.merging([
                 "configuration": Schema.string("Build configuration (default Debug)."),
                 "extra_args": Schema.stringArray("Extra xcodebuild arguments."),
                 "launch_arguments": Schema.stringArray("Arguments passed to the app at launch."),
@@ -124,38 +135,67 @@ extension ToolRegistry {
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
+            _ = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
             let log = newLogURL("build-and-run")
             return await runAsJob(args, title: "build and run \(workspace)", log: log) { [self] in
-                // Picking (and maybe booting) the simulator happens in the job: a first boot can take minutes.
-                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
-                // Hold the checkout through install so another build can't replace the .app first.
-                let (output, bundle) = try await self.whileUsing(sim.udid) {
-                    try await self.withCheckout(args, log: log) { () async throws -> (XcodeBuild.BuildOutput, String) in
-                        let output = try await self.buildApp(args, udid: sim.udid, log: log)
+                let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
+                // Hold the checkout through install (for a Mac app, through launch) so another build can't replace the .app first.
+                let built = try await self.withCheckout(args, log: log) { () async throws -> BuildAndRun in
+                    // Picking (and maybe booting) the simulator happens in the job: a first boot can take minutes.
+                    let prepared = try await self.prepareBuild(args, workspace: workspace, log: log)
+                    guard let sim = prepared.sim else {
+                        let id = await self.macApps.id(forLabel: workspace)
+                        return .mac(try await self.whileUsingMac(id) { () async throws -> ToolResult in
+                            let output = try await XcodeBuild.build(prepared.options)
+                            guard let product = output.macProduct else {
+                                throw ToolError("Built \(output.scheme), but it doesn't produce a Mac app to launch. Use build or run_tests for this scheme.")
+                            }
+                            var launch = MacLaunch(
+                                id: id, label: workspace, name: MacToolSupport.appName(appPath: product.appPath, productName: product.productName),
+                                bundleID: product.bundleIdentifier, appPath: product.appPath, executablePath: product.executablePath
+                            )
+                            launch.arguments = args.strings("launch_arguments")
+                            launch.environment = env
+                            launch.adHoc = output.notes.contains(XcodeBuild.adHocSigningNote)
+                            if args.bool("isolated_home") == true {
+                                launch.home = MacToolSupport.isolatedHome(
+                                    appPath: product.appPath, checkout: prepared.options.directory, id: id, fallbackRoot: MiniRunConfig.home + "/minirun/mac-homes"
+                                )
+                            }
+                            return try await self.launchMac(launch, intro: [self.describe(output, log: log)])
+                        })
+                    }
+                    return try await self.whileUsing(sim.udid) { () async throws -> BuildAndRun in
+                        let output = try await XcodeBuild.build(prepared.options)
                         guard let product = output.product, let bundle = product.bundleIdentifier else {
                             throw ToolError("Built \(output.scheme), but it doesn't produce an iOS app to launch. Use build or run_tests for this scheme.")
                         }
                         try await Simctl.install(sim.udid, appPath: product.appPath)
-                        return (output, bundle)
+                        return .simulator(output, bundle: bundle, sim: sim, note: prepared.note)
                     }
                 }
-                await self.claims.noteApp(sim.udid, bundleID: bundle)
-                let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
-                let pid = try await Simctl.launch(sim.udid, bundleID: bundle, arguments: args.strings("launch_arguments"), environment: env)
-                // The new app may be landscape-only, which changes how taps map to the screen.
-                await SimulatorDriver.shared.forgetCoordinateMapping(udid: sim.udid)
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                let summary = [self.describe(output, log: log), "Installed and launched \(bundle) on \(sim.name) (pid \(pid)).", note, self.deviceFooter(sim)]
-                var content: [ToolContent] = [.text(summary.compactMap { $0 }.joined(separator: "\n"))]
-                content += (try? await self.screenshotContent(udid: sim.udid)) ?? []
-                return ToolResult(content)
+                switch built {
+                case .mac(let result):
+                    return result
+                case .simulator(let output, let bundle, let sim, let note):
+                    await self.claims.noteApp(sim.udid, bundleID: bundle)
+                    let pid = try await Simctl.launch(sim.udid, bundleID: bundle, arguments: args.strings("launch_arguments"), environment: env)
+                    // The new app may be landscape-only, which changes how taps map to the screen.
+                    await SimulatorDriver.shared.forgetCoordinateMapping(udid: sim.udid)
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    let summary = [self.describe(output, log: log), "Installed and launched \(bundle) on \(sim.name) (pid \(pid)).", note, self.deviceFooter(sim)]
+                    var content: [ToolContent] = [.text(summary.compactMap { $0 }.joined(separator: "\n"))]
+                    content += (try? await self.screenshotContent(udid: sim.udid)) ?? []
+                    return ToolResult(content)
+                }
             }
         }
 
         register(ToolDefinition(
             name: "run_tests",
-            description: "Run a scheme's unit/UI tests on the simulator and report pass/fail with failure messages. Runs as a job.",
-            properties: source.merging(device) { a, _ in a }.merging([
+            description: "Run a scheme's unit/UI tests on the simulator, or with platform macos on the Mac, and report pass/fail with failure messages. Runs as a job. " +
+                "macOS test runs go one at a time on the Mac, because UI tests take over its real mouse and keyboard.",
+            properties: source.merging(device) { a, _ in a }.merging(Self.platformProperty) { a, _ in a }.merging([
                 "only_testing": Schema.stringArray("Limit to these tests, e.g. [\"AppTests/LoginTests/testValidLogin\"]."),
                 "skip_testing": Schema.stringArray("Skip these tests."),
                 "configuration": Schema.string("Build configuration (default Debug)."),
@@ -163,22 +203,28 @@ extension ToolRegistry {
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
+            _ = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
             let log = newLogURL("test")
             return await runAsJob(args, title: "tests \(workspace)", log: log) { [self] in
-                let (sim, note) = try await self.workspaceDevice(args, workspace: workspace)
-                let output = try await self.whileUsing(sim.udid) {
-                    try await self.withCheckout(args, log: log) { () async throws -> XcodeBuild.TestOutput in
-                        let dir = try await self.sourceDirectory(args, log: log)
-                        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, platform: .ios, log: log)
-                        options.configuration = args.string("configuration") ?? "Debug"
-                        options.extraArgs = args.strings("extra_args")
-                        return try await XcodeBuild.test(options, onlyTesting: args.strings("only_testing"), skipTesting: args.strings("skip_testing"))
+                try await self.withCheckout(args, log: log) { () async throws -> ToolResult in
+                    let prepared = try await self.prepareBuild(args, workspace: workspace, log: log)
+                    let only = args.strings("only_testing"), skip = args.strings("skip_testing")
+                    let output: XcodeBuild.TestOutput
+                    let place: String
+                    if let sim = prepared.sim {
+                        output = try await self.whileUsing(sim.udid) { try await XcodeBuild.test(prepared.options, onlyTesting: only, skipTesting: skip) }
+                        place = "\(sim.name) (\(sim.udid))"
+                    } else {
+                        output = try await self.macTests.withLock("mac-ui-tests", onWait: {
+                            XcodeBuild.appendLog(log, "Waiting for another macOS test run to finish: UI tests take over the Mac's mouse and keyboard, so they run one at a time…\n")
+                        }) { try await XcodeBuild.test(prepared.options, onlyTesting: only, skipTesting: skip) }
+                        place = "this Mac (\(prepared.options.platform.rawValue))"
                     }
+                    var text = "Scheme \(output.scheme): \(output.passed ? "passed" : "FAILED") on \(place)\n\(output.summary)\nResult bundle: \(output.resultBundle)\nLog: \(log.path)"
+                    text += output.notes.map { "\n" + $0 }.joined()
+                    if let note = prepared.note { text += "\n" + note }
+                    return ToolResult([.text(text)], isError: !output.passed)
                 }
-                var text = "Scheme \(output.scheme): \(output.passed ? "passed" : "FAILED") on \(sim.name) (\(sim.udid))\n\(output.summary)\nResult bundle: \(output.resultBundle)\nLog: \(log.path)"
-                text += output.notes.map { "\n" + $0 }.joined()
-                if let note { text += "\n" + note }
-                return ToolResult([.text(text)], isError: !output.passed)
             }
         }
 
@@ -270,7 +316,8 @@ extension ToolRegistry {
                     return error.localizedDescription
                 }
             },
-            serveStatus: serveStatus
+            serveStatus: serveStatus,
+            macPermissions: { await self.macPermissionReport() }
         )
         return await doctor.checks(config: config)
     }
@@ -309,18 +356,43 @@ extension ToolRegistry {
         return try Workspace.directory(repo: nil, ref: nil, path: args.string("path"), config: config)
     }
 
-    /// Syncs and builds. Call inside `withCheckout`.
-    func buildApp(_ args: ToolArguments, udid: String, log: URL) async throws -> XcodeBuild.BuildOutput {
+    /// A build ready to run: the checkout synced, the platform decided and, for iOS, the
+    /// simulator picked and reserved for the workspace.
+    struct PreparedBuild {
+        var options: XcodeBuild.Options
+        var sim: XcodeParsing.SimDevice?
+        var note: String?
+    }
+
+    /// Syncs if `ref` was given, decides the platform (from the scheme's build settings unless
+    /// `platform` or `device` says) and, for iOS, picks the workspace's simulator. Mac builds don't
+    /// pick or reserve a simulator. Call inside `withCheckout`.
+    func prepareBuild(_ args: ToolArguments, workspace: String, log: URL) async throws -> PreparedBuild {
         let dir = try await sourceDirectory(args, log: log)
-        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: udid, platform: .ios, log: log)
+        let platform = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
+        var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), platform: platform ?? .ios, log: log)
         options.configuration = args.string("configuration") ?? "Debug"
         options.extraArgs = args.strings("extra_args")
-        return try await XcodeBuild.build(options)
+        if platform == nil {
+            do {
+                options.platform = try await XcodeBuild.detectPlatform(&options)
+            } catch where options.resolved != nil {
+                // The scheme exists but its settings couldn't be read: build it for iOS, as before.
+                XcodeBuild.appendLog(log, "Couldn't read the build settings to pick a platform (\(error.localizedDescription)); building for iOS.\n")
+            }
+        }
+        guard options.platform == .ios else { return PreparedBuild(options: options) }
+        let (sim, note) = try await workspaceDevice(args, workspace: workspace)
+        options.udid = sim.udid
+        return PreparedBuild(options: options, sim: sim, note: note)
     }
 
     func describe(_ output: XcodeBuild.BuildOutput, log: URL) -> String {
         var lines = ["Built \(output.scheme) in \(Int(output.duration))s."]
-        if let product = output.product {
+        if let product = output.macProduct {
+            lines.append("App (\(output.platform.rawValue)): \(product.appPath)")
+            if let bundle = product.bundleIdentifier { lines.append("Bundle id: \(bundle)") }
+        } else if let product = output.product {
             lines.append("App: \(product.appPath)")
             if let bundle = product.bundleIdentifier { lines.append("Bundle id: \(bundle)") }
         }
@@ -332,4 +404,11 @@ extension ToolRegistry {
         lines.append("Log: \(log.path)")
         return lines.joined(separator: "\n")
     }
+}
+
+/// What build_and_run built, inside the checkout lock: an iOS app installed on a simulator (launched
+/// after the lock is let go), or a Mac app's finished result (launched while still holding it).
+enum BuildAndRun {
+    case simulator(XcodeBuild.BuildOutput, bundle: String, sim: XcodeParsing.SimDevice, note: String?)
+    case mac(ToolResult)
 }

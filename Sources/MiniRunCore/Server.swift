@@ -28,6 +28,7 @@ public enum Server {
 
         let registry = ToolRegistry(config: live)
         log("\(registry.definitions.count) tools ready; workspaces at \(config.workspaceRoot)")
+        await registry.reconcileMacApps()
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }
         let client = RelayClient(config: live, registry: registry, log: { Server.log($0) })

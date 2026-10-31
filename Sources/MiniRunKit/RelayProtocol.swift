@@ -9,8 +9,9 @@ import Foundation
 /// then Annex B NAL units, where flags bit 0 marks a keyframe (which starts with SPS and PPS).
 /// A stream's key is the simulator UDID viewers asked for, or "" for "whichever is booted".
 public enum RelayProtocol {
-    /// 4 added live touches (`touch` messages).
-    public static let version = 4
+    /// 4 added live touches (`touch` messages). 5 added Mac app streams: picker entries and
+    /// `screen` messages with `kind: "mac"`, keyed by the Mac app id.
+    public static let version = 5
 
     public enum FrameKind: UInt8, Sendable {
         case jpeg = 1
@@ -66,8 +67,9 @@ public enum RelayProtocol {
         ["type": "result", "id": .string(id), "result": result.json]
     }
 
-    public static func screen(key: String = "", udid: String, name: String, pointWidth: Double, pointHeight: Double, pixelWidth: Int, pixelHeight: Int) -> JSONValue {
-        [
+    /// `kind` is "mac" for a Mac app's window, nil for a simulator.
+    public static func screen(key: String = "", udid: String, name: String, kind: String? = nil, pointWidth: Double, pointHeight: Double, pixelWidth: Int, pixelHeight: Int) -> JSONValue {
+        var message: [String: JSONValue] = [
             "type": "screen",
             "key": .string(key),
             "udid": .string(udid),
@@ -77,6 +79,8 @@ public enum RelayProtocol {
             "pixelWidth": JSONValue(pixelWidth),
             "pixelHeight": JSONValue(pixelHeight),
         ]
+        if let kind { message["kind"] = .string(kind) }
+        return .object(message)
     }
 
     public static func streamStatus(_ status: String, key: String = "", message: String? = nil) -> JSONValue {

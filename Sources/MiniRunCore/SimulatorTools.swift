@@ -1,12 +1,14 @@
 import Foundation
 import MiniRunKit
+import MiniRunMac
 import MiniRunSim
 
 extension ToolRegistry {
     static let deviceProperty: [String: JSONValue] = [
         "device": Schema.string(
-            "UDID of the simulator to act on (a name like \"iPhone 17 Pro\" also works). Other Claude sessions may be using this Mac, " +
-            "so once you have a simulator, pass its UDID on every call. If omitted and several simulators are booted, the call fails " +
+            "UDID of the simulator to act on (a name like \"iPhone 17 Pro\" also works), or a Mac app id like \"mac-3f9a2c\" " +
+            "(from build_and_run, launch_app or list_mac_apps) to act on that macOS app. Other Claude sessions may be using this Mac, " +
+            "so once you have a simulator or Mac app, pass its id on every call. If omitted and several simulators are booted, the call fails " +
             "and lists them instead of guessing."
         ),
     ]
@@ -44,6 +46,7 @@ extension ToolRegistry {
                 "label": Schema.string("What you're working on, as owner/repo@branch (e.g. \"you/app@feature-x\") — the same name builds of that repo and ref use, so they find this simulator."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("boot_simulator")) }
             let label = args.string("label")
             return await runAsJob(args, title: "boot simulator" + (label.map { " for \($0)" } ?? ""), log: nil) { [self] in
                 let (allocated, wasBooted) = try await allocation.withLock("simulators") { () async throws -> (Allocation, Bool) in
@@ -78,30 +81,37 @@ extension ToolRegistry {
             properties: device,
             required: ["device"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("shutdown_simulator")) }
             .text(try await self.shutDownSimulator(self.device(args, boot: false)))
         }
 
         register(ToolDefinition(
             name: "screenshot",
-            description: "Take a screenshot of the simulator. By default the image is sized so one pixel equals one screen point, matching the coordinates tap, swipe and describe_ui use.",
+            description: "Take a screenshot of the simulator, or of a Mac app's window. By default the image is sized so one pixel equals one point, matching the coordinates tap, swipe and describe_ui use " +
+                "(for a Mac app: window points from the window's top-left, title bar included).",
             properties: device.merging([
-                "scale": Schema.number("Optional scale relative to native pixels (0.1–1). Omit to match points.", minimum: 0.1, maximum: 1),
+                "window": Self.macProperties["window"]!,
+                "scale": Schema.number("Optional scale relative to native pixels (0.1–1); for a Mac app, image pixels per point. Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macScreenshot(args) }
             let sim = try await self.device(args)
             return ToolResult(try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70))
         }
 
         register(ToolDefinition(
             name: "describe_ui",
-            description: "Read the accessibility tree of what's on screen: element types, labels, ids, values and frames in points. Prefer this over guessing coordinates from a screenshot. Pass x and y to describe just the element at that point.",
+            description: "Read the accessibility tree of what's on screen (or in a Mac app's window): element types, labels, ids, values and frames in points. Prefer this over guessing coordinates from a screenshot. Pass x and y to describe just the element at that point.",
             properties: device.merging([
+                "window": Self.macProperties["window"]!,
+                "include_menus": Schema.boolean("Mac apps: also list the menu bar's items (for press_menu_item)."),
                 "x": Schema.number("Optional x in points."),
                 "y": Schema.number("Optional y in points."),
                 "format": Schema.string("\"text\" (compact, default) or \"json\" (full AXe JSON).", enum: ["text", "json"]),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macDescribeUI(args) }
             let sim = try await self.device(args)
             let json = try await SimulatorDriver.shared.describeUI(udid: sim.udid, x: args.double("x"), y: args.double("y"))
             if args.string("format") == "json" { return .text(String(decoding: json, as: UTF8.self)) }
@@ -110,8 +120,11 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "tap",
-            description: "Tap the screen at x,y (points), or tap an element found by accessibility id, label or value. Set screenshot=true to get the screen afterwards.",
-            properties: device.merging([
+            description: "Tap the screen at x,y (points), or tap an element found by accessibility id, label or value. Set screenshot=true to get the screen afterwards. " +
+                "On a Mac app, an element is pressed through Accessibility (no mouse needed) and x,y is a click at that window point.",
+            properties: device.merging(Self.macProperties) { a, _ in a }.merging([
+                "button": Schema.string("Mac apps: mouse button (default left).", enum: ["left", "right"]),
+                "count": Schema.integer("Mac apps: 2 for a double click.", minimum: 1, maximum: 3),
                 "x": Schema.number("X in points."),
                 "y": Schema.number("Y in points."),
                 "id": Schema.string("Accessibility identifier to tap."),
@@ -121,6 +134,10 @@ extension ToolRegistry {
                 "screenshot": Schema.boolean("Return a screenshot after the tap (default false)."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macTap(args) }
+            if args.string("button") == "right" || (args.int("count") ?? 1) > 1 {
+                throw ToolError("button and count work with Mac apps only. On a simulator, use long_press for a context menu.")
+            }
             let sim = try await self.device(args)
             let query: SimulatorDriver.ElementQuery?
             if let id = args.string("id") { query = .id(id) }
@@ -135,8 +152,9 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "swipe",
-            description: "Swipe from one point to another (points). Or pass direction to scroll the middle of the screen: \"up\" scrolls content up (finger moves up).",
-            properties: device.merging([
+            description: "Swipe from one point to another (points). Or pass direction to scroll the middle of the screen: \"up\" scrolls content up (finger moves up). " +
+                "On a Mac app this is a mouse drag; use scroll to scroll.",
+            properties: device.merging(Self.macProperties) { a, _ in a }.merging([
                 "from_x": Schema.number("Start x."), "from_y": Schema.number("Start y."),
                 "to_x": Schema.number("End x."), "to_y": Schema.number("End y."),
                 "direction": Schema.string("Shortcut instead of coordinates.", enum: ["up", "down", "left", "right"]),
@@ -144,6 +162,7 @@ extension ToolRegistry {
                 "screenshot": Schema.boolean("Return a screenshot afterwards."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macSwipe(args) }
             let sim = try await self.device(args)
             typealias Point = (x: Double, y: Double)
             let path: (from: Point, to: Point)
@@ -168,8 +187,8 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "long_press",
-            description: "Press and hold at a point, optionally dragging to another point before releasing (for context menus, reordering, sliders).",
-            properties: device.merging([
+            description: "Press and hold at a point, optionally dragging to another point before releasing (for context menus, reordering, sliders). On a Mac app it holds the mouse button down.",
+            properties: device.merging(Self.macProperties) { a, _ in a }.merging([
                 "x": Schema.number("X in points."), "y": Schema.number("Y in points."),
                 "to_x": Schema.number("Optional x to drag to."), "to_y": Schema.number("Optional y to drag to."),
                 "duration": Schema.number("Hold time in seconds (default 1).", minimum: 0.1, maximum: 10),
@@ -177,6 +196,7 @@ extension ToolRegistry {
             ]) { a, _ in a },
             required: ["x", "y"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macLongPress(args) }
             let sim = try await self.device(args)
             let start = (x: try args.requireDouble("x"), y: try args.requireDouble("y"))
             let end = (x: args.double("to_x") ?? start.x, y: args.double("to_y") ?? start.y)
@@ -188,14 +208,15 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "type_text",
-            description: "Type text into the focused field using the hardware keyboard (US keyboard characters). Tap the field first. Set submit=true to press Return afterwards.",
-            properties: device.merging([
+            description: "Type text into the focused field using the hardware keyboard (US keyboard characters; on a Mac app any characters, emoji included). Tap the field first. Set submit=true to press Return afterwards.",
+            properties: device.merging(["input": Self.macProperties["input"]!]) { a, _ in a }.merging([
                 "text": Schema.string("Text to type."),
                 "submit": Schema.boolean("Press Return after typing."),
                 "screenshot": Schema.boolean("Return a screenshot afterwards."),
             ]) { a, _ in a },
             required: ["text"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macTypeText(args) }
             let sim = try await self.device(args)
             guard let text = args.rawString("text") else { throw ToolError("Missing `text`.") }
             try await SimulatorDriver.shared.typeText(udid: sim.udid, text: text)
@@ -205,10 +226,18 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "press_key",
-            description: "Press a keyboard key: return, delete, tab, escape, space, up, down, left, right.",
-            properties: device.merging(["key": Schema.string("Key name.")]) { a, _ in a },
+            description: "Press a keyboard key: return, delete, tab, escape, space, up, down, left, right. " +
+                "On a Mac app also letters, digits, punctuation, f1–f12, home, end, pageup, pagedown and forwarddelete, with modifiers (e.g. key \"s\", modifiers [\"command\"]).",
+            properties: device.merging([
+                "key": Schema.string("Key name."),
+                "modifiers": Schema.stringArray("Mac apps: keys held down, any of command, shift, option, control, fn."),
+                "input": Self.macProperties["input"]!,
+                "screenshot": Schema.boolean("Return a screenshot afterwards."),
+            ]) { a, _ in a },
             required: ["key"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macPressKey(args) }
+            guard args.strings("modifiers").isEmpty else { throw ToolError("modifiers work with Mac apps only for now.") }
             let sim = try await self.device(args)
             try await SimulatorDriver.shared.pressKey(udid: sim.udid, name: try args.requireString("key"))
             return try await afterAction("Pressed \(args.string("key")!).", udid: sim.udid, args: args)
@@ -224,6 +253,7 @@ extension ToolRegistry {
             ]) { a, _ in a },
             required: ["button"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("press_button")) }
             let sim = try await self.device(args)
             let name = try args.requireString("button")
             guard let button = SimulatorDriver.Button(rawValue: name) else { throw ToolError("Unknown button \(name).") }
@@ -233,10 +263,11 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "open_url",
-            description: "Open a URL in the simulator: a web page in Safari, or a deep link / custom scheme into an app.",
+            description: "Open a URL in the simulator: a web page in Safari, or a deep link / custom scheme into an app. With a Mac app id, opens it with that app.",
             properties: device.merging(["url": Schema.string("URL to open.")]) { a, _ in a },
             required: ["url"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macOpenURL(args) }
             let sim = try await self.device(args)
             try await Simctl.openURL(sim.udid, url: try args.requireString("url"))
             return .text("Opened \(args.string("url")!).")
@@ -244,10 +275,12 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "set_pasteboard",
-            description: "Put text on the simulator's pasteboard (useful for text type_text can't type, like emoji or non-US characters).",
+            description: "Put text on the simulator's pasteboard (useful for text type_text can't type, like emoji or non-US characters). " +
+                "With a Mac app id (or device \"mac\") it sets the Mac's own pasteboard, which every app and session on the Mac shares.",
             properties: device.merging(["text": Schema.string("Text to copy.")]) { a, _ in a },
             required: ["text"]
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { return try await macSetPasteboard(args) }
             let sim = try await self.device(args)
             try await Simctl.setPasteboard(sim.udid, text: args.rawString("text") ?? "")
             return .text("Pasteboard set.")
@@ -266,6 +299,7 @@ extension ToolRegistry {
                 "bundle_id": Schema.string("App the permission applies to."),
             ]) { a, _ in a }
         )) { [self] args in
+            if MacAppID.isMacDevice(args.string("device")) { throw ToolError(MacToolSupport.unsupported("configure_simulator")) }
             let sim = try await self.device(args)
             var done: [String] = []
             if let appearance = args.string("appearance") {
