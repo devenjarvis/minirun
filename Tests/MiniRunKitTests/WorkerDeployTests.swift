@@ -147,6 +147,30 @@ final class WorkerDeployTests: XCTestCase {
         XCTAssertTrue(body.contains(#""keep_bindings":["secret_text","secret_key"]"#))
     }
 
+    func testRedeployAddsTheMediaNamespaceNextToTheLiveOne() async throws {
+        let fake = freshAccount()
+        fake.on("GET /accounts/\(account)/workers/scripts/minirun/settings", result: ["bindings": [
+            ["type": "kv_namespace", "name": "OAUTH_KV", "namespace_id": "kv-live"],
+        ]])
+        fake.on("GET /accounts/\(account)/workers/services/minirun", result: ["default_environment": ["script": ["migration_tag": "v1"]]])
+        var twoNamespaces = manifest
+        twoNamespaces.kvNamespaces = ["OAUTH_KV", "MEDIA_KV"]
+        let deployer = WorkerDeployer(api: CloudflareAPI(token: "cf-token", transport: fake), bundle: WorkerBundle(manifest: twoNamespaces, code: Data("export default {}".utf8)))
+
+        _ = try await deployer.deploy(.init(), password: "known-password", token: "known-token")
+        XCTAssertEqual(fake.requests("POST /accounts/\(account)/storage/kv/namespaces").map(\.json), [["title": "minirun-MEDIA_KV"]])
+
+        let metadata = try WorkerDeployer.metadata(twoNamespaces, kvIDs: ["OAUTH_KV": "kv-live", "MEDIA_KV": "kv-new"], deployedMigrationTag: "v1")
+        let kv = (metadata["bindings"]?.arrayValue ?? []).filter { $0["type"]?.stringValue == "kv_namespace" }
+        XCTAssertEqual(kv, [
+            ["type": "kv_namespace", "name": "OAUTH_KV", "namespace_id": "kv-live"],
+            ["type": "kv_namespace", "name": "MEDIA_KV", "namespace_id": "kv-new"],
+        ])
+        let body = String(decoding: try XCTUnwrap(fake.requests("PUT /accounts/\(account)/workers/scripts/minirun").first).body, as: UTF8.self)
+        XCTAssertTrue(body.contains(#"{"name":"OAUTH_KV","namespace_id":"kv-live","type":"kv_namespace"}"#), body)
+        XCTAssertTrue(body.contains(#"{"name":"MEDIA_KV","namespace_id":"kv-new","type":"kv_namespace"}"#), body)
+    }
+
     func testRotatingTheTokenOnlyReplacesTheToken() async throws {
         let fake = freshAccount()
         fake.on("GET /accounts/\(account)/workers/scripts/minirun/secrets", result: [["name": "OWNER_PASSWORD"], ["name": "AGENT_TOKEN"]])
@@ -264,7 +288,7 @@ final class WorkerDeployTests: XCTestCase {
         let fakeBinary = root.appendingPathComponent(".build/debug/minirun")
         let bundle = try WorkerBundle.locate(executable: fakeBinary, environment: [:])
         XCTAssertEqual(bundle.manifest.name, "minirun")
-        XCTAssertEqual(bundle.manifest.kvNamespaces, ["OAUTH_KV"])
+        XCTAssertEqual(bundle.manifest.kvNamespaces, ["OAUTH_KV", "MEDIA_KV"])
         XCTAssertEqual(bundle.manifest.durableObjects.first?.className, "MacRelay")
         XCTAssertEqual(bundle.manifest.bundleHash.count, 64)
         XCTAssertFalse(bundle.code.isEmpty)

@@ -10,8 +10,12 @@
     "bindings": [{ "name": "MAC_RELAY", "class_name": "MacRelay" }]
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MacRelay"] }],
-  // Holds OAuth clients, grants and tokens. `./setup.sh` creates it and fills in the id.
-  "kv_namespaces": [{ "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" }]
+  // OAUTH_KV holds OAuth clients, grants and tokens; MEDIA_KV holds shared screenshots and
+  // recordings, each with its own expiry. `./setup.sh` creates them and fills in the ids.
+  "kv_namespaces": [
+    { "binding": "OAUTH_KV", "id": "REPLACE_WITH_KV_ID" },
+    { "binding": "MEDIA_KV", "id": "REPLACE_WITH_MEDIA_KV_ID" }
+  ]
   // Secrets (set with `wrangler secret put`, or by ./setup.sh):
   //   OWNER_PASSWORD — you type this to log in to the viewer and to approve Claude's connector
   //   AGENT_TOKEN    — the Mac uses this to connect; also saved in the Mac's minirun config
