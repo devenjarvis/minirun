@@ -1,0 +1,9 @@
+[job_d5fe68a1] build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp: succeeded in 3m 15s
+Built HelloApp in 73s.
+App: /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp/.minirun/DerivedData/Build/Products/Debug-iphonesimulator/HelloApp.app
+Bundle id: dev.minirun.HelloApp
+Log: /Users/runner/Library/Logs/minirun/jobs/2026-10-31T13-29-36Z-build-and-run.log
+Installed and launched dev.minirun.HelloApp on minirun-smoke (pid 14248).
+Simulator: minirun-smoke, UDID A33915A3-8AE1-4FD6-8D4A-81FE6331B15B. Pass device: "A33915A3-8AE1-4FD6-8D4A-81FE6331B15B" on later calls so they reach this simulator.
+[image saved to /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/minirun-2A0D1F80.jpg]
+Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
