@@ -21,6 +21,16 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     public var idleShutdownMinutes: Int
     /// How many simulators minirun keeps booted at once before it asks for one to be freed.
     public var maxBootedSimulators: Int
+    /// Lets `screenshot {share}` and `stop_recording` upload to the Worker for PR descriptions.
+    public var shareMedia: Bool
+    /// How long shared media lives before the Worker's KV deletes it (see `mediaRetentionSeconds`).
+    public var mediaRetentionDays: Int
+    /// The oldest shared media is deleted before an upload would go over this.
+    public var mediaStorageLimitMB: Int
+    /// Recordings stop by themselves after this long (see `recordingSecondsLimit`).
+    public var maxRecordingSeconds: Int
+    /// The largest GIF to embed in a PR; recordings are shrunk to fit.
+    public var mediaInlineLimitMB: Int
 
     public init(
         relayURL: String? = nil,
@@ -31,7 +41,12 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         preventSleep: Bool = true,
         gitURLTemplate: String = "https://github.com/{repo}.git",
         idleShutdownMinutes: Int = 30,
-        maxBootedSimulators: Int = 4
+        maxBootedSimulators: Int = 4,
+        shareMedia: Bool = true,
+        mediaRetentionDays: Int = 7,
+        mediaStorageLimitMB: Int = 500,
+        maxRecordingSeconds: Int = 60,
+        mediaInlineLimitMB: Int = 5
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -42,6 +57,11 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.gitURLTemplate = gitURLTemplate
         self.idleShutdownMinutes = idleShutdownMinutes
         self.maxBootedSimulators = maxBootedSimulators
+        self.shareMedia = shareMedia
+        self.mediaRetentionDays = mediaRetentionDays
+        self.mediaStorageLimitMB = mediaStorageLimitMB
+        self.maxRecordingSeconds = maxRecordingSeconds
+        self.mediaInlineLimitMB = mediaInlineLimitMB
     }
 
     public init(from decoder: Decoder) throws {
@@ -55,6 +75,31 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         gitURLTemplate = try c.decodeIfPresent(String.self, forKey: .gitURLTemplate) ?? "https://github.com/{repo}.git"
         idleShutdownMinutes = try c.decodeIfPresent(Int.self, forKey: .idleShutdownMinutes) ?? 30
         maxBootedSimulators = try c.decodeIfPresent(Int.self, forKey: .maxBootedSimulators) ?? 4
+        shareMedia = try c.decodeIfPresent(Bool.self, forKey: .shareMedia) ?? true
+        mediaRetentionDays = try c.decodeIfPresent(Int.self, forKey: .mediaRetentionDays) ?? 7
+        mediaStorageLimitMB = try c.decodeIfPresent(Int.self, forKey: .mediaStorageLimitMB) ?? 500
+        maxRecordingSeconds = try c.decodeIfPresent(Int.self, forKey: .maxRecordingSeconds) ?? 60
+        mediaInlineLimitMB = try c.decodeIfPresent(Int.self, forKey: .mediaInlineLimitMB) ?? 5
+    }
+
+    // The media settings as minirun uses them, kept within what the Worker and KV accept.
+    public static let retentionDaysRange = 1...90
+    public static let recordingSecondsRange = 5...300
+    /// KV's largest value is 25 MiB.
+    public static let inlineLimitMBRange = 1...25
+
+    public var mediaRetentionSeconds: Int {
+        min(Self.retentionDaysRange.upperBound, max(Self.retentionDaysRange.lowerBound, mediaRetentionDays)) * 86400
+    }
+
+    public var mediaStorageLimitBytes: Int { max(1, mediaStorageLimitMB) * 1_048_576 }
+
+    public var recordingSecondsLimit: Int {
+        min(Self.recordingSecondsRange.upperBound, max(Self.recordingSecondsRange.lowerBound, maxRecordingSeconds))
+    }
+
+    public var mediaInlineLimitBytes: Int {
+        min(Self.inlineLimitMBRange.upperBound, max(Self.inlineLimitMBRange.lowerBound, mediaInlineLimitMB)) * 1_048_576
     }
 
     public static var home: String { FileManager.default.homeDirectoryForCurrentUser.path }
@@ -107,6 +152,17 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         components.scheme = components.scheme == "ws" ? "http" : "https"
         components.path = "/"
         components.queryItems = device.map { [URLQueryItem(name: "device", value: $0)] }
+        return components.string
+    }
+
+    /// Where shared media is served, derived from the relay URL like `viewerURL`
+    /// (wss://minirun.you.workers.dev/agent -> https://minirun.you.workers.dev).
+    public var mediaBaseURL: String? {
+        guard let relayURL, var components = URLComponents(string: relayURL), let host = components.host, !host.isEmpty else { return nil }
+        components.scheme = components.scheme == "ws" ? "http" : "https"
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
         return components.string
     }
 

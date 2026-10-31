@@ -49,9 +49,11 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         /// A job is running on it or someone is watching it live.
         public var busy: Bool
         public var viewerURL: String?
+        /// A screen recording is running (start_recording). False from daemons that predate it.
+        public var recording: Bool
 
         public init(udid: String, name: String, runtime: String, booting: Bool = false, reservedFor: String? = nil,
-                    bundleID: String? = nil, lastUsed: Date? = nil, busy: Bool = false, viewerURL: String? = nil) {
+                    bundleID: String? = nil, lastUsed: Date? = nil, busy: Bool = false, viewerURL: String? = nil, recording: Bool = false) {
             self.udid = udid
             self.name = name
             self.runtime = runtime
@@ -61,6 +63,21 @@ public struct ServeStatus: Codable, Equatable, Sendable {
             self.lastUsed = lastUsed
             self.busy = busy
             self.viewerURL = viewerURL
+            self.recording = recording
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            udid = try c.decode(String.self, forKey: .udid)
+            name = try c.decode(String.self, forKey: .name)
+            runtime = try c.decode(String.self, forKey: .runtime)
+            booting = try c.decode(Bool.self, forKey: .booting)
+            reservedFor = try c.decodeIfPresent(String.self, forKey: .reservedFor)
+            bundleID = try c.decodeIfPresent(String.self, forKey: .bundleID)
+            lastUsed = try c.decodeIfPresent(Date.self, forKey: .lastUsed)
+            busy = try c.decode(Bool.self, forKey: .busy)
+            viewerURL = try c.decodeIfPresent(String.self, forKey: .viewerURL)
+            recording = try c.decodeIfPresent(Bool.self, forKey: .recording) ?? false
         }
     }
 
@@ -96,8 +113,11 @@ public struct ServeStatus: Codable, Equatable, Sendable {
     public var simulatorError: String?
     /// Running jobs and the most recent finished ones, newest first.
     public var jobs: [Job]
+    /// What's shared through the Worker. Nil from daemons that predate sharing.
+    public var media: MediaSummary?
 
-    public init(version: String, pid: Int32, startedAt: Date, relay: Relay, simulators: [Simulator] = [], simulatorError: String? = nil, jobs: [Job] = []) {
+    public init(version: String, pid: Int32, startedAt: Date, relay: Relay, simulators: [Simulator] = [], simulatorError: String? = nil, jobs: [Job] = [],
+                media: MediaSummary? = nil) {
         self.version = version
         self.pid = pid
         self.startedAt = startedAt
@@ -105,6 +125,7 @@ public struct ServeStatus: Codable, Equatable, Sendable {
         self.simulators = simulators
         self.simulatorError = simulatorError
         self.jobs = jobs
+        self.media = media
     }
 
     /// The text `minirun status` prints.
@@ -131,6 +152,7 @@ public struct ServeStatus: Codable, Equatable, Sendable {
                 var parts = [sim.reservedFor.map { "reserved for \($0)" } ?? "not reserved"]
                 if sim.booting { parts.insert("booting", at: 0) }
                 if sim.busy { parts.append("busy") }
+                if sim.recording { parts.append("recording") }
                 if let bundle = sim.bundleID { parts.append("last app \(bundle)") }
                 if let used = sim.lastUsed { parts.append("used \(SimulatorPicker.ago(used, now: now))") }
                 lines.append("  \(sim.name) (\(sim.runtime)) \(sim.udid) — " + parts.joined(separator: ", "))
@@ -149,6 +171,10 @@ public struct ServeStatus: Codable, Equatable, Sendable {
                 lines.append("  \(job.id) \(job.title): \(state)")
             }
         }
+        if let media {
+            lines.append("")
+            lines.append("Shared media: \(media.count) item\(media.count == 1 ? "" : "s"), \(WorkspaceInventory.formatSize(Int64(media.bytes)))")
+        }
         return lines.joined(separator: "\n")
     }
 
@@ -164,16 +190,18 @@ public struct ServeStatus: Codable, Equatable, Sendable {
 /// Messages on the control socket: one JSON request line, one JSON response line.
 public enum ControlProtocol {
     /// Goes up when commands are added, so the menu bar app can tell it's talking to an older
-    /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest.
-    public static let version = 2
+    /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest; 3 added
+    /// shared media and recordings.
+    public static let version = 3
 
     public struct Request: Codable, Equatable, Sendable {
         /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
-        /// workspaces, delete_workspace, doctor.
+        /// workspaces, delete_workspace, doctor, list_media, delete_media, delete_all_media,
+        /// stop_recording.
         public var command: String
-        /// The simulator for shutdown_simulator and release_simulator.
+        /// The simulator for shutdown_simulator, release_simulator and stop_recording.
         public var udid: String?
-        /// The job for cancel_job.
+        /// The job for cancel_job, the item for delete_media.
         public var id: String?
         /// The checkout folder for delete_workspace.
         public var path: String?
@@ -197,10 +225,12 @@ public enum ControlProtocol {
         public var reload: ConfigReload?
         public var workspaces: [WorkspaceInfo]?
         public var doctor: [DoctorCheck]?
+        /// Shared media for list_media, newest first.
+        public var media: [MediaItem]?
 
         public init(ok: Bool, error: String? = nil, message: String? = nil, status: ServeStatus? = nil,
                     reload: ConfigReload? = nil, workspaces: [WorkspaceInfo]? = nil, doctor: [DoctorCheck]? = nil,
-                    controlVersion: Int? = ControlProtocol.version) {
+                    media: [MediaItem]? = nil, controlVersion: Int? = ControlProtocol.version) {
             self.controlVersion = controlVersion
             self.ok = ok
             self.error = error
@@ -209,6 +239,7 @@ public enum ControlProtocol {
             self.reload = reload
             self.workspaces = workspaces
             self.doctor = doctor
+            self.media = media
         }
 
         public static func failure(_ message: String) -> Response { Response(ok: false, error: message) }
@@ -260,6 +291,14 @@ public enum ControlProtocol {
                 return encode(Response(ok: true, message: try await commands.deleteWorkspace(path: required(request.path, "path"))))
             case "doctor":
                 return encode(Response(ok: true, doctor: await commands.doctor()))
+            case "list_media":
+                return encode(Response(ok: true, media: try await commands.listMedia()))
+            case "delete_media":
+                return encode(Response(ok: true, message: try await commands.deleteMedia(id: required(request.id, "id"))))
+            case "delete_all_media":
+                return encode(Response(ok: true, message: try await commands.deleteAllMedia()))
+            case "stop_recording":
+                return encode(Response(ok: true, message: try await commands.stopRecording(udid: required(request.udid, "udid"))))
             default:
                 return encode(Response.failure("Unknown command \(request.command)."))
             }
@@ -290,4 +329,11 @@ public protocol ControlCommands: Sendable {
     /// Deletes one checkout. Refuses one a job is using.
     func deleteWorkspace(path: String) async throws -> String
     func doctor() async -> [DoctorCheck]
+    /// Shared media, newest first.
+    func listMedia() async throws -> [MediaItem]
+    /// Stops serving one shared item and drops it from the ledger. The owner may delete any.
+    func deleteMedia(id: String) async throws -> String
+    func deleteAllMedia() async throws -> String
+    /// Stops a simulator's recording. The video is kept for the agent's stop_recording call.
+    func stopRecording(udid: String) async throws -> String
 }

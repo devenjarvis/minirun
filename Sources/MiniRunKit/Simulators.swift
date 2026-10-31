@@ -261,6 +261,9 @@ public actor SimulatorClaimStore {
         return claims
     }
 
+    /// The simulator's claim as it stands, without dropping stale ones.
+    public func claim(_ udid: String) -> SimulatorClaim? { claims[udid] }
+
     /// Reserves a simulator for `label`. Returns the label it was reserved for before, if different.
     @discardableResult
     public func reserve(_ udid: String, for label: String?, now: Date = Date()) -> String? {

@@ -31,6 +31,10 @@ public final class ToolRegistry: @unchecked Sendable {
     let checkouts = KeyedLock()
     /// Folders run_command is running in, so a checkout isn't deleted under it.
     let commandFolders = SimulatorActivity()
+    /// What's been shared through the Worker. Kept in a file even for a one-off `minirun call`,
+    /// so the storage limit counts every upload.
+    let media = MediaLedger(url: MediaLedger.defaultURL)
+    let recordings = ScreenRecordings()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL
@@ -49,6 +53,7 @@ public final class ToolRegistry: @unchecked Sendable {
         registerSimulatorTools()
         registerAppTools()
         registerCodeTools()
+        registerMediaTools()
     }
 
     public var definitions: [ToolDefinition] { order.compactMap { tools[$0]?.definition } }
@@ -204,7 +209,8 @@ public final class ToolRegistry: @unchecked Sendable {
         let minutes = config.idleShutdownMinutes
         // Under the allocation lock so a pick can't hand out a simulator while it's shutting down.
         try await allocation.withLock("simulators") { () async throws -> Void in
-            let busy = (await activity.busy).union(await boots.booting)
+            // A recording counts as use: it stops by itself, and the simulator is idle only after that.
+            let busy = (await activity.busy).union(await boots.booting).union(await recordings.recording)
             let (all, current) = try await simulators()
             let booted = all.filter(\.isBooted)
             let names = Dictionary(booted.map { ($0.udid, $0.name) }, uniquingKeysWith: { a, _ in a })
@@ -234,6 +240,7 @@ public final class ToolRegistry: @unchecked Sendable {
         let recent = await self.jobs.list().prefix(20).map { ServeStatus.Job($0) }
         let busy = await activity.busy
         let booting = await boots.booting
+        let recording = await recordings.recording
         do {
             let (all, current) = try await simulators()
             let booted = all.filter(\.isBooted).map { device in
@@ -244,7 +251,8 @@ public final class ToolRegistry: @unchecked Sendable {
                     bundleID: current[device.udid]?.bundleID,
                     lastUsed: current[device.udid]?.updatedAt,
                     busy: busy.contains(device.udid),
-                    viewerURL: config.viewerURL(device: device.udid)
+                    viewerURL: config.viewerURL(device: device.udid),
+                    recording: recording.contains(device.udid)
                 )
             }
             return (booted, nil, recent)

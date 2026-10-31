@@ -272,3 +272,117 @@ final class OutputCollector: @unchecked Sendable {
         try? logHandle?.close()
     }
 }
+
+/// A program left running in the background until it's told to stop, like
+/// `simctl io recordVideo`. It's listed in `ChildProcessLedger`, so a restart of minirun stops it.
+public final class BackgroundProcess: @unchecked Sendable {
+    private let process: Process
+    private let collector = OutputCollector(logURL: nil)
+    private let lock = NSLock()
+    private var code: Int32?
+    private var waiters: [Once] = []
+
+    private init(_ process: Process) {
+        self.process = process
+    }
+
+    public static func start(_ executable: String, _ arguments: [String]) throws -> BackgroundProcess {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        let background = BackgroundProcess(process)
+        let collector = background.collector
+        let stdoutPipe = Pipe(), stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { collector.append(data, isError: false) }
+        }
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { collector.append(data, isError: true) }
+        }
+        process.terminationHandler = { finished in
+            ChildProcessLedger.shared.remove(finished.processIdentifier)
+            background.finished(finished.terminationStatus)
+        }
+        try process.run()
+        ChildProcessLedger.shared.add(process.processIdentifier, names: ChildProcessLedger.names(executable: executable, arguments: arguments))
+        return background
+    }
+
+    private func finished(_ status: Int32) {
+        lock.lock()
+        code = status
+        let waiting = waiters
+        waiters = []
+        lock.unlock()
+        for waiter in waiting { waiter.fire() }
+    }
+
+    public var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return code == nil
+    }
+
+    /// The exit code, once it has exited.
+    public var exitCode: Int32? {
+        lock.lock()
+        defer { lock.unlock() }
+        return code
+    }
+
+    /// What it has written so far, stdout then stderr.
+    public var output: String {
+        let (out, err) = collector.snapshot()
+        return [out, err].filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    /// Sends SIGINT, which tells a recorder to finish its file and exit.
+    public func interrupt() { send(SIGINT) }
+
+    /// Kills it outright.
+    public func forceKill() { send(SIGKILL) }
+
+    private func send(_ signal: Int32) {
+        guard isRunning else { return }
+        kill(process.processIdentifier, signal)
+    }
+
+    /// Waits up to `seconds` for it to exit. Returns whether it has.
+    @discardableResult
+    public func wait(seconds: TimeInterval) async -> Bool {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = Once { continuation.resume() }
+            lock.lock()
+            guard code == nil else {
+                lock.unlock()
+                once.fire()
+                return
+            }
+            waiters.append(once)
+            lock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { once.fire() }
+        }
+        return !isRunning
+    }
+
+    /// Runs its action the first time it fires: the exit and the deadline race to end a wait.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var action: (() -> Void)?
+
+        init(_ action: @escaping () -> Void) { self.action = action }
+
+        func fire() {
+            lock.lock()
+            let action = self.action
+            self.action = nil
+            lock.unlock()
+            action?()
+        }
+    }
+}
