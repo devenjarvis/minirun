@@ -263,10 +263,10 @@ public final class ToolRegistry: @unchecked Sendable {
         return logsDirectory.appendingPathComponent("\(stamp)-\(String(safe)).log")
     }
 
-    /// Runs `work` as a job and waits `wait_seconds` (default 45) for it before returning.
+    /// Runs `work` as a job and waits `wait_seconds` (default 45, at most `JobStore.maxWait`) for it before returning.
     func runAsJob(_ args: ToolArguments, title: String, log: URL?, _ work: @escaping @Sendable () async throws -> ToolResult) async -> ToolResult {
         let id = await jobs.start(title: title, logPath: log?.path, work)
-        let wait = min(600, max(0, args.double("wait_seconds") ?? 45))
+        let wait = JobStore.waitSeconds(args.double("wait_seconds"))
         return await jobs.report(id, waited: wait)
     }
 

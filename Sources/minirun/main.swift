@@ -127,7 +127,7 @@ func main() async {
         // Poll jobs to completion so scripts get the final answer.
         while let text = result.content.first.flatMap({ (item: ToolContent) -> String? in if case .text(let t) = item { return t } else { return nil } }),
               text.contains("is still running"), let range = text.range(of: #"job_[0-9a-f]{8}"#, options: .regularExpression) {
-            result = await registry.call("get_job", arguments: ["job_id": .string(String(text[range])), "wait_seconds": 600])
+            result = await registry.call("get_job", arguments: ["job_id": .string(String(text[range])), "wait_seconds": .number(JobStore.maxWait)])
         }
         for item in result.content {
             switch item {

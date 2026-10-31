@@ -18,6 +18,13 @@ enum AppPaths {
         return url
     }
 
+    /// Resources/github-runner.sh: installs and manages self-hosted GitHub Actions runners.
+    static var githubRunnerScript: String? {
+        guard let path = Bundle.main.resourceURL?.appendingPathComponent("github-runner.sh").path,
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return path
+    }
+
     static var bundledWorkerHash: String? {
         workerBundle.flatMap { try? WorkerBundle(directory: $0) }?.manifest.bundleHash
     }

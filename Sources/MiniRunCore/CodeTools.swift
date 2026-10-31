@@ -16,7 +16,11 @@ extension ToolRegistry {
     ]
 
     static let waitProperty: [String: JSONValue] = [
-        "wait_seconds": Schema.number("How long to wait for the job before returning a job id to poll (default 45, max 600).", minimum: 0, maximum: 600),
+        "wait_seconds": Schema.number(
+            "How long to wait for the job before returning a job id to poll (default 45, max \(Int(JobStore.maxWait)), under the client's request timeout). " +
+                "Call get_job again to keep waiting.",
+            minimum: 0, maximum: JobStore.maxWait
+        ),
     ]
 
     func registerCodeTools() {
@@ -218,7 +222,7 @@ extension ToolRegistry {
             properties: ["job_id": Schema.string("Job id from an earlier call.")].merging(wait) { a, _ in a },
             required: ["job_id"]
         )) { [self] args in
-            await jobs.report(try args.requireString("job_id"), waited: min(600, max(0, args.double("wait_seconds") ?? 45)))
+            await jobs.report(try args.requireString("job_id"), waited: JobStore.waitSeconds(args.double("wait_seconds")))
         }
 
         register(ToolDefinition(

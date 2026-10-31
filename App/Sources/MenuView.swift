@@ -18,6 +18,7 @@ struct MenuView: View {
             } else if snapshot.canStart {
                 notRunning
             }
+            RunnersMenuSection(store: store.runners, menu: store)
             Divider()
             footer
         }
@@ -34,9 +35,18 @@ struct MenuView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label(snapshot.headline, systemImage: snapshot.icon.symbolName)
-                .font(.headline)
-                .foregroundStyle(snapshot.icon == .problem || snapshot.icon == .notRunning ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+            HStack(alignment: .firstTextBaseline) {
+                Label(snapshot.headline, systemImage: snapshot.icon.symbolName)
+                    .font(.headline)
+                    .foregroundStyle(snapshot.icon == .problem || snapshot.icon == .notRunning ? AnyShapeStyle(.orange) : AnyShapeStyle(.primary))
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                SettingsLink { Image(systemName: "gearshape") }
+                    .buttonStyle(.borderless)
+                    .keyboardShortcut(",")
+                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
+                    .help("Settings…")
+            }
             if let problem = snapshot.problem {
                 Text(problem).font(.callout).textSelection(.enabled)
             }
@@ -125,7 +135,6 @@ struct MenuView: View {
                     Image(systemName: job.isRunning ? "hammer" : (job.status == "succeeded" ? "checkmark.circle" : "xmark.circle"))
                         .foregroundStyle(job.isRunning ? AnyShapeStyle(.blue) : (job.status == "succeeded" ? AnyShapeStyle(.green) : AnyShapeStyle(.secondary)))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(job.title).lineLimit(1).truncationMode(.middle)
                         Text(job.detail).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -196,9 +205,6 @@ struct MenuView: View {
                     .disabled(!snapshot.canStart)
                     .help("Restart minirun serve. Claude's calls in progress are retried after it reconnects.")
                 Spacer()
-                SettingsLink { Label("Settings…", systemImage: "gearshape") }
-                    .keyboardShortcut(",")
-                    .simultaneousGesture(TapGesture().onEnded { NSApp.activate(ignoringOtherApps: true) })
                 Button("Quit") { store.quit() }
                     .keyboardShortcut("q")
                     .help("Quit the menu bar app. minirun serve keeps running.")

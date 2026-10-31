@@ -78,6 +78,8 @@ final class MenuStore {
     private(set) var updateStatus: String?
     private(set) var updating = false
     let model: MenuModel
+    /// Self-hosted GitHub Actions runners, for the menu and Settings → GitHub Runners.
+    let runners = RunnerStore()
     private var flashTask: Task<Void, Never>?
     private var didLaunch = false
     private var updateLoop: Task<Void, Never>?
@@ -219,6 +221,7 @@ final class MenuStore {
     var workerOutdated: Bool { snapshot.workerOutdated(bundled: AppPaths.bundledWorkerHash) }
 
     func menuShown(_ shown: Bool) {
+        if shown { runners.refresh() }
         Task { await model.setMenuOpen(shown) }
     }
 
