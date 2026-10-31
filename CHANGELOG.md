@@ -21,6 +21,9 @@ itself, with the same loop as iOS. See [macOS apps](README.md#macos-apps).
   take `input: "hid"` for apps that ignore events posted to their process. Simulator-only tools say
   what to use instead.
 - **New tools:** `list_mac_apps`, `list_windows`, `scroll` and `press_menu_item`.
+- **Clicks without the cursor:** SwiftUI controls ignore clicks posted to the app, so a tap at a
+  window point, or a click in the live view, on a button or text field presses or focuses it
+  through Accessibility. `input: "hid"` clicks with the real cursor.
 - **Live view of Mac app windows** (H.264, JPEG fallback), with clicks, drags, right and double
   clicks, wheel scrolling and keys with modifiers. Relay protocol version 5.
 - **Several sessions:** apps are tracked per repo + ref in `~/.config/minirun/mac-apps.json`, kept

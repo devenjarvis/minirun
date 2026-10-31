@@ -214,9 +214,10 @@ itself, with the same loop:
 **Isolation between sessions.** Each repo + ref gets its own Mac app id, and minirun only ever
 quits the process it launched for that id (it checks the pid still runs that executable). Apps are
 started as plain processes, not through Launch Services, so two branches of the same app run side
-by side. Clicks, scrolls and keys are posted to the app's process, so they don't move your cursor
-or need the window in front; `input: "hid"` uses the real cursor and keyboard instead for apps
-that ignore those events. `list_mac_apps` shows every Mac app minirun launched and who it's for.
+by side. Keys, scrolls and drags are posted to the app's process, so they don't move your cursor
+or need the window in front. A tap (or a live view click) on a button or text field presses or
+focuses it through Accessibility, because SwiftUI controls ignore clicks posted to the app.
+`input: "hid"` uses the real cursor and keyboard instead, for anything those don't reach. `list_mac_apps` shows every Mac app minirun launched and who it's for.
 Apps nobody has used for `idleShutdownMinutes` are quit, like idle simulators.
 
 It needs Screen Recording and Accessibility for `minirun serve`: see

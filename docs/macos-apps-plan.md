@@ -3,16 +3,27 @@
 > **Status:** phases 1 and 2 have landed on `claude/macos-apps-integration`: the build pipeline,
 > the Mac driver, viewer and relay, host checks and menu, and the integration (`MacTools.swift`,
 > `platform` on the build tools, Mac live view, idle quitting, the control handlers, protocol 5,
-> the smoke test's macOS section, README and CHANGELOG). CI compiles it and the smoke test builds,
-> launches, logs, tests and quits HelloMacApp; the steps that need Screen Recording and
-> Accessibility run only where the runner has them. Not yet checked on a real Mac with the grants:
-> the live view of a window (H.264, resize, viewer input), pid-posted input across apps, `hid`
-> input, Catalyst builds, idle quitting, and two sessions on two branches of one app. Phase 3
-> (review) is next.
+> the smoke test's macOS section, README and CHANGELOG). On GitHub's macOS runners (which already
+> grant Screen Recording and Accessibility to `/bin/bash`, the process macOS checks there) CI
+> builds, launches and quits HelloMacApp and checks: list_mac_apps, list_windows, app_logs,
+> describe_ui, tap by id, a tap at a window point (pid and hid), press_menu_item, typing into a
+> field, press_key with modifiers, scroll, swipe, screenshot, terminate_app, run_tests, and through
+> the relay a Mac app's H.264 live view (`screen` with `kind: "mac"`, picker entry) and a live
+> click. Not yet checked on a real Mac: window resizes during a live view, drags that need the
+> mouse (pid-posted drags reach SwiftUI?), Catalyst builds, idle quitting, the menu bar app's Mac
+> section, and two sessions on two branches of one app. Phase 3 (review) is next.
+>
+> Found on CI: clicks posted to the app's pid never reach SwiftUI controls (keys, scrolls and
+> AXPress do), and HID clicks only land if the cursor stays put until the app handles them. So a
+> pid tap at a point, and a live view click, press the button or focus the text field there
+> through Accessibility, and fall back to a posted click elsewhere; the HID path waits before
+> putting the cursor back.
 >
 > Deviations: `run_tests` for macOS always takes the global lock (unit tests too), because
 > telling UI test targets apart would need another `xcodebuild` call. `scroll` with `direction`
 > means the content direction (`down` shows more below), with `amount` (default 300 points).
+> Live view clicks only press the mouse button once the pointer moves (a drag); a click without
+> movement is performed as a whole when it ends.
 
 Today minirun builds iOS apps, runs them in a simulator, and lets Claude see and touch them. This
 plan adds the same loop for **native macOS apps** (AppKit or SwiftUI, and Mac Catalyst), running
