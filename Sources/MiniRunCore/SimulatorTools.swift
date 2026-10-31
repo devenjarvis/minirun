@@ -255,9 +255,15 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "configure_simulator",
-            description: "Change simulator settings: appearance, simulated location, a clean demo status bar, or app permissions.",
+            description: "Change simulator settings: appearance, text size (Dynamic Type, including the accessibility sizes), increased contrast, simulated location, a clean demo status bar, or app permissions. " +
+                "Prefer this over tapping through the Settings app. Most apps pick up a new text size at once; relaunch yours if it doesn't.",
             properties: device.merging([
                 "appearance": Schema.string("Light or dark mode.", enum: ["light", "dark"]),
+                "text_size": Schema.string(
+                    "Dynamic Type size. \"large\" is the iOS default; the accessibility-* sizes are the larger ones behind Settings › Accessibility › Larger Text.",
+                    enum: Simctl.contentSizes
+                ),
+                "increase_contrast": Schema.boolean("Turn Increase Contrast on or off."),
                 "latitude": Schema.number("Simulated location latitude (with longitude)."),
                 "longitude": Schema.number("Simulated location longitude."),
                 "status_bar": Schema.string("\"demo\" for 9:41 / full battery, \"clear\" to restore.", enum: ["demo", "clear"]),
@@ -271,6 +277,17 @@ extension ToolRegistry {
             if let appearance = args.string("appearance") {
                 try await Simctl.setAppearance(sim.udid, dark: appearance == "dark")
                 done.append("appearance \(appearance)")
+            }
+            if let size = args.string("text_size") {
+                guard Simctl.contentSizes.contains(size) else {
+                    throw ToolError("text_size must be one of: \(Simctl.contentSizes.joined(separator: ", ")).")
+                }
+                try await Simctl.setContentSize(sim.udid, size: size)
+                done.append("text size \(size)")
+            }
+            if let contrast = args.bool("increase_contrast") {
+                try await Simctl.setIncreaseContrast(sim.udid, enabled: contrast)
+                done.append("increase contrast \(contrast ? "on" : "off")")
             }
             if let lat = args.double("latitude"), let lon = args.double("longitude") {
                 try await Simctl.setLocation(sim.udid, latitude: lat, longitude: lon)

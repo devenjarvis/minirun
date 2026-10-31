@@ -26,7 +26,14 @@ public enum Server {
             if old.preventSleep != new.preventSleep { awake.set(new.preventSleep) }
         }
 
-        let registry = ToolRegistry(config: live)
+        // A previous run that crashed or was killed may have left xcodebuild (or a command)
+        // running with nothing to stop it, holding a simulator and a checkout. Stop those first.
+        for stopped in ChildProcessLedger.reapOrphans(at: ChildProcessLedger.defaultURL) {
+            log("Stopped \(stopped), left running by the previous run of minirun")
+        }
+        ChildProcessLedger.shared.record(to: ChildProcessLedger.defaultURL)
+
+        let registry = ToolRegistry(config: live, jobRecords: JobStore.defaultRecordURL)
         log("\(registry.definitions.count) tools ready; workspaces at \(config.workspaceRoot)")
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }

@@ -10,10 +10,17 @@ extension ToolRegistry {
             "Each repo + ref has its own checkout and build folder on the Mac, so sessions on different branches don't collide: " +
             "pass the same ref on every call for this work. Prefer a branch name over a commit SHA, which gets a fresh checkout."
         ),
-        "path": Schema.string("Instead of repo: a directory on the Mac (absolute, or relative to the workspaces folder)."),
-        "project": Schema.string("Optional .xcworkspace / .xcodeproj / Package.swift path inside the checkout. Found automatically if omitted. A project.yml is run through XcodeGen first."),
+        "path": Schema.string("Instead of repo: a folder on the Mac (absolute, or relative to the workspaces folder). Rarely needed: with repo + ref, use project to pick a package or project inside the checkout."),
+        "project": Schema.string(
+            "What to build inside the checkout, relative to its top: an .xcworkspace, an .xcodeproj, or a Swift package's folder " +
+            "(e.g. \"Packages/Core\"; its Package.swift works too). Found automatically at the top level (or one folder down) if omitted. " +
+            "A project.yml is run through XcodeGen first."
+        ),
         "scheme": Schema.string("Scheme to build. Picked automatically if omitted; see list_schemes."),
     ]
+
+    /// How long a build may print nothing before it's treated as hung.
+    static let buildStallSeconds: TimeInterval = 900
 
     static let waitProperty: [String: JSONValue] = [
         "wait_seconds": Schema.number(
@@ -49,7 +56,7 @@ extension ToolRegistry {
             macOS: \(os)
             Xcode: \((try? await xcode)?.stdout.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces) ?? "not found")
             Free disk: \(free / 1_000_000_000) GB
-            Shell commands (run_command): \(config.allowShell ? "enabled" : "disabled — set allowShell in ~/.config/minirun/config.json")
+            Shell commands (run_command): \(config.allowShell ? "enabled" : "disabled — set allowShell in ~/.config/minirun/config.json. swift_test runs package tests without it")
             Workspaces (\(config.workspaceRoot)): \(repos.isEmpty ? "none" : repos.sorted().joined(separator: ", "))
             Booted simulators: \(booted.isEmpty ? "none" : "\n" + SimulatorPicker.describe(booted, claims: claims))
 
@@ -154,12 +161,17 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "run_tests",
-            description: "Run a scheme's unit/UI tests on the simulator and report pass/fail with failure messages. Runs as a job.",
+            description: "Run a scheme's unit/UI tests on the simulator with xcodebuild and report pass/fail with failure messages. " +
+                "For a Swift package in a subfolder, pass project: \"Packages/Core\" (its folder). Packages that build for macOS test faster with swift_test, which needs no simulator. " +
+                "If xcodebuild prints nothing for stall_seconds it's treated as hung and stopped, so a stuck run can't hold the simulator. " +
+                "Tests run one at a time on this simulator (no parallel clones) unless extra_args say otherwise. Runs as a job; cancel_job stops it.",
             properties: source.merging(device) { a, _ in a }.merging([
                 "only_testing": Schema.stringArray("Limit to these tests, e.g. [\"AppTests/LoginTests/testValidLogin\"]."),
                 "skip_testing": Schema.stringArray("Skip these tests."),
                 "configuration": Schema.string("Build configuration (default Debug)."),
                 "extra_args": Schema.stringArray("Extra xcodebuild arguments."),
+                "timeout_seconds": Schema.integer("Stop the run after this long in all (default 1800).", minimum: 60, maximum: 7200),
+                "stall_seconds": Schema.integer("Stop the run if xcodebuild prints nothing for this long (default 300).", minimum: 60, maximum: 3600),
             ]) { a, _ in a }.merging(wait) { a, _ in a }
         )) { [self] args in
             let workspace = try workspaceLabel(args)
@@ -172,6 +184,8 @@ extension ToolRegistry {
                         var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: sim.udid, log: log)
                         options.configuration = args.string("configuration") ?? "Debug"
                         options.extraArgs = args.strings("extra_args")
+                        options.timeout = TimeInterval(args.int("timeout_seconds") ?? 1800)
+                        options.stallTimeout = TimeInterval(args.int("stall_seconds") ?? 300)
                         return try await XcodeBuild.test(options, onlyTesting: args.strings("only_testing"), skipTesting: args.strings("skip_testing"))
                     }
                 }
@@ -179,6 +193,51 @@ extension ToolRegistry {
                 if let note { text += "\n" + note }
                 return ToolResult([.text(text)], isError: !output.passed)
             }
+        }
+
+        register(ToolDefinition(
+            name: "swift_test",
+            description: "Run a Swift package's tests on the Mac itself with `swift test` — no simulator, so it's quicker and never waits for one. " +
+                "Use it for packages that build for macOS; code that needs iOS goes through run_tests. Pass repo + ref, and package for a package in a subfolder. " +
+                "Reports totals and each failure with file:line. Stopped if it prints nothing for stall_seconds. Runs as a job; cancel_job stops it.",
+            properties: [
+                "repo": source["repo"]!, "ref": source["ref"]!, "path": source["path"]!,
+                "package": Schema.string("The package's folder inside the checkout, e.g. \"Packages/Core\" (default: the top of the checkout). Its Package.swift works too."),
+                "filter": Schema.stringArray("Only run tests matching these (swift test --filter), e.g. [\"CoreTests.ParserTests\"]."),
+                "skip": Schema.stringArray("Skip tests matching these (swift test --skip)."),
+                "timeout_seconds": Schema.integer("Stop after this long in all (default 1200).", minimum: 60, maximum: 7200),
+                "stall_seconds": Schema.integer("Stop if it prints nothing for this long (default 300).", minimum: 60, maximum: 3600),
+            ].merging(wait) { a, _ in a }
+        )) { [self] args in
+            let workspace = try workspaceLabel(args)
+            let log = newLogURL("swift-test")
+            let timeout = TimeInterval(args.int("timeout_seconds") ?? 1200)
+            let stall = TimeInterval(args.int("stall_seconds") ?? 300)
+            return await runAsJob(args, title: "swift test \(workspace)" + (args.string("package").map { " (\($0))" } ?? ""), log: log) { [self] in
+                try await self.withCheckout(args, log: log) { () async throws -> ToolResult in
+                    let root = try await self.sourceDirectory(args, log: log)
+                    let dir = try Self.packageDirectory(root: root, package: args.string("package"))
+                    var arguments = ["test", "--package-path", dir]
+                    for pattern in args.strings("filter") { arguments += ["--filter", pattern] }
+                    for pattern in args.strings("skip") { arguments += ["--skip", pattern] }
+                    XcodeBuild.appendLog(log, "$ swift " + arguments.joined(separator: " ") + "\n")
+                    let result = try await Shell.run("/usr/bin/xcrun", ["swift"] + arguments, cwd: dir, timeout: timeout, stallTimeout: stall, logURL: log)
+                    let summary = SwiftTestReport.summarize(result, stallTimeout: stall, timeout: timeout)
+                    return ToolResult([.text("\(summary)\nPackage: \(dir)\nLog: \(log.path)")], isError: !result.succeeded)
+                }
+            }
+        }
+
+        register(ToolDefinition(
+            name: "cancel_job",
+            description: "Stop a running job (build, tests, command, boot) and the commands it started, so its simulator and checkout are free again. " +
+                "Use it when a job is stuck or no longer needed. Only cancel your own jobs: others may belong to another session.",
+            properties: ["job_id": Schema.string("Job id from an earlier call or list_jobs.")],
+            required: ["job_id"]
+        )) { [self] args in
+            let job = try await jobs.cancel(try args.requireString("job_id"))
+            let ran = JobStore.format(Date().timeIntervalSince(job.startedAt))
+            return .text("Cancelled \(job.id) (\(job.title)) after \(ran). Its commands are being stopped; the simulator it used is no longer busy.")
         }
 
         register(ToolDefinition(
@@ -251,11 +310,31 @@ extension ToolRegistry {
         )) { [self] _ in
             let list = await jobs.list()
             guard !list.isEmpty else { return .text("No jobs yet.") }
-            return .text(list.map { "\($0.id)  \($0.status.rawValue)  \($0.title)  started \($0.startedAt.formatted(date: .omitted, time: .standard))" }.joined(separator: "\n"))
+            let now = Date()
+            return .text(list.map { job in
+                let took = JobStore.format((job.finishedAt ?? now).timeIntervalSince(job.startedAt))
+                return "\(job.id)  \(job.status.rawValue)\(job.status == .running ? " for \(took)" : "")  \(job.title)  started \(job.startedAt.formatted(date: .omitted, time: .standard))"
+            }.joined(separator: "\n"))
         }
     }
 
     // MARK: Helpers
+
+    /// The folder of the Swift package `package` names inside `root` (or `root` itself).
+    static func packageDirectory(root: String, package: String?) throws -> String {
+        guard var package, !package.isEmpty else {
+            guard FileManager.default.fileExists(atPath: root + "/Package.swift") else {
+                throw ToolError("No Package.swift at the top of \(root). Pass package with the package's folder, e.g. \"Packages/Core\".")
+            }
+            return root
+        }
+        if (package as NSString).lastPathComponent == "Package.swift" { package = (package as NSString).deletingLastPathComponent }
+        let dir = URL(fileURLWithPath: package.hasPrefix("/") ? package : root + "/" + package).standardizedFileURL.path
+        guard FileManager.default.fileExists(atPath: dir + "/Package.swift") else {
+            throw ToolError("No Package.swift in \(dir). package is the package's folder relative to the checkout, e.g. \"Packages/Core\".")
+        }
+        return dir
+    }
 
     /// The checks behind `minirun doctor`. host_info leaves out `serveStatus`: it's minirun serve
     /// answering, so that check would only say it's running.
@@ -293,7 +372,11 @@ extension ToolRegistry {
         let path = try checkoutPath(args)
         return try await checkouts.withLock(path, onWait: {
             XcodeBuild.appendLog(log, "Waiting for another job using \(path) to finish…\n")
-        }, body)
+        }) {
+            // Cancelled while waiting its turn: don't start.
+            try Task.checkCancellation()
+            return try await body()
+        }
     }
 
     /// Syncs if `ref` was given, then returns the directory to build in. Call inside `withCheckout`.
@@ -314,6 +397,7 @@ extension ToolRegistry {
         var options = XcodeBuild.Options(directory: dir, project: args.string("project"), scheme: args.string("scheme"), udid: udid, log: log)
         options.configuration = args.string("configuration") ?? "Debug"
         options.extraArgs = args.strings("extra_args")
+        options.stallTimeout = Self.buildStallSeconds
         return try await XcodeBuild.build(options)
     }
 

@@ -15,7 +15,7 @@ public final class ToolRegistry: @unchecked Sendable {
     public let liveConfig: LiveConfig
     /// The settings as of now. Read it at each use rather than keeping a copy, so reloads apply.
     public var config: MiniRunConfig { liveConfig.current }
-    public let jobs = JobStore()
+    public let jobs: JobStore
     let geometry = ScreenGeometryCache()
     /// Which booted simulator is reserved for which repo and branch.
     let claims = SimulatorClaimStore(url: SimulatorClaimStore.defaultURL)
@@ -39,8 +39,11 @@ public final class ToolRegistry: @unchecked Sendable {
         self.init(config: LiveConfig(config))
     }
 
-    public init(config: LiveConfig) {
+    /// `jobRecords` is where jobs are kept across restarts; only `minirun serve` passes one, so a
+    /// one-off `minirun call` doesn't touch its records.
+    public init(config: LiveConfig, jobRecords: URL? = nil) {
         liveConfig = config
+        jobs = JobStore(recordURL: jobRecords)
         logsDirectory = URL(fileURLWithPath: MiniRunConfig.home + "/Library/Logs/minirun/jobs", isDirectory: true)
         try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         registerSimulatorTools()
