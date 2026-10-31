@@ -19,6 +19,14 @@
 > through Accessibility, and fall back to a posted click elsewhere; the HID path waits before
 > putting the cursor back.
 >
+> Merged with main's stall timeouts, `cancel_job`, persisted jobs and PR media: Mac builds and
+> tests get the same stall/overall timeouts, test defaults (no parallel testing, per-test
+> allowance) and cancellation (the macOS test lock is let go when a run is cancelled). The orphan
+> cleanup only stops what `ChildProcessLedger` recorded (xcodebuild, commands, recorders), never
+> Mac apps, which are spawned directly and reconciled by `MacAppStore` after a restart.
+> `screenshot {share: true}` with a Mac app id shares the window at 2x; `start_recording` and
+> `stop_recording` say recording Mac apps isn't supported yet (not built). Control protocol 4.
+>
 > Deviations: `run_tests` for macOS always takes the global lock (unit tests too), because
 > telling UI test targets apart would need another `xcodebuild` call. `scroll` with `direction`
 > means the content direction (`down` shows more below), with `amount` (default 300 points).
@@ -69,7 +77,7 @@ id derived from the bundle id plus a random suffix.
 | `build`, `build_and_run`, `run_tests` | New `platform`: `"ios"` (simulator), `"macos"`, `"mac-catalyst"`. Omitted: `macos` if `device` is a Mac app id, or the scheme only supports macOS (`SUPPORTED_PLATFORMS` has no `iphonesimulator`); otherwise `ios`. For macOS, `build_and_run` quits the app it launched earlier for this workspace (by pid; never anyone else's), launches the new build, waits for a window, and returns a window screenshot plus the Mac app id. New `isolated_home` (bool): run the app with `CFFIXED_USER_HOME` set to `<checkout>/.minirun/home`, so non-sandboxed apps get fresh, per-branch data. |
 | `launch_app` | With `device: "mac"` or a Mac app id: launch by `app_path` or `bundle_id` (found via LaunchServices). `arguments`, `environment`, `isolated_home` as above. |
 | `terminate_app` | Mac app id: quit it (polite terminate, then force after 5s). |
-| `screenshot` | Mac app id: JPEG of the app's window, 1 image pixel = 1 window point, origin at the window's top-left (title bar included). New optional `window` (index from `list_windows` or a title substring). Default: the app's main/frontmost window. |
+| `screenshot` | Mac app id: JPEG of the app's window, 1 image pixel = 1 window point, origin at the window's top-left (title bar included). New optional `window` (index from `list_windows` or a title substring). Default: the app's main/frontmost window. `share: true` (PR media) uploads a 2x copy of the window. |
 | `describe_ui` | Mac app id: the window's AX tree in the same JSON shape AXe produces, so `XcodeParsing.summarizeAccessibility` formats both. Frames are window-relative points. New `window` and `include_menus` (the menu bar tree). |
 | `tap` | Mac app id: by `id`/`label`/`value` → `AXPress` on the element (no mouse needed), falling back to a click at its center; by `x`,`y` → a click at window point. New `button` (`left`/`right`) and `count` (2 = double click), also used on Mac only. |
 | `swipe`, `long_press` | Mac app id: a mouse drag (button held) between window points. |
@@ -96,6 +104,8 @@ id derived from the bundle id plus a random suffix.
   pid, logPath, launchedAt, updatedAt}`. `build_and_run` only ever quits the pid it recorded for
   that same id. After `minirun serve` restarts, entries whose pid is still alive with the same
   executable are kept; others are marked not running.
+  Mac apps are spawned directly and never recorded in `ChildProcessLedger`, so the cleanup of
+  orphans a previous `minirun serve` left behind (xcodebuild, commands) leaves them running.
 - **Same app, two branches.** Two checkouts of Fetch share a bundle id. Spawning the executable
   directly (not `open`) avoids LaunchServices handing the launch to the instance already running.
   They still share UserDefaults and containers; `isolated_home` separates non-sandboxed apps. The

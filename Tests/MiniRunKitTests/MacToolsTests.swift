@@ -93,7 +93,7 @@ final class MacToolsTests: XCTestCase {
         XCTAssertTrue(MacToolSupport.earlyExit(name: "Fetch", exit: "killed by signal 9 (SIGKILL)", adHoc: true).contains("entitlements"))
         XCTAssertFalse(MacToolSupport.earlyExit(name: "Fetch", exit: "exited with status 1", adHoc: false).contains("entitlements"))
 
-        for tool in ["press_button", "configure_simulator", "add_media", "install_app", "uninstall_app"] {
+        for tool in ["press_button", "configure_simulator", "add_media", "install_app", "uninstall_app", "start_recording", "stop_recording"] {
             XCTAssertFalse(MacToolSupport.unsupported(tool).contains("doesn't work"), tool)
         }
     }

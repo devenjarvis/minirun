@@ -95,7 +95,7 @@ public enum SimulatorPicker {
             if booted.count >= maxBooted {
                 return .failure(
                     "\(booted.count) simulators are already running, all reserved for other work:\n\(describe(booted, claims: claims, now: now))\n" +
-                    "Pass device with one of these UDIDs to use it, or free one with shutdown_simulator."
+                    busyHint
                 )
             }
             let choice = fresh(query: nil, label: nil, devices: devices, claims: claims, preferredName: preferredName, maxBooted: maxBooted, now: now)
@@ -156,7 +156,7 @@ public enum SimulatorPicker {
         if booted.count >= maxBooted {
             return .failure(
                 "\(booted.count) simulators are already running:\n\(describe(booted, claims: claims, now: now))\n" +
-                "Pass device with one of these UDIDs to use it, or free one with shutdown_simulator."
+                busyHint
             )
         }
         if let idle = kind.first(where: { !$0.isBooted }) { return .use(idle) }
@@ -164,6 +164,12 @@ public enum SimulatorPicker {
         let base = baseName(model.name)
         return .create(name: cloneName(base, existing: available.map(\.name)), like: model)
     }
+
+    /// What to do when every simulator is taken.
+    static let busyHint =
+        "If one of these is yours, pass its UDID as device. A job of yours may be holding one: list_jobs shows what's running " +
+        "and cancel_job stops it. Don't shut down a simulator reserved for other work; minirun releases simulators nobody " +
+        "has used for a while on its own, so try again in a few minutes."
 
     /// One line per simulator: UDID, name, and who it's reserved for.
     public static func describe(_ devices: [Device], claims: [String: SimulatorClaim], now: Date = Date()) -> String {
@@ -254,6 +260,9 @@ public actor SimulatorClaimStore {
         }
         return claims
     }
+
+    /// The simulator's claim as it stands, without dropping stale ones.
+    public func claim(_ udid: String) -> SimulatorClaim? { claims[udid] }
 
     /// Reserves a simulator for `label`. Returns the label it was reserved for before, if different.
     @discardableResult

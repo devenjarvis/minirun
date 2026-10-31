@@ -13,9 +13,19 @@ public struct SettingsForm: Equatable, Sendable {
     public var workspaceRoot: String
     public var allowShell: Bool
     public var preventSleep: Bool
+    public var shareMedia: Bool
+    public var mediaRetentionDays: Int
+    public var mediaStorageLimitMB: Int
+    public var maxRecordingSeconds: Int
+    public var mediaInlineLimitMB: Int
 
     public static let maxBootedRange = 1...16
     public static let idleRange = 0...1440
+    public static let retentionChoices = [1, 7, 30, 90]
+    /// Workers KV's free plan stores 1 GB.
+    public static let storageLimitRange = 10...1000
+    public static let recordingRange = MiniRunConfig.recordingSecondsRange
+    public static let inlineLimitRange = MiniRunConfig.inlineLimitMBRange
 
     public init(_ config: MiniRunConfig) {
         defaultDevice = config.defaultDevice ?? ""
@@ -24,6 +34,16 @@ public struct SettingsForm: Equatable, Sendable {
         workspaceRoot = config.workspaceRoot
         allowShell = config.allowShell
         preventSleep = config.preventSleep
+        shareMedia = config.shareMedia
+        mediaRetentionDays = config.mediaRetentionDays
+        mediaStorageLimitMB = config.mediaStorageLimitMB
+        maxRecordingSeconds = config.maxRecordingSeconds
+        mediaInlineLimitMB = config.mediaInlineLimitMB
+    }
+
+    /// The Keep for choices, plus a saved value that isn't one of them.
+    public var retentionChoices: [Int] {
+        Self.retentionChoices.contains(mediaRetentionDays) ? Self.retentionChoices : (Self.retentionChoices + [mediaRetentionDays]).sorted()
     }
 
     /// What's wrong with the form, for the user. Empty when it can be saved.
@@ -34,6 +54,18 @@ public struct SettingsForm: Equatable, Sendable {
         }
         if !Self.maxBootedRange.contains(maxBootedSimulators) {
             problems.append("Keep between \(Self.maxBootedRange.lowerBound) and \(Self.maxBootedRange.upperBound) simulators booted.")
+        }
+        if !MiniRunConfig.retentionDaysRange.contains(mediaRetentionDays) {
+            problems.append("Keep shared media for 1 to 90 days.")
+        }
+        if !Self.storageLimitRange.contains(mediaStorageLimitMB) {
+            problems.append("The storage limit must be between \(Self.storageLimitRange.lowerBound) and \(Self.storageLimitRange.upperBound) MB.")
+        }
+        if !Self.recordingRange.contains(maxRecordingSeconds) {
+            problems.append("The longest recording must be between \(Self.recordingRange.lowerBound) and \(Self.recordingRange.upperBound) seconds.")
+        }
+        if !Self.inlineLimitRange.contains(mediaInlineLimitMB) {
+            problems.append("The largest inline GIF must be between \(Self.inlineLimitRange.lowerBound) and \(Self.inlineLimitRange.upperBound) MB.")
         }
         let root = workspaceRoot.trimmingCharacters(in: .whitespaces)
         if root.isEmpty || !(root.hasPrefix("/") || root.hasPrefix("~")) {
@@ -51,6 +83,11 @@ public struct SettingsForm: Equatable, Sendable {
         config.workspaceRoot = (workspaceRoot.trimmingCharacters(in: .whitespaces) as NSString).expandingTildeInPath
         config.allowShell = allowShell
         config.preventSleep = preventSleep
+        config.shareMedia = shareMedia
+        config.mediaRetentionDays = mediaRetentionDays
+        config.mediaStorageLimitMB = mediaStorageLimitMB
+        config.maxRecordingSeconds = maxRecordingSeconds
+        config.mediaInlineLimitMB = mediaInlineLimitMB
         return config
     }
 
@@ -212,7 +249,7 @@ public enum UpdateCheck {
 /// downloads, verifies and swaps the bundle (App/Sources/AppUpdater.swift).
 public enum Updater {
     /// How often the app looks for a release while it updates itself.
-    public static let checkInterval: TimeInterval = 6 * 3600
+    public static let checkInterval: TimeInterval = 3600
 
     public enum Decision: Equatable, Sendable {
         case nothing

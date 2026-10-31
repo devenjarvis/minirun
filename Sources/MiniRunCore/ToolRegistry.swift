@@ -16,7 +16,7 @@ public final class ToolRegistry: @unchecked Sendable {
     public let liveConfig: LiveConfig
     /// The settings as of now. Read it at each use rather than keeping a copy, so reloads apply.
     public var config: MiniRunConfig { liveConfig.current }
-    public let jobs = JobStore()
+    public let jobs: JobStore
     let geometry = ScreenGeometryCache()
     /// Which booted simulator is reserved for which repo and branch.
     let claims = SimulatorClaimStore(url: SimulatorClaimStore.defaultURL)
@@ -37,6 +37,10 @@ public final class ToolRegistry: @unchecked Sendable {
     /// One macOS test run at a time: UI tests take over the Mac's mouse and keyboard.
     let macTests = KeyedLock()
     let liveMouse = LiveMouse()
+    /// What's been shared through the Worker. Kept in a file even for a one-off `minirun call`,
+    /// so the storage limit counts every upload.
+    let media = MediaLedger(url: MediaLedger.defaultURL)
+    let recordings = ScreenRecordings()
     private(set) var tools: [String: Tool] = [:]
     private var order: [String] = []
     let logsDirectory: URL
@@ -45,14 +49,18 @@ public final class ToolRegistry: @unchecked Sendable {
         self.init(config: LiveConfig(config))
     }
 
-    public init(config: LiveConfig) {
+    /// `jobRecords` is where jobs are kept across restarts; only `minirun serve` passes one, so a
+    /// one-off `minirun call` doesn't touch its records.
+    public init(config: LiveConfig, jobRecords: URL? = nil) {
         liveConfig = config
+        jobs = JobStore(recordURL: jobRecords)
         logsDirectory = URL(fileURLWithPath: MiniRunConfig.home + "/Library/Logs/minirun/jobs", isDirectory: true)
         try? FileManager.default.createDirectory(at: logsDirectory, withIntermediateDirectories: true)
         registerSimulatorTools()
         registerAppTools()
         registerCodeTools()
         registerMacTools()
+        registerMediaTools()
     }
 
     public var definitions: [ToolDefinition] { order.compactMap { tools[$0]?.definition } }
@@ -219,7 +227,8 @@ public final class ToolRegistry: @unchecked Sendable {
         let minutes = config.idleShutdownMinutes
         // Under the allocation lock so a pick can't hand out a simulator while it's shutting down.
         try await allocation.withLock("simulators") { () async throws -> Void in
-            let busy = (await activity.busy).union(await boots.booting)
+            // A recording counts as use: it stops by itself, and the simulator is idle only after that.
+            let busy = (await activity.busy).union(await boots.booting).union(await recordings.recording)
             let (all, current) = try await simulators()
             let booted = all.filter(\.isBooted)
             let names = Dictionary(booted.map { ($0.udid, $0.name) }, uniquingKeysWith: { a, _ in a })
@@ -249,6 +258,7 @@ public final class ToolRegistry: @unchecked Sendable {
         let recent = await self.jobs.list().prefix(20).map { ServeStatus.Job($0) }
         let busy = await activity.busy
         let booting = await boots.booting
+        let recording = await recordings.recording
         do {
             let (all, current) = try await simulators()
             let booted = all.filter(\.isBooted).map { device in
@@ -259,7 +269,8 @@ public final class ToolRegistry: @unchecked Sendable {
                     bundleID: current[device.udid]?.bundleID,
                     lastUsed: current[device.udid]?.updatedAt,
                     busy: busy.contains(device.udid),
-                    viewerURL: config.viewerURL(device: device.udid)
+                    viewerURL: config.viewerURL(device: device.udid),
+                    recording: recording.contains(device.udid)
                 )
             }
             return (booted, nil, recent)

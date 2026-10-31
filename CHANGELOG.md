@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+**Screenshots and recordings in PR descriptions.** Agents can now show their work in a PR.
+
+- **`screenshot {share: true}`** uploads a 2x screenshot to your Worker and returns markdown for a
+  PR description.
+- **`start_recording` / `stop_recording`** record the simulator (up to 60 s by default) and share a
+  looping GIF that links to a player page for the MP4. `delete_media` takes back a wrong upload.
+- **Stored in a new `MEDIA_KV` namespace** that expires files after 7 days and is kept under
+  500 MB. Redeploy the Worker (Settings → Cloudflare, or `minirun worker deploy`) to get it; no new
+  API token permissions are needed.
+- **Size probes** at `/m/probe/<n>.gif` find the largest GIF GitHub will show; set
+  `mediaInlineLimitMB` to match.
+- **Menu bar app:** a Shared media section, a Sharing settings tab, and a red dot while a
+  simulator is recording.
+
+Fixes for test runs that hung and held every simulator, from a report of several sessions
+sharing one Mac.
+
+- **Hung tests are stopped.** `run_tests` stops xcodebuild when it prints nothing for
+  `stall_seconds` (default 300) or runs past `timeout_seconds` (default 1800, was 90 minutes), and
+  says it was treated as hung. Builds are stopped after 15 silent minutes. Either way the
+  simulator is no longer busy.
+- **Tests run on the reserved simulator only.** `run_tests` passes `-parallel-testing-enabled NO`
+  (parallel testing clones the simulator outside minirun's reservations, a common cause of hangs
+  after the build) and a 5-minute per-test time allowance, unless `extra_args` set them.
+- **`cancel_job`** stops a job and the commands it started. A job cancelled while it waits for
+  its checkout no longer starts.
+- **Restarts don't lose jobs.** Jobs are kept in `~/.config/minirun/jobs.json`: after a restart
+  `get_job` gives the result, or says the job was cut off by the restart. xcodebuild and other
+  commands a previous run left behind are stopped when `minirun serve` starts.
+- **`swift_test`** runs a Swift package's tests with `swift test` on the Mac, without a simulator
+  or `allowShell`, and reports totals and failures with `file:line`.
+- **Packages in subfolders.** `project` takes a package's folder (or its `Package.swift`) and
+  xcodebuild runs there; before, pointing at `Package.swift` built the checkout's top level.
+  `path` accepts a `Package.swift` too. `run_tests` on a package prefers its `-Package` scheme.
+- **`configure_simulator`** sets `text_size` (all Dynamic Type sizes, including the accessibility
+  ones) and `increase_contrast`.
+- When every simulator is taken, the error points to `list_jobs` and `cancel_job` instead of
+  suggesting shutting down someone else's simulator.
+- The instructions Claude gets explain package tests, `cancel_job` and the stall timeout.
+- Automatic updates check GitHub every hour instead of every 6 hours.
+
 ### macOS apps
 
 minirun now builds, runs and drives native macOS apps (AppKit, SwiftUI, Mac Catalyst) on the Mac
@@ -27,12 +68,17 @@ itself, with the same loop as iOS. See [macOS apps](README.md#macos-apps).
 - **Live view of Mac app windows** (H.264, JPEG fallback), with clicks, drags, right and double
   clicks, wheel scrolling and keys with modifiers. Relay protocol version 5.
 - **Several sessions:** apps are tracked per repo + ref in `~/.config/minirun/mac-apps.json`, kept
-  across `minirun serve` restarts only while their pid still runs the same executable, and quit
+  across `minirun serve` restarts only while their pid still runs the same executable (the
+  cleanup of commands a previous run left behind leaves them running), and quit
   after `idleShutdownMinutes` unused. macOS test runs go one at a time, since UI tests take over
   the mouse and keyboard.
 - **Permissions:** `minirun doctor`, `host_info` and the menu bar app check Screen Recording,
   Accessibility and a display for the daemon; Setup can request them. `minirun status` and the
   menu list the Mac apps minirun launched.
+- **With the other new features:** Mac builds and tests get the same stall and overall timeouts,
+  `cancel_job` and job records as iOS ones (macOS tests also run without parallel testing and with
+  the per-test allowance). `screenshot {share: true}` with a Mac app id shares its window;
+  recordings aren't supported for Mac apps yet. Control protocol version 4.
 
 ## 0.3.0
 

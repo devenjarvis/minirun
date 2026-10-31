@@ -19,7 +19,7 @@ struct ServeControl: ControlCommands {
         return ServeStatus(
             version: MiniRun.version, pid: ProcessInfo.processInfo.processIdentifier, startedAt: startedAt,
             relay: relay, simulators: local.simulators, simulatorError: local.simulatorError, jobs: local.jobs,
-            macApps: macApps, macPermissions: macPermissions
+            media: await registry.media.summary(), macApps: macApps, macPermissions: macPermissions
         )
     }
 
@@ -42,6 +42,7 @@ struct ServeControl: ControlCommands {
             throw ToolError("No simulator with UDID \(udid).")
         }
         guard let label = claims[sim.udid]?.label else { return "\(sim.name) isn't reserved." }
+        await registry.recordings.halt(sim.udid, reason: "the simulator's reservation was released")
         await registry.claims.unreserve(sim.udid)
         log("Released \(sim.name) (\(sim.udid)) from \(label) (from the control socket)")
         return "Released \(sim.name) from \(label). It stays booted for whoever needs one next."
@@ -73,6 +74,46 @@ struct ServeControl: ControlCommands {
         guard deleted != nil else { throw refusal }
         log("Deleted the checkout \(checkout) (from the control socket)")
         return "Deleted \(name)."
+    }
+
+    func listMedia() async throws -> [MediaItem] {
+        await registry.media.list()
+    }
+
+    func deleteMedia(id: String) async throws -> String {
+        guard let item = await registry.media.item(id) else { throw ToolError("Nothing shared has id \(id); it may have expired.") }
+        try await MediaUploader(config: registry.config).delete(id: id)
+        await registry.media.remove(id)
+        log("Deleted shared \(item.kind.rawValue) \(id) (from the control socket)")
+        return "Deleted the \(item.kind.rawValue)" + (item.label.map { " shared for \($0)" } ?? "") + ". GitHub may show a cached copy for a while."
+    }
+
+    func deleteAllMedia() async throws -> String {
+        let items = await registry.media.list()
+        guard !items.isEmpty else { return "Nothing is shared." }
+        let uploader = try MediaUploader(config: registry.config)
+        var deleted = 0
+        var failure: Error?
+        for item in items {
+            do {
+                try await uploader.delete(id: item.id)
+                await registry.media.remove(item.id)
+                deleted += 1
+            } catch {
+                failure = error
+            }
+        }
+        log("Deleted \(deleted) of \(items.count) shared items (from the control socket)")
+        if let failure { throw ToolError("Deleted \(deleted) of \(items.count). \(failure.localizedDescription)") }
+        return "Deleted \(deleted) shared item\(deleted == 1 ? "" : "s"). GitHub may show cached copies for a while."
+    }
+
+    func stopRecording(udid: String) async throws -> String {
+        guard await registry.recordings.halt(udid, reason: "it was stopped from the menu bar") else {
+            throw ToolError("That simulator isn't recording.")
+        }
+        log("Stopped the recording on \(udid) (from the control socket)")
+        return "Stopped the recording. Claude's stop_recording call still gets the video."
     }
 
     func doctor() async -> [DoctorCheck] {

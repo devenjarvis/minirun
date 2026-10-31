@@ -2,6 +2,7 @@ import { OAuthProvider, type AuthRequest } from "@cloudflare/workers-oauth-provi
 import { bearer, checkPassword, clearSessionCookie, createSession, isLoggedIn, safeEqual, sessionCookie } from "./auth";
 import { relayStub, type Env } from "./env";
 import { handleMcp } from "./mcp";
+import { handleMedia } from "./media";
 import { authorizePage, html, loginPage, messagePage } from "./pages";
 import { viewerPage } from "./viewer";
 
@@ -11,6 +12,9 @@ export { MacRelay } from "./relay";
 async function handleDefault(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const secure = url.protocol === "https:";
+
+  const media = await handleMedia(request, env);
+  if (media) return media;
 
   switch (url.pathname) {
     case "/agent": {

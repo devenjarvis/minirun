@@ -307,11 +307,131 @@ final class ShellAndJobTests: XCTestCase {
         XCTAssertTrue(final.content.description.contains("boom"))
     }
 
+    func testShellStopsAProgramThatGoesQuiet() async throws {
+        // Talks, then hangs: the stall timeout stops it long before the overall timeout.
+        let result = try await Shell.run("/bin/sh", ["-c", "echo started; exec sleep 30"], timeout: 60, stallTimeout: 1)
+        XCTAssertTrue(result.stalled)
+        XCTAssertTrue(result.timedOut)
+        XCTAssertFalse(result.succeeded)
+        XCTAssertEqual(result.stdout, "started\n")
+        XCTAssertLessThan(result.duration, 10)
+    }
+
+    func testShellKeepsAProgramThatKeepsTalking() async throws {
+        let result = try await Shell.run("/bin/sh", ["-c", "for i in 1 2 3 4; do echo $i; sleep 0.5; done"], timeout: 30, stallTimeout: 1.5)
+        XCTAssertFalse(result.stalled)
+        XCTAssertTrue(result.succeeded)
+    }
+
+    func testCancellingAJobStopsItsCommand() async throws {
+        let jobs = JobStore()
+        let id = await jobs.start(title: "hang", logPath: nil) {
+            let result = try await Shell.run("/bin/sh", ["-c", "exec sleep 30"], timeout: 60)
+            return .text("exit \(result.exitCode)")
+        }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let job = try await jobs.cancel(id)
+        XCTAssertEqual(job.status, .cancelled)
+        let report = await jobs.report(id, waited: 1)
+        XCTAssertTrue(report.isError)
+        XCTAssertTrue(report.content.description.contains("Cancelled"))
+        // Cancelling twice says it's already done.
+        do {
+            try await jobs.cancel(id)
+            XCTFail("expected an error")
+        } catch {}
+    }
+
+    func testJobsOutliveARestart() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("minirun-jobs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("jobs.json")
+
+        let first = JobStore(recordURL: url)
+        let done = await first.start(title: "quick", logPath: nil) { .text("all good") }
+        _ = await first.report(done, waited: 5)
+        let hung = await first.start(title: "hung tests", logPath: "/tmp/test.log") {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            return .text("never")
+        }
+
+        // A new run of minirun reads what the old one left.
+        let second = JobStore(recordURL: url)
+        let finished = await second.report(done, waited: 0)
+        XCTAssertFalse(finished.isError)
+        XCTAssertTrue(finished.content.description.contains("all good"))
+        let cutOff = await second.report(hung, waited: 0)
+        XCTAssertTrue(cutOff.isError)
+        XCTAssertTrue(cutOff.content.description.contains("restarted"))
+        XCTAssertTrue(cutOff.content.description.contains("/tmp/test.log"))
+        let status = await second.job(hung)?.status
+        XCTAssertEqual(status, .failed)
+        _ = try? await first.cancel(hung)
+    }
+
+    func testChildProcessNames() {
+        XCTAssertEqual(ChildProcessLedger.names(executable: "/usr/bin/xcrun", arguments: ["xcodebuild", "test"]), ["xcrun", "xcodebuild"])
+        XCTAssertEqual(ChildProcessLedger.names(executable: "/usr/bin/env", arguments: ["xcodegen", "generate"]), ["env", "xcodegen"])
+        XCTAssertEqual(ChildProcessLedger.names(executable: "/bin/zsh", arguments: ["-lc", "swift test"]), ["zsh"])
+        XCTAssertEqual(ChildProcessLedger.names(executable: "/usr/bin/xcrun", arguments: ["swift", "test", "--package-path", "/x"]), ["xcrun", "swift", "swift-test"])
+    }
+
+    func testReapOrphansLeavesOtherProcessesAlone() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("minirun-procs-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("processes.json")
+        // This test process: alive, but not orphaned and not named like that, so it must survive.
+        let me = ProcessInfo.processInfo.processIdentifier
+        let entries = [ChildProcessLedger.Entry(pid: me, names: ["xcodebuild"], startedAt: Date())]
+        try JSONEncoder().encode(entries).write(to: url)
+        XCTAssertEqual(ChildProcessLedger.reapOrphans(at: url), [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), "the ledger is cleared once read")
+    }
+
     func testJobWaitStaysUnderClientTimeout() {
         XCTAssertEqual(JobStore.waitSeconds(nil), 45)
         XCTAssertEqual(JobStore.waitSeconds(600), JobStore.maxWait)
         XCTAssertEqual(JobStore.waitSeconds(-1), 0)
         XCTAssertLessThan(JobStore.maxWait, 60, "Claude's MCP client gives up on a call after 60 seconds")
+    }
+}
+
+final class SwiftTestReportTests: XCTestCase {
+    func testXCTestFailures() {
+        let out = """
+        Building for debugging...
+        /src/Packages/Core/Tests/CoreTests/ParserTests.swift:14: error: -[CoreTests.ParserTests testEmpty] : XCTAssertEqual failed: ("1") is not equal to ("0")
+        Test Suite 'ParserTests' failed at 2026-10-31 10:00:00.000.
+        \t Executed 3 tests, with 1 failure (0 unexpected) in 0.010 (0.011) seconds
+        Test Suite 'All tests' failed at 2026-10-31 10:00:00.000.
+        \t Executed 5 tests, with 1 failure (0 unexpected) in 0.020 (0.021) seconds
+        """
+        let summary = SwiftTestReport.summarize(ShellResult(exitCode: 1, stdout: out), stallTimeout: 300, timeout: 1200)
+        XCTAssertTrue(summary.hasPrefix("Executed 5 tests, with 1 failure"), summary)
+        XCTAssertTrue(summary.contains("✗ /src/Packages/Core/Tests/CoreTests/ParserTests.swift:14 error: -[CoreTests.ParserTests testEmpty]"), summary)
+    }
+
+    func testSwiftTestingFailures() {
+        let out = """
+        ✘ Test parsesEmpty() recorded an issue at ParserTests.swift:9:5: Expectation failed: (count → 1) == 0
+        ✘ Test parsesEmpty() failed after 0.001 seconds with 1 issue.
+        ✘ Test run with 4 tests failed after 0.002 seconds with 1 issue.
+        """
+        let summary = SwiftTestReport.summarize(ShellResult(exitCode: 1, stdout: out), stallTimeout: 300, timeout: 1200)
+        XCTAssertTrue(summary.contains("Test run with 4 tests failed"), summary)
+        XCTAssertTrue(summary.contains("✗ Test parsesEmpty() recorded an issue at ParserTests.swift:9:5"), summary)
+    }
+
+    func testCompileErrorsAndStalls() {
+        let compile = SwiftTestReport.summarize(
+            ShellResult(exitCode: 1, stdout: "/src/Sources/Core/Parser.swift:3:9: error: cannot find 'foo' in scope"), stallTimeout: 300, timeout: 1200
+        )
+        XCTAssertTrue(compile.contains("✗ /src/Sources/Core/Parser.swift:3:9 error: cannot find 'foo' in scope"), compile)
+
+        let stalled = SwiftTestReport.summarize(ShellResult(exitCode: 15, stdout: "Fetching https://github.com/x/y", stalled: true), stallTimeout: 300, timeout: 1200)
+        XCTAssertTrue(stalled.contains("printed nothing for 5 min"), stalled)
+        XCTAssertTrue(stalled.contains("Fetching https://github.com/x/y"), stalled)
     }
 }
 
@@ -433,7 +553,7 @@ final class SimulatorPickerTests: XCTestCase {
         let claims = ["A": claim("you/app@a"), "B": claim("you/app@b")]
         let full = SimulatorPicker.fresh(query: nil, label: "you/app@c", devices: devices, claims: claims, preferredName: nil, maxBooted: 2, now: now)
         XCTAssertTrue(message(full).contains("2 simulators are already running"))
-        XCTAssertTrue(message(full).contains("shutdown_simulator"))
+        XCTAssertTrue(message(full).contains("cancel_job"))
         XCTAssertEqual(udid(SimulatorPicker.fresh(query: nil, label: "you/app@a", devices: devices, claims: claims, preferredName: nil, maxBooted: 2)), "A", "your own is still yours")
         XCTAssertEqual(udid(SimulatorPicker.fresh(query: nil, label: "you/app@c", devices: devices, claims: claims, preferredName: nil, maxBooted: 3)), "C")
     }

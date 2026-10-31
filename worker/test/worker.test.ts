@@ -1,6 +1,7 @@
-import { SELF } from "cloudflare:test";
+import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { streamKey } from "../src/relay";
+import { probeStream } from "../src/media";
 import { compareVersions, VERSION } from "../src/version";
 
 const ORIGIN = "https://example.com";
@@ -547,3 +548,193 @@ describe("compareVersions", () => {
     expect(compareVersions("1.0.0", "1.0.1")).toBeLessThan(0);
   });
 });
+
+describe("shared media", () => {
+  const AGENT = { Authorization: "Bearer test-agent-token" };
+
+  function newId(): string {
+    return b64url(crypto.getRandomValues(new Uint8Array(16)));
+  }
+
+  function put(path: string, body: BodyInit | null, headers: Record<string, string> = {}) {
+    return SELF.fetch(`${ORIGIN}${path}`, { method: "PUT", body, headers: { ...AGENT, "X-Minirun-Expires-In": "3600", ...headers } });
+  }
+
+  it("needs the agent token to upload or delete", async () => {
+    const id = newId();
+    expect((await put(`/media/${id}.jpg`, "x", { Authorization: "Bearer wrong" })).status).toBe(401);
+    const missing = await SELF.fetch(`${ORIGIN}/media/${id}.jpg`, { method: "PUT", body: "x", headers: { "X-Minirun-Expires-In": "3600" } });
+    expect(missing.status).toBe(401);
+    expect((await SELF.fetch(`${ORIGIN}/media/${id}`, { method: "DELETE" })).status).toBe(401);
+    expect((await SELF.fetch(`${ORIGIN}/m/${id}.jpg`)).status).toBe(404);
+  });
+
+  it("rejects bad ids, extensions, expiries and captions", async () => {
+    const id = newId();
+    expect((await put(`/media/short.jpg`, "x")).status).toBe(400);
+    expect((await put(`/media/${id.slice(0, 21)}!.jpg`, "x")).status).toBe(400);
+    expect((await put(`/media/${id}.webp`, "x")).status).toBe(400);
+    expect((await put(`/media/${id}`, "x")).status).toBe(400);
+    for (const ttl of ["", "59", "7776001", "1e3", "-60", "60.5"]) {
+      expect((await put(`/media/${id}.jpg`, "x", { "X-Minirun-Expires-In": ttl })).status, ttl).toBe(400);
+    }
+    expect((await put(`/media/${id}.jpg`, "x", { "X-Minirun-Caption": "%E0%A4%A" })).status).toBe(400);
+    expect((await put(`/media/${id}.jpg`, "x", { "X-Minirun-Caption": "a".repeat(201) })).status).toBe(400);
+    expect((await put(`/media/${id}.jpg`, "x", { "X-Minirun-Caption": "a".repeat(200), "X-Minirun-Expires-In": "7776000" })).status).toBe(201);
+    expect((await put(`/media/${id}.png`, "x", { "X-Minirun-Expires-In": "60" })).status).toBe(201);
+    expect((await SELF.fetch(`${ORIGIN}/media/${id}.jpg`, { method: "DELETE", headers: AGENT })).status).toBe(400);
+  });
+
+  it("refuses bodies over 25 MiB", async () => {
+    const id = newId();
+    const big = new Uint8Array(25 * 1024 * 1024 + 1);
+    expect((await put(`/media/${id}.mp4`, big)).status).toBe(413);
+    // A body without a Content-Length is counted as it arrives.
+    const stream = new Response(big).body!.pipeThrough(new TransformStream());
+    expect((await put(`/media/${id}.mp4`, stream)).status).toBe(413);
+    expect((await SELF.fetch(`${ORIGIN}/m/${id}.mp4`)).status).toBe(404);
+    const exact = await put(`/media/${id}.mp4`, new Uint8Array(25 * 1024 * 1024));
+    expect(exact.status).toBe(201);
+  });
+
+  it("stores an upload and serves it publicly with caching, ranges and HEAD", async () => {
+    const id = newId();
+    const bytes = Uint8Array.from({ length: 1000 }, (_, i) => i % 256);
+    const uploaded = await put(`/media/${id}.mp4`, bytes, { "X-Minirun-Caption": encodeURIComponent("Onboarding <flow> & \"done\"") });
+    expect(uploaded.status).toBe(201);
+    expect(await uploaded.json()).toEqual({ url: `${ORIGIN}/m/${id}.mp4` });
+
+    const stored = await env.MEDIA_KV.getWithMetadata<{ type: string; bytes: number; caption?: string; created: number }>(`${id}.mp4`);
+    expect(stored.metadata).toMatchObject({ type: "video/mp4", bytes: 1000, caption: "Onboarding <flow> & \"done\"" });
+    expect(Math.abs(stored.metadata!.created - Date.now())).toBeLessThan(60_000);
+
+    const got = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`);
+    expect(got.status).toBe(200);
+    expect(got.headers.get("Content-Type")).toBe("video/mp4");
+    expect(got.headers.get("Content-Length")).toBe("1000");
+    expect(got.headers.get("Cache-Control")).toBe("public, max-age=31536000, immutable");
+    expect(got.headers.get("X-Robots-Tag")).toBe("noindex");
+    expect(got.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(got.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(new Uint8Array(await got.arrayBuffer())).toEqual(bytes);
+
+    const head = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("Content-Length")).toBe("1000");
+    expect(head.headers.get("Content-Type")).toBe("video/mp4");
+    expect((await head.arrayBuffer()).byteLength).toBe(0);
+
+    const partial = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { headers: { Range: "bytes=10-19" } });
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get("Content-Range")).toBe("bytes 10-19/1000");
+    expect(partial.headers.get("Content-Length")).toBe("10");
+    expect(new Uint8Array(await partial.arrayBuffer())).toEqual(bytes.slice(10, 20));
+
+    const open = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { headers: { Range: "bytes=990-" } });
+    expect(open.status).toBe(206);
+    expect(open.headers.get("Content-Range")).toBe("bytes 990-999/1000");
+    await open.arrayBuffer();
+    const suffix = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { headers: { Range: "bytes=-5" } });
+    expect(suffix.headers.get("Content-Range")).toBe("bytes 995-999/1000");
+    expect(new Uint8Array(await suffix.arrayBuffer())).toEqual(bytes.slice(995));
+
+    const beyond = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { headers: { Range: "bytes=1000-" } });
+    expect(beyond.status).toBe(416);
+    expect(beyond.headers.get("Content-Range")).toBe("bytes */1000");
+
+    const several = await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { headers: { Range: "bytes=0-1,5-6" } });
+    expect(several.status).toBe(200);
+    expect((await several.arrayBuffer()).byteLength).toBe(1000);
+
+    expect((await SELF.fetch(`${ORIGIN}/m/${id}.gif`)).status).toBe(404);
+    expect((await SELF.fetch(`${ORIGIN}/m/${newId()}.mp4`)).status).toBe(404);
+    expect((await SELF.fetch(`${ORIGIN}/m/${id}.mp4`, { method: "POST" })).status).toBe(405);
+  });
+
+  it("serves a player page for recordings, with the caption escaped", async () => {
+    const id = newId();
+    expect((await put(`/media/${id}.mp4`, "mp4", { "X-Minirun-Caption": encodeURIComponent("<script>alert(1)</script>") })).status).toBe(201);
+    const page = await SELF.fetch(`${ORIGIN}/m/${id}`);
+    expect(page.status).toBe(200);
+    expect(page.headers.get("Content-Type")).toContain("text/html");
+    expect(page.headers.get("X-Robots-Tag")).toBe("noindex");
+    const text = await page.text();
+    expect(text).toContain(`<video src="/m/${id}.mp4" controls playsinline`);
+    expect(text).toContain(`<meta name="robots" content="noindex">`);
+    expect(text).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(text).not.toContain("<script>");
+
+    const screenshot = newId();
+    expect((await put(`/media/${screenshot}.jpg`, "jpg")).status).toBe(201);
+    expect((await SELF.fetch(`${ORIGIN}/m/${screenshot}`)).status).toBe(404);
+    expect((await SELF.fetch(`${ORIGIN}/m/${newId()}`)).status).toBe(404);
+  });
+
+  it("deletes every file with an id", async () => {
+    const id = newId();
+    for (const ext of ["jpg", "png", "gif", "mp4"]) expect((await put(`/media/${id}.${ext}`, ext)).status).toBe(201);
+    const gif = await SELF.fetch(`${ORIGIN}/m/${id}.gif`);
+    expect(gif.status).toBe(200);
+    await gif.arrayBuffer();
+    const deleted = await SELF.fetch(`${ORIGIN}/media/${id}`, { method: "DELETE", headers: AGENT });
+    expect(deleted.status).toBe(204);
+    for (const ext of ["jpg", "png", "gif", "mp4"]) expect((await SELF.fetch(`${ORIGIN}/m/${id}.${ext}`)).status).toBe(404);
+    expect((await SELF.fetch(`${ORIGIN}/m/${id}`)).status).toBe(404);
+  });
+
+  it("serves size probes of exactly n MiB that are valid GIFs", async () => {
+    for (const n of [1, 2, 7, 25]) {
+      const response = await SELF.fetch(`${ORIGIN}/m/probe/${n}.gif`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toBe("image/gif");
+      expect(response.headers.get("Content-Length")).toBe(String(n * 1024 * 1024));
+      expect(response.headers.get("Cache-Control")).toContain("public");
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      expect(bytes.length).toBe(n * 1024 * 1024);
+      expect(String.fromCharCode(...bytes.slice(0, 6))).toBe("GIF89a");
+      expect(bytes[bytes.length - 1]).toBe(0x3b);
+      expect(walkGIF(bytes)).toEqual({ frames: 2, end: bytes.length - 1 });
+    }
+    const head = await SELF.fetch(`${ORIGIN}/m/probe/10.gif`, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.headers.get("Content-Length")).toBe(String(10 * 1024 * 1024));
+    for (const n of ["0", "26", "05", "x"]) expect((await SELF.fetch(`${ORIGIN}/m/probe/${n}.gif`)).status, n).toBe(404);
+  });
+
+  it("pads probes to any size exactly, whatever the remainder", async () => {
+    // A leftover of one byte can't be a single sub-block; cover every remainder mod 256.
+    for (let total = 3000; total < 3000 + 260; total++) {
+      const bytes = new Uint8Array(await new Response(probeStream(total)).arrayBuffer());
+      expect(bytes.length).toBe(total);
+      expect(walkGIF(bytes)).toEqual({ frames: 2, end: total - 1 });
+    }
+  });
+});
+
+/** Walks a GIF's blocks the way a decoder does, returning the frame count and where the trailer is. */
+function walkGIF(bytes: Uint8Array): { frames: number; end: number } {
+  const table = (packed: number) => (packed & 0x80 ? 3 * 2 ** ((packed & 7) + 1) : 0);
+  let i = 13 + table(bytes[10]!);
+  const skipSubBlocks = () => {
+    while (bytes[i] !== 0) {
+      if (i >= bytes.length) throw new Error("ran off the end");
+      i += bytes[i]! + 1;
+    }
+    i++;
+  };
+  let frames = 0;
+  for (;;) {
+    const kind = bytes[i];
+    if (kind === 0x3b) return { frames, end: i };
+    if (kind === 0x21) {
+      i += 2;
+      skipSubBlocks();
+    } else if (kind === 0x2c) {
+      i += 10 + table(bytes[i + 9]!) + 1;
+      skipSubBlocks();
+      frames++;
+    } else {
+      throw new Error(`bad block 0x${kind?.toString(16)} at ${i}`);
+    }
+  }
+}

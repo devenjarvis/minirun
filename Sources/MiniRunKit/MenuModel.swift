@@ -29,6 +29,8 @@ public struct MenuSnapshot: Equatable, Sendable {
         /// "used 3 min ago", or nil if minirun never used it.
         public var lastUsed: String?
         public var viewerURL: String?
+        /// A screen recording is running there.
+        public var recording: Bool = false
 
         public var id: String { udid }
 
@@ -75,6 +77,21 @@ public struct MenuSnapshot: Equatable, Sendable {
         public var logPath: String?
     }
 
+    /// One shared screenshot or recording in the Shared media submenu.
+    public struct MediaRow: Equatable, Sendable, Identifiable {
+        public var id: String
+        /// "you/app@branch · recording · 2 h ago"
+        public var title: String
+        /// The page to open: the image, or the recording's player page.
+        public var url: String
+
+        public init(_ item: MediaItem, now: Date) {
+            id = item.id
+            title = [item.label ?? "untagged", item.kind.rawValue, SimulatorPicker.ago(item.createdAt, now: now)].joined(separator: " · ")
+            url = item.url
+        }
+    }
+
     /// Something an action just did, or why it failed.
     public struct Notice: Equatable, Sendable {
         public var text: String
@@ -117,6 +134,31 @@ public struct MenuSnapshot: Equatable, Sendable {
     public var relay: ServeStatus.Relay?
     /// The running daemon's version.
     public var daemonVersion: String?
+    /// Some simulator is recording its screen, so the menu bar icon shows it.
+    public var recording = false
+    /// "14 items · 38 MB". Nil from a daemon that predates sharing.
+    public var mediaSummary: String?
+    public var mediaCount = 0
+    /// The newest shared items, from list_media when the menu opens.
+    public var media: [MediaRow] = []
+
+    public static let maxMedia = 10
+    /// Drawn beside the menu bar icon while a simulator records.
+    public static let recordingSymbol = "record.circle"
+
+    /// "14 items · 38 MB", or "Nothing shared".
+    public static func summarize(_ media: MediaSummary) -> String {
+        guard media.count > 0 else { return "Nothing shared" }
+        return "\(media.count) item\(media.count == 1 ? "" : "s") · \(WorkspaceInventory.formatSize(Int64(media.bytes)))"
+    }
+
+    /// The submenu's rows: the newest `maxMedia`, skipping any that have expired.
+    public static func mediaRows(_ items: [MediaItem], now: Date) -> [MediaRow] {
+        items.filter { !$0.isExpired(now: now) }
+            .sorted { $0.createdAt > $1.createdAt }
+            .prefix(maxMedia)
+            .map { MediaRow($0, now: now) }
+    }
 
     /// The Worker runs different code from the `bundled` one this app carries. Unknown (false)
     /// until the Worker says what it runs, which Workers deployed before this check don't.
@@ -198,7 +240,8 @@ public struct MenuSnapshot: Equatable, Sendable {
             SimulatorRow(
                 udid: sim.udid, name: sim.name, runtime: sim.runtime, reservedFor: sim.reservedFor,
                 activity: sim.booting ? .booting : (sim.busy ? .busy : .idle),
-                lastUsed: sim.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: sim.viewerURL
+                lastUsed: sim.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: sim.viewerURL,
+                recording: sim.recording
             )
         }
         snapshot.macPermissions = status.macPermissions
@@ -211,6 +254,9 @@ public struct MenuSnapshot: Equatable, Sendable {
                     lastUsed: app.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: app.viewerURL
                 )
             }
+        snapshot.recording = status.simulators.contains(where: \.recording)
+        snapshot.mediaSummary = status.media.map(summarize)
+        snapshot.mediaCount = status.media?.count ?? 0
         let running = status.jobs.filter { $0.finishedAt == nil }
         let finished = status.jobs.filter { $0.finishedAt != nil }
         snapshot.runningJobs = running.count
@@ -246,6 +292,9 @@ public enum MenuAction: Equatable, Sendable {
     case quitMacApp(String)
     /// Have the daemon ask macOS for Screen Recording and Accessibility.
     case requestMacPermissions
+    case stopRecording(String)
+    case deleteMedia(String)
+    case deleteAllMedia
     /// Start the daemon through launchd.
     case start
     /// Restart the daemon through launchd.
@@ -310,6 +359,8 @@ public actor MenuModel {
     private var poll: MenuSnapshot.Poll = .pending
     private var notice: MenuSnapshot.Notice?
     private var rules = NotificationRules()
+    /// The last list_media answer.
+    private var mediaItems: [MediaItem] = []
     public private(set) var menuOpen = false
     public private(set) var snapshot: MenuSnapshot
 
@@ -343,6 +394,17 @@ public actor MenuModel {
         guard open != menuOpen else { return }
         menuOpen = open
         if open, loop != nil { start() }
+        if open { Task { await self.loadMedia() } }
+    }
+
+    /// Fetches the shared media list for the submenu. A daemon too old for list_media leaves it empty.
+    public func loadMedia() async {
+        if let response = try? await environment.send(ControlProtocol.Request(command: "list_media")), response.ok {
+            mediaItems = response.media ?? []
+        } else {
+            mediaItems = []
+        }
+        publish()
     }
 
     private func run() async {
@@ -361,6 +423,11 @@ public actor MenuModel {
         }
         if case .answered(let response) = poll {
             for notification in rules.notifications(for: response.status, now: environment.now()) { environment.notify(notification) }
+            // Something was shared or deleted while the menu is open.
+            if menuOpen, let count = response.status?.media?.count, count != mediaItems.count {
+                await loadMedia()
+                return
+            }
         }
         publish()
     }
@@ -375,6 +442,9 @@ public actor MenuModel {
         case .activateMacApp(let id): request = ControlProtocol.Request(command: "activate_mac_app", id: id)
         case .quitMacApp(let id): request = ControlProtocol.Request(command: "quit_mac_app", id: id)
         case .requestMacPermissions: request = ControlProtocol.Request(command: "request_mac_permissions")
+        case .stopRecording(let udid): request = ControlProtocol.Request(command: "stop_recording", udid: udid)
+        case .deleteMedia(let id): request = ControlProtocol.Request(command: "delete_media", id: id)
+        case .deleteAllMedia: request = ControlProtocol.Request(command: "delete_all_media")
         case .start, .restart:
             let restart = action == .restart
             do {
@@ -399,6 +469,10 @@ public actor MenuModel {
         } catch {
             notice = MenuSnapshot.Notice("minirun serve isn't answering: \(error.localizedDescription)", isError: true)
         }
+        switch action {
+        case .deleteMedia, .deleteAllMedia: await loadMedia()
+        default: break
+        }
         await refresh()
     }
 
@@ -415,6 +489,7 @@ public actor MenuModel {
             canStart: environment.agentInstalled(), now: environment.now()
         )
         next.notice = notice
+        if next.daemonRunning { next.media = MenuSnapshot.mediaRows(mediaItems, now: environment.now()) }
         guard next != snapshot else { return }
         snapshot = next
         onChange?(next)

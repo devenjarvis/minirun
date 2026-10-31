@@ -88,16 +88,24 @@ extension ToolRegistry {
         register(ToolDefinition(
             name: "screenshot",
             description: "Take a screenshot of the simulator, or of a Mac app's window. By default the image is sized so one pixel equals one point, matching the coordinates tap, swipe and describe_ui use " +
-                "(for a Mac app: window points from the window's top-left, title bar included).",
+                "(for a Mac app: window points from the window's top-left, title bar included). " +
+                "To show your work in a PR, pass share: true: a sharper copy is uploaded and you get a public link and ready-to-paste markdown for the PR description. " +
+                "Never share screens showing credentials or personal data.",
             properties: device.merging([
                 "window": Self.macProperties["window"]!,
                 "scale": Schema.number("Optional scale relative to native pixels (0.1–1); for a Mac app, image pixels per point. Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
+                "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description. Anyone with the link can see it until it expires."),
+                "caption": Schema.string("With share: a short description, used as the image's alt text, e.g. \"Settings screen, dark mode\"."),
             ]) { a, _ in a }
         )) { [self] args in
             if MacAppID.isMacDevice(args.string("device")) { return try await macScreenshot(args) }
             let sim = try await self.device(args)
-            return ToolResult(try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70))
+            var content = try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70)
+            if args.bool("share") == true {
+                content.append(.text(await shareScreenshot(udid: sim.udid, caption: args.string("caption"))))
+            }
+            return ToolResult(content)
         }
 
         register(ToolDefinition(
@@ -288,9 +296,15 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "configure_simulator",
-            description: "Change simulator settings: appearance, simulated location, a clean demo status bar, or app permissions.",
+            description: "Change simulator settings: appearance, text size (Dynamic Type, including the accessibility sizes), increased contrast, simulated location, a clean demo status bar, or app permissions. " +
+                "Prefer this over tapping through the Settings app. Most apps pick up a new text size at once; relaunch yours if it doesn't.",
             properties: device.merging([
                 "appearance": Schema.string("Light or dark mode.", enum: ["light", "dark"]),
+                "text_size": Schema.string(
+                    "Dynamic Type size. \"large\" is the iOS default; the accessibility-* sizes are the larger ones behind Settings › Accessibility › Larger Text.",
+                    enum: Simctl.contentSizes
+                ),
+                "increase_contrast": Schema.boolean("Turn Increase Contrast on or off."),
                 "latitude": Schema.number("Simulated location latitude (with longitude)."),
                 "longitude": Schema.number("Simulated location longitude."),
                 "status_bar": Schema.string("\"demo\" for 9:41 / full battery, \"clear\" to restore.", enum: ["demo", "clear"]),
@@ -305,6 +319,17 @@ extension ToolRegistry {
             if let appearance = args.string("appearance") {
                 try await Simctl.setAppearance(sim.udid, dark: appearance == "dark")
                 done.append("appearance \(appearance)")
+            }
+            if let size = args.string("text_size") {
+                guard Simctl.contentSizes.contains(size) else {
+                    throw ToolError("text_size must be one of: \(Simctl.contentSizes.joined(separator: ", ")).")
+                }
+                try await Simctl.setContentSize(sim.udid, size: size)
+                done.append("text size \(size)")
+            }
+            if let contrast = args.bool("increase_contrast") {
+                try await Simctl.setIncreaseContrast(sim.udid, enabled: contrast)
+                done.append("increase contrast \(contrast ? "on" : "off")")
             }
             if let lat = args.double("latitude"), let lon = args.double("longitude") {
                 try await Simctl.setLocation(sim.udid, latitude: lat, longitude: lon)
@@ -328,6 +353,7 @@ extension ToolRegistry {
     /// Shuts a simulator down and drops its reservation. The shutdown_simulator tool and the menu
     /// bar app's Shut down both come here.
     func shutDownSimulator(_ sim: XcodeParsing.SimDevice) async throws -> String {
+        await recordings.halt(sim.udid, reason: "the simulator was shut down")
         try await Simctl.shutdown(sim.udid)
         await claims.release(sim.udid)
         await SimulatorDriver.shared.reset(udid: sim.udid)

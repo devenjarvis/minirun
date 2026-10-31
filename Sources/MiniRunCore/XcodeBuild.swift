@@ -7,6 +7,10 @@ enum XcodeBuild {
         /// e.g. ["-workspace", "App.xcworkspace"], or [] for a Swift package directory.
         let flags: [String]
         let description: String
+        /// Where xcodebuild has to run: a Swift package's own folder. nil means the checkout.
+        var workingDirectory: String? = nil
+
+        var isPackage: Bool { flags.isEmpty }
     }
 
     struct Options {
@@ -22,18 +26,30 @@ enum XcodeBuild {
         /// The container and scheme once found, so later steps don't run XcodeGen and
         /// `xcodebuild -list` again.
         var resolved: (container: Container, scheme: String)?
+        /// Stop xcodebuild if it writes nothing for this long (nil: only the overall timeout).
+        var stallTimeout: TimeInterval?
+        /// The overall limit.
+        var timeout: TimeInterval = 3600
     }
 
     /// Finds the workspace/project to build in a checkout, preferring an explicit `project` path.
     static func container(in dir: String, project: String?) throws -> Container {
         let fm = FileManager.default
         if let project {
-            let full = project.hasPrefix("/") ? project : dir + "/" + project
-            guard fm.fileExists(atPath: full) else { throw ToolError("No \(project) in \(dir).") }
+            var full = project.hasPrefix("/") ? project : dir + "/" + project
+            while full.count > 1, full.hasSuffix("/") { full.removeLast() }
+            guard fm.fileExists(atPath: full) else {
+                throw ToolError("No \(project) in \(dir). `project` is relative to the checkout, e.g. \"App.xcodeproj\" or, for a Swift package, its folder like \"Packages/Core\".")
+            }
             if full.hasSuffix(".xcworkspace") { return Container(flags: ["-workspace", full], description: project) }
             if full.hasSuffix(".xcodeproj") { return Container(flags: ["-project", full], description: project) }
-            if full.hasSuffix("Package.swift") { return Container(flags: [], description: "Swift package") }
-            throw ToolError("`project` must point to an .xcworkspace, .xcodeproj or Package.swift.")
+            // A Swift package: xcodebuild has to run in its folder, so accept the folder or its Package.swift.
+            let packageDir = full.hasSuffix("/Package.swift") ? (full as NSString).deletingLastPathComponent : full
+            if fm.fileExists(atPath: packageDir + "/Package.swift") {
+                let name = relative(packageDir, to: dir)
+                return Container(flags: [], description: packageDir == dir ? "Swift package" : "Swift package \(name)", workingDirectory: packageDir)
+            }
+            throw ToolError("`project` must be an .xcworkspace, an .xcodeproj, or a Swift package folder (or its Package.swift), relative to the checkout.")
         }
 
         // Search the top level, then one level down (monorepos often keep the app in ios/ or App/).
@@ -94,11 +110,11 @@ enum XcodeBuild {
     static func schemes(directory: String, project: String?, log: URL? = nil) async throws -> (Container, [String]) {
         try await generateProject(in: directory, log: log)
         let container = try container(in: directory, project: project)
-        let result = try await Shell.check("/usr/bin/xcrun", ["xcodebuild", "-list", "-json"] + container.flags, cwd: directory, timeout: 180, what: "xcodebuild -list")
+        let result = try await Shell.check("/usr/bin/xcrun", ["xcodebuild", "-list", "-json"] + container.flags, cwd: container.workingDirectory ?? directory, timeout: 180, what: "xcodebuild -list")
         return (container, XcodeParsing.parseSchemes(Data(result.stdout.utf8)))
     }
 
-    static func resolveScheme(_ options: Options) async throws -> (Container, String) {
+    static func resolveScheme(_ options: Options, forTesting: Bool = false) async throws -> (Container, String) {
         if let resolved = options.resolved { return resolved }
         let (container, schemes) = try await schemes(directory: options.directory, project: options.project, log: options.log)
         if let scheme = options.scheme {
@@ -109,8 +125,10 @@ enum XcodeBuild {
         }
         guard let first = schemes.first else { throw ToolError("\(container.description) has no shared schemes. Pass `scheme`.") }
         if schemes.count > 1 {
+            // A package's "<Name>-Package" scheme runs all of its test targets.
+            if forTesting, container.isPackage, let all = schemes.first(where: { $0.hasSuffix("-Package") }) { return (container, all) }
             // Prefer a scheme named like the folder, else the first non-test scheme.
-            let folder = (options.directory as NSString).lastPathComponent.lowercased()
+            let folder = ((container.workingDirectory ?? options.directory) as NSString).lastPathComponent.lowercased()
             if let match = schemes.first(where: { $0.lowercased() == folder }) { return (container, match) }
             if let app = schemes.first(where: { !$0.lowercased().contains("test") && !$0.contains("-Package") }) { return (container, app) }
         }
@@ -134,13 +152,14 @@ enum XcodeBuild {
 
     /// Picks ios or macos for the scheme from its build settings, read without a destination:
     /// macos only when the app supports macOS and not iOS. Keeps the scheme it found in `options`.
-    static func detectPlatform(_ options: inout Options) async throws -> BuildPlatform {
-        let (container, scheme) = try await resolveScheme(options)
+    /// `forTesting` picks the scheme the way `test` does (a package's "-Package" scheme).
+    static func detectPlatform(_ options: inout Options, forTesting: Bool = false) async throws -> BuildPlatform {
+        let (container, scheme) = try await resolveScheme(options, forTesting: forTesting)
         options.resolved = (container, scheme)
         let settings = try await Shell.check(
             "/usr/bin/xcrun",
             ["xcodebuild", "-showBuildSettings", "-json"] + baseArgs(container, scheme: scheme, options: options) + options.extraArgs,
-            cwd: options.directory, timeout: 300, what: "xcodebuild -showBuildSettings"
+            cwd: container.workingDirectory ?? options.directory, timeout: 300, what: "xcodebuild -showBuildSettings"
         )
         let platform = BuildPlatform.detect(fromBuildSettings: Data(settings.stdout.utf8))
         appendLog(options.log, "Platform for \(scheme): \(platform.rawValue)\n")
@@ -154,19 +173,22 @@ enum XcodeBuild {
 
     /// Runs an xcodebuild action. If it fails on code signing, and the caller didn't set signing
     /// themselves, runs it once more with ad-hoc signing. Returns the extra args it ended up using.
-    static func runSigningFallback(_ args: (_ extra: [String]) -> [String], options: Options, timeout: TimeInterval) async throws -> (ShellResult, extra: [String], notes: [String]) {
+    /// Runs in `cwd`, with the options' overall and stall timeouts.
+    static func runSigningFallback(_ args: (_ extra: [String]) -> [String], options: Options, cwd: String) async throws -> (ShellResult, extra: [String], notes: [String]) {
         var extra = options.extraArgs
         var argv = args(extra)
         appendLog(options.log, "$ xcrun " + argv.joined(separator: " ") + "\n")
-        var result = try await Shell.run("/usr/bin/xcrun", argv, cwd: options.directory, timeout: timeout, logURL: options.log)
+        var result = try await Shell.run("/usr/bin/xcrun", argv, cwd: cwd, timeout: options.timeout, stallTimeout: options.stallTimeout, logURL: options.log)
         guard !result.succeeded, !result.timedOut,
               !options.extraArgs.contains(where: { $0.hasPrefix("CODE_SIGN") }),
               XcodeParsing.isSigningFailure(result.stdout + "\n" + result.stderr) else { return (result, extra, []) }
+        // Cancelled (cancel_job): don't start a second run.
+        try Task.checkCancellation()
         appendLog(options.log, "\nThe build failed on code signing. Building again with ad-hoc signing (\(adHocSigningArgs.joined(separator: " "))).\n")
         extra += adHocSigningArgs
         argv = args(extra)
         appendLog(options.log, "$ xcrun " + argv.joined(separator: " ") + "\n")
-        result = try await Shell.run("/usr/bin/xcrun", argv, cwd: options.directory, timeout: timeout, logURL: options.log)
+        result = try await Shell.run("/usr/bin/xcrun", argv, cwd: cwd, timeout: options.timeout, stallTimeout: options.stallTimeout, logURL: options.log)
         return (result, extra, [adHocSigningNote])
     }
 
@@ -185,14 +207,15 @@ enum XcodeBuild {
     static func build(_ options: Options) async throws -> BuildOutput {
         let (container, scheme) = try await resolveScheme(options)
         let common = commonArgs(container, scheme: scheme, options: options)
-        let (result, extra, notes) = try await runSigningFallback({ ["xcodebuild"] + common + $0 + ["build"] }, options: options, timeout: 3600)
+        let cwd = container.workingDirectory ?? options.directory
+        let (result, extra, notes) = try await runSigningFallback({ ["xcodebuild"] + common + $0 + ["build"] }, options: options, cwd: cwd)
         guard result.succeeded else {
-            throw ToolError(failureReport("Build of \(scheme)", result: result) + (notes.isEmpty ? "" : "\n(This was the second try, with ad-hoc signing.)"))
+            throw ToolError(failureReport("Build of \(scheme)", result: result, options: options) + (notes.isEmpty ? "" : "\n(This was the second try, with ad-hoc signing.)"))
         }
         let settings = try await Shell.run(
             "/usr/bin/xcrun",
             ["xcodebuild", "-showBuildSettings", "-json"] + common + extra,
-            cwd: options.directory, timeout: 300
+            cwd: cwd, timeout: 300
         )
         let json = Data(settings.stdout.utf8)
         return BuildOutput(
@@ -214,19 +237,33 @@ enum XcodeBuild {
         let notes: [String]
     }
 
+    /// Flags added to `xcodebuild test` unless `extra_args` already set them. Parallel testing runs
+    /// on clones of the simulator, outside minirun's reservations, and is a common reason
+    /// xcodebuild hangs after building; a time allowance turns a hung test into a failure.
+    static func testDefaults(extraArgs: [String]) -> [String] {
+        var flags: [String] = []
+        if !extraArgs.contains(where: { $0.hasPrefix("-parallel-testing") }) { flags += ["-parallel-testing-enabled", "NO"] }
+        if !extraArgs.contains(where: { $0.hasPrefix("-test-timeouts-enabled") || $0.hasPrefix("-default-test-execution-time-allowance") }) {
+            flags += ["-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "300"]
+        }
+        return flags
+    }
+
     static func test(_ options: Options, onlyTesting: [String], skipTesting: [String]) async throws -> TestOutput {
         if options.platform == .ios, options.udid == nil { throw ToolError("Tests on iOS need a simulator.") }
-        let (container, scheme) = try await resolveScheme(options)
+        let (container, scheme) = try await resolveScheme(options, forTesting: true)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let bundle = options.directory + "/.minirun/results/\(scheme)-\(stamp).xcresult"
         try FileManager.default.createDirectory(atPath: (bundle as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         let common = commonArgs(container, scheme: scheme, options: options)
         let filters = onlyTesting.map { "-only-testing:\($0)" } + skipTesting.map { "-skip-testing:\($0)" }
+        // Applies to Mac tests too: parallel testing there runs extra test-runner processes.
+        let defaults = testDefaults(extraArgs: options.extraArgs)
         let (result, _, notes) = try await runSigningFallback({ extra in
             // A retry writes to the same bundle path, which xcodebuild refuses if it exists.
             try? FileManager.default.removeItem(atPath: bundle)
-            return ["xcodebuild"] + common + ["-resultBundlePath", bundle] + filters + extra + ["test"]
-        }, options: options, timeout: 5400)
+            return ["xcodebuild"] + common + ["-resultBundlePath", bundle] + filters + defaults + extra + ["test"]
+        }, options: options, cwd: container.workingDirectory ?? options.directory)
 
         var summary = ""
         if FileManager.default.fileExists(atPath: bundle),
@@ -234,8 +271,11 @@ enum XcodeBuild {
            report.succeeded {
             summary = summarizeTestResults(report.stdout)
         }
-        if summary.isEmpty {
-            summary = result.succeeded ? "Tests passed." : failureReport("Tests for \(scheme)", result: result)
+        if result.timedOut {
+            // Say so first: a partial result bundle can look like a plain failure.
+            summary = [failureReport("Tests for \(scheme)", result: result, options: options), summary].filter { !$0.isEmpty }.joined(separator: "\n\n")
+        } else if summary.isEmpty {
+            summary = result.succeeded ? "Tests passed." : failureReport("Tests for \(scheme)", result: result, options: options)
         } else if !result.succeeded, !XcodeParsing.parseIssues(result.stdout).isEmpty {
             // Compile errors in test targets don't always show up in the result bundle.
             summary += "\n\nBuild issues:\n" + XcodeParsing.parseIssues(result.stdout).map(\.line).joined(separator: "\n")
@@ -265,8 +305,18 @@ enum XcodeBuild {
         return lines.joined(separator: "\n")
     }
 
-    static func failureReport(_ what: String, result: ShellResult) -> String {
-        if result.timedOut { return "\(what) timed out." }
+    static func failureReport(_ what: String, result: ShellResult, options: Options? = nil) -> String {
+        if result.stalled {
+            let quiet = options?.stallTimeout.map { " for \(Int($0 / 60)) min" } ?? ""
+            let freed = (options?.platform.isMac ?? false) ? "" : ", and the simulator is no longer busy"
+            return "\(what) stopped: xcodebuild printed nothing\(quiet), so it was treated as hung and stopped\(freed). " +
+                "This is usually the Mac, not your code (a stuck simulator, test runner or package resolution). " +
+                "Pass a larger stall_seconds if the work really is that quiet. Last output:\n" + result.tail(1500)
+        }
+        if result.timedOut {
+            let limit = options.map { " after \(Int($0.timeout / 60)) min" } ?? ""
+            return "\(what) timed out\(limit) and was stopped. Last output:\n" + result.tail(1500)
+        }
         let issues = XcodeParsing.parseIssues(result.stdout + "\n" + result.stderr)
         if issues.isEmpty {
             return "\(what) failed (exit \(result.exitCode)). Last output:\n" + result.tail(4000)

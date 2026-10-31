@@ -241,6 +241,8 @@ public enum MacToolSupport {
             return "Mac apps aren't installed: minirun runs them from where they were built. Use launch_app with device: \"mac\" and app_path, or build_and_run."
         case "uninstall_app":
             return "There's nothing to uninstall: minirun runs Mac apps from their build folder. Use terminate_app to quit it."
+        case "start_recording", "stop_recording":
+            return "Recording isn't supported for Mac apps yet. To show a Mac app in a PR, use screenshot with share: true (a window screenshot, uploaded for the PR description)."
         case "boot_simulator", "shutdown_simulator":
             return "\(tool) is for simulators. Quit a Mac app with terminate_app; launch one with build_and_run or launch_app."
         default:

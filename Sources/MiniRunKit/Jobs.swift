@@ -34,7 +34,88 @@ public actor JobStore {
         min(maxWait, max(0, asked ?? 45))
     }
 
-    public init() {}
+    /// Where the jobs are written, so they outlive a restart of minirun. nil keeps them in memory only.
+    private let recordURL: URL?
+
+    public static var defaultRecordURL: URL {
+        MiniRunConfig.configURL.deletingLastPathComponent().appendingPathComponent("jobs.json")
+    }
+
+    /// A job as written to disk: its result, cut down to the text.
+    struct Record: Codable {
+        var id: String
+        var title: String
+        var startedAt: Date
+        var finishedAt: Date?
+        var status: String
+        var logPath: String?
+        var text: String?
+        var isError: Bool?
+    }
+
+    /// With `recordURL`, loads the jobs a previous run left there. Any that were still running
+    /// were cut off by the restart: they're marked failed, so get_job says what happened instead
+    /// of "no such job".
+    public init(recordURL: URL? = nil, now: Date = Date()) {
+        self.recordURL = recordURL
+        guard let recordURL, let data = try? Data(contentsOf: recordURL),
+              let records = try? Self.decoder.decode([Record].self, from: data) else { return }
+        for record in records {
+            var job = Job(
+                id: record.id, title: record.title, startedAt: record.startedAt, finishedAt: record.finishedAt,
+                status: Status(rawValue: record.status) ?? .failed, result: nil, logPath: record.logPath
+            )
+            if job.status == .running {
+                job.status = .failed
+                job.finishedAt = now
+                job.result = .error(
+                    "minirun restarted while this job was running, so it was stopped and its result is lost. " +
+                    "Start it again if you still need it." +
+                    (record.logPath.map { "\nLog of the run so far: \($0)" } ?? "")
+                )
+            } else {
+                let note = "(Result from before minirun restarted; images aren't kept.)"
+                job.result = ToolResult([.text([record.text, note].compactMap { $0 }.joined(separator: "\n"))], isError: record.isError ?? (job.status != .succeeded))
+            }
+            jobs[job.id] = job
+            order.append(job.id)
+        }
+    }
+
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    private func save() {
+        guard let recordURL else { return }
+        let records = order.compactMap { jobs[$0] }.map { job in
+            Record(
+                id: job.id, title: job.title, startedAt: job.startedAt, finishedAt: job.finishedAt,
+                status: job.status.rawValue, logPath: job.logPath,
+                text: job.result.map { Self.text(of: $0) }, isError: job.result?.isError
+            )
+        }
+        guard let data = try? Self.encoder.encode(records) else { return }
+        try? FileManager.default.createDirectory(at: recordURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: recordURL, options: .atomic)
+    }
+
+    /// The text of a result, capped so the file stays small.
+    static func text(of result: ToolResult) -> String {
+        let text = result.content.compactMap { content -> String? in
+            if case .text(let text) = content { return text }
+            return nil
+        }.joined(separator: "\n")
+        return Shell.tail(text, limit: 8000)
+    }
 
     /// Starts `work` in the background and returns the job id immediately.
     public func start(title: String, logPath: String?, _ work: @escaping @Sendable () async throws -> ToolResult) -> String {
@@ -42,6 +123,7 @@ public actor JobStore {
         jobs[id] = Job(id: id, title: title, startedAt: Date(), status: .running, logPath: logPath)
         order.append(id)
         trim()
+        save()
         tasks[id] = Task {
             let result: ToolResult
             do {
@@ -62,6 +144,7 @@ public actor JobStore {
         job.result = result
         job.finishedAt = Date()
         jobs[id] = job
+        save()
         for waiter in waiters.removeValue(forKey: id) ?? [] { waiter.continuation.resume() }
     }
 
@@ -81,8 +164,9 @@ public actor JobStore {
         tasks.removeValue(forKey: id)?.cancel()
         job.status = .cancelled
         job.finishedAt = Date()
-        job.result = .error("Cancelled on the Mac.")
+        job.result = .error("Cancelled. Its commands were stopped, so the simulator (or Mac app) it used is no longer busy (it stays reserved for the same repo + ref).")
         jobs[id] = job
+        save()
         for waiter in waiters.removeValue(forKey: id) ?? [] { waiter.continuation.resume() }
         return job
     }
@@ -116,7 +200,7 @@ public actor JobStore {
     /// The tool result to hand back for a job: its own result if finished, otherwise a status note.
     public func report(_ id: String, waited seconds: Double) async -> ToolResult {
         guard let job = await wait(id, seconds: seconds) else {
-            return .error("No job with id \(id). Jobs are kept in memory and are lost when minirun restarts.")
+            return .error("No job with id \(id). list_jobs shows the recent ones.")
         }
         if let result = job.result {
             var content = result.content
@@ -131,7 +215,7 @@ public actor JobStore {
         return .text(text)
     }
 
-    static func format(_ seconds: TimeInterval) -> String {
+    public static func format(_ seconds: TimeInterval) -> String {
         seconds < 90 ? "\(Int(seconds))s" : "\(Int(seconds / 60))m \(Int(seconds) % 60)s"
     }
 

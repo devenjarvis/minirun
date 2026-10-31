@@ -38,10 +38,14 @@ open ports, and no tunnel to run.
   and the viewer decodes them with WebCodecs. Frames are only sent when the screen changes. A
   browser without WebCodecs gets JPEG frames instead, and so does everyone watching that simulator
   with it, since one stream serves all of a simulator's viewers.
-- **Long work runs as jobs.** `build`, `build_and_run`, `run_tests` and `run_command` return
-  within `wait_seconds` (default 45, max 50, under the MCP client's 60-second request timeout).
-  If the work is still going they return a `job_id`, and Claude waits on it with `get_job`. Long
-  builds never hit request timeouts.
+- **Long work runs as jobs.** `build`, `build_and_run`, `run_tests`, `swift_test` and
+  `run_command` return within `wait_seconds` (default 45, max 50, under the MCP client's 60-second
+  request timeout). If the work is still going they return a `job_id`, and Claude waits on it with
+  `get_job`. Long builds never hit request timeouts.
+- **Stuck work doesn't hold simulators.** Tests that print nothing for `stall_seconds` (default 5
+  minutes; builds 15) are stopped as hung, and `cancel_job` stops a job on demand. Jobs are
+  written to disk, so after a restart `get_job` says what happened to them, and anything the
+  previous run left running (a hung `xcodebuild`) is stopped when minirun starts.
 
 ## Setup
 
@@ -159,7 +163,10 @@ a logged-in GUI session; `minirun serve` already blocks idle sleep while it runs
    app, then returns a screenshot. If the build fails, it returns the errors with `file:line`.
 3. `describe_ui` gives the accessibility tree, then `tap {id: "loginButton"}`, `type_text`,
    `swipe`, and `screenshot` to look. `app_logs` reads the app's output.
-4. `run_tests` runs the tests and reports pass/fail with failure messages.
+4. `run_tests` runs the tests on the simulator and reports pass/fail with failure messages. For a
+   package in a subfolder, `project` is its folder: `run_tests {repo: "you/app", ref: "my-branch",
+   project: "Packages/Core"}`. A package that builds for macOS can skip the simulator:
+   `swift_test {repo: "you/app", ref: "my-branch", package: "Packages/Core"}`.
 5. `build_and_run` and `boot_simulator` include a live view link for that simulator to share with
    you (`mac_status` gives it too).
 
@@ -207,7 +214,8 @@ itself, with the same loop:
    since launch plus unified logging), `terminate_app`. `list_windows` lists the app's windows;
    most tools take `window` (an index or title). Coordinates are window points from the window's
    top-left, title bar included.
-3. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac.
+3. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac, with the same
+   `stall_seconds`/`timeout_seconds`, `cancel_job` and no-parallel defaults as iOS tests.
 4. The live view link shows the app's window; you can click, drag, scroll, right-click and type
    into it.
 
@@ -238,18 +246,21 @@ Limitations:
 - In the browser viewer, shortcuts the browser keeps for itself (⌘W, ⌘T, ⌘Q…) never reach the app;
   Claude can send them with `press_key` or `press_menu_item`.
 - Menu bar–only apps and command-line tools launch and log, but have no window to show.
+- `screenshot {share: true}` shares a Mac app's window for a PR, but `start_recording` and
+  `stop_recording` are simulator-only for now: recording a Mac app isn't supported yet.
 
 ## Tools
 
 | Area | Tools |
 | --- | --- |
-| Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, location, demo status bar, permissions) |
-| Seeing | `screenshot` (sized so pixels = points), `describe_ui` (compact text or full JSON) |
+| Simulators | `list_simulators` (with what each is reserved for), `boot_simulator` (get your own), `shutdown_simulator`, `configure_simulator` (dark mode, text size including accessibility sizes, increase contrast, location, demo status bar, permissions) |
+| Seeing | `screenshot` (sized so pixels = points; `share: true` also returns a link for a PR), `describe_ui` (compact text or full JSON) |
+| Sharing | `start_recording`, `stop_recording` (a GIF that links to the MP4, ready to paste into a PR), `delete_media` |
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
-| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests` (all three take `platform`: `ios`, `macos`, `mac-catalyst`), `run_command` (opt-in) |
+| Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests` (all three take `platform`: `ios`, `macos`, `mac-catalyst`), `swift_test` (package tests, no simulator), `run_command` (opt-in) |
 | macOS apps | `list_mac_apps`, `list_windows`, `scroll`, `press_menu_item`, plus the tools above with a Mac app id as `device` (see [macOS apps](#macos-apps)) |
-| Jobs | `get_job`, `job_log`, `list_jobs` |
+| Jobs | `get_job`, `job_log`, `list_jobs`, `cancel_job` |
 | Host | `host_info`, `mac_status` (served by the Worker) |
 
 Try any tool locally: `minirun call describe_ui` or `minirun call tap '{"label":"General"}'`. The
@@ -262,6 +273,30 @@ JSON. It asks the daemon over a socket at `~/.config/minirun/control.sock` that 
 `minirun doctor` checks Xcode, the simulators, the daemon and the settings, and says how to fix
 each problem (`--json` for scripts). Claude gets the same checks from `host_info`, along with the
 minirun version; `mac_status` says whether the Mac and the Worker run the same minirun.
+
+## Screenshots and recordings in PRs
+
+GitHub only shows images it can fetch from a public URL, so minirun hosts them on your Worker.
+`screenshot {device, share: true}`, or `start_recording` → tap around → `stop_recording`, uploads
+the result and returns markdown to paste into a PR description:
+
+- A screenshot is a JPEG at 2x points.
+- A recording is a looping GIF (about 10 fps, 320 px wide) that links to a player page for the
+  full MP4. GitHub won't play video hosted elsewhere, so the GIF shows the motion inline.
+  Recordings stop by themselves after `maxRecordingSeconds` (60).
+
+Files are stored in a `MEDIA_KV` namespace with an expiry (`mediaRetentionDays`, 7), so KV deletes
+them by itself; old PRs then show a broken image. The Mac keeps a list of what it uploaded in
+`~/.config/minirun/media.json` and deletes the oldest files to stay under
+`mediaStorageLimitMB` (500). The menu bar app lists them, with Open, Copy link and Delete.
+
+Links are long and random, but anyone who has one can open it until it expires, even for a
+private repository. GitHub's image proxy may keep showing a copy for a while after you delete it.
+
+**How large can a GIF be?** GitHub's image proxy has a size limit that isn't documented. The Worker
+serves test GIFs of any size from 1 to 25 MB at `/m/probe/<n>.gif`. Paste a few into a PR
+description, see which ones show, and set `mediaInlineLimitMB` (default 5) to the largest. Larger
+GIFs are shrunk until they fit.
 
 ## The menu bar app
 
@@ -276,6 +311,8 @@ running jobs beside it. The menu shows:
 - Live view (in a window), Copy connector URL, Copy password, Restart service, Settings… and Quit.
 - When `minirun serve` isn't running, a Start button and the end of its log.
 - A note when the Worker runs older code than the app, or a newer release is on GitHub.
+- Shared media: how many files and how much space, the newest ten with Open, Copy link and
+  Delete, and Delete all. A simulator that's recording shows a red dot and Stop recording.
 
 **Setup window.** It opens by itself while there's no Worker in the settings, and from the menu's
 Set Up minirun…: it checks Xcode, the simulator runtime and the frameworks; takes a Cloudflare
@@ -298,7 +335,7 @@ mini needs (automatic login, no sleep).
   Copy diagnostics (versions, state and settings without secrets); Reveal config in Finder.
 
 **Automatic updates.** An app in `/Applications` keeps itself current, so the Mac needs no
-visits: every 6 hours it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
+visits: every hour it looks for a newer [release](https://github.com/devenjarvis/minirun/releases).
 When it finds one, it waits until no job is running and nobody is using a simulator. Then it
 downloads `minirun-<version>.zip`, checks it against the SHA-256 GitHub reports for it (or the
 `.sha256` file next to it), and checks the unzipped app: the bundle id, the version, the
@@ -336,6 +373,11 @@ Gatekeeper prompts.
 | `preventSleep` | `true` | Blocks idle sleep while serving |
 | `idleShutdownMinutes` | `30` | Shuts down simulators nobody has used for this long; `0` keeps them running |
 | `maxBootedSimulators` | `4` | How many simulators minirun runs at once. Past this, a call that needs another one fails and lists the running ones |
+| `shareMedia` | `true` | Lets `share: true` and `stop_recording` upload to the Worker |
+| `mediaRetentionDays` | `7` | How long shared files last (1–90) |
+| `mediaStorageLimitMB` | `500` | The oldest shared files are deleted to stay under this |
+| `maxRecordingSeconds` | `60` | Recordings stop by themselves after this |
+| `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR; bigger ones are shrunk |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a
 new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
@@ -349,7 +391,9 @@ new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
 - Viewers log in with the same password (30-day signed cookie). They can only send touch and
   keyboard input, not run tools like `build` or `run_command`.
 - `run_command` is off by default. Turning it on lets anyone holding a connector token run shell
-  commands on your Mac, so keep the password private.
+  commands on your Mac, so keep the password private. Building and testing a repository
+  (`build`, `run_tests`, `swift_test`) runs that repository's own code too: build scripts,
+  package plugins and tests. Only point minirun at repositories you trust.
 - Rotate secrets with `minirun worker deploy --new-password` or `--new-token`. A new token is
   saved on the Mac and `minirun serve` reloads its settings and reconnects with it.
 - The saved Cloudflare API token can deploy and change Workers on your account. Delete it with
@@ -430,6 +474,9 @@ H.264 only sends frames while the screen changes, so a still screen costs almost
 scrolling at 30 fps costs about 3 requests per second. That works out to many hours of viewing a
 day within the free 100k requests. The viewer stops streaming when its tab is hidden.
 
+Shared media uses KV's free 1 GB and 1,000 writes a day; with the defaults (500 MB, 7 days) it
+stays well inside both.
+
 ## Limitations (v0.1)
 
 - One Mac per Worker deployment. Simulators and macOS apps only for UI control (physical devices are planned).
@@ -458,8 +505,10 @@ deploys with wrangler, for working on the Worker itself.
 
 Releases: bump `MiniRun.version` (`Sources/MiniRunKit/Version.swift`), `MARKETING_VERSION` in
 `App/project.yml` and `VERSION` in `worker/src/version.ts` (then `npm run bundle`), add a section
-for it to `CHANGELOG.md`, and push a tag like `v0.3.0`. The Release workflow builds the app and
-attaches `minirun-<version>.zip` to a GitHub Release, with that changelog section as its notes.
+for it to `CHANGELOG.md`, and merge. When `main`'s version has no tag yet, the Release workflow
+builds the app and publishes a GitHub Release with `minirun-<version>.zip` and that changelog
+section as its notes, which creates the `v<version>` tag. Pushing a tag or creating a release by
+hand works too.
 
 CI runs all of the above on GitHub's macOS runners. If a run fails, the logs are pushed to the
 `ci-logs` branch.

@@ -47,11 +47,15 @@ struct MenuIconLabel: View {
     var body: some View {
         HStack(spacing: 2) {
             Image(systemName: store.snapshot.icon.symbolName)
+            // Menu bar labels draw as templates, so a second symbol rather than a red dot.
+            if store.snapshot.recording {
+                Image(systemName: MenuSnapshot.recordingSymbol)
+            }
             if store.snapshot.runningJobs > 0 {
                 Text("\(store.snapshot.runningJobs)").monospacedDigit()
             }
         }
-        .accessibilityLabel("minirun: \(store.snapshot.headline)")
+        .accessibilityLabel("minirun: \(store.snapshot.headline)" + (store.snapshot.recording ? ", recording" : ""))
         .task {
             await store.launched()
             if store.needsSetup {
@@ -141,7 +145,7 @@ final class MenuStore {
         }
     }
 
-    /// Checks GitHub for a newer release: every 6 hours while updating automatically, else daily.
+    /// Checks GitHub for a newer release: every hour while updating automatically, else daily.
     func checkForUpdates(force: Bool = false) async {
         let key = "lastUpdateCheck"
         let interval = autoUpdate ? Updater.checkInterval : 86400
@@ -246,6 +250,18 @@ final class MenuStore {
             if running.activate(options: [.activateAllWindows]) { return }
         }
         perform(.activateMacApp(app.id))
+    }
+
+    /// Asks before deleting every shared screenshot and recording, since old PRs lose their images.
+    func confirmDeleteAllMedia() {
+        let alert = NSAlert()
+        alert.messageText = "Delete all shared media?"
+        alert.informativeText = "Every shared screenshot and recording stops loading, including in PR descriptions. GitHub may show cached copies for a while."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Delete All")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { perform(.deleteAllMedia) }
     }
 
     /// Sends one control command and says what happened.

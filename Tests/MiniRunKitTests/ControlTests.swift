@@ -27,6 +27,11 @@ final class FakeControlCommands: ControlCommands, @unchecked Sendable {
     }
     func deleteWorkspace(path: String) async throws -> String { record("delete \(path)"); return "Deleted \(path)." }
     func doctor() async -> [DoctorCheck] { checks }
+    var media: [MediaItem] = []
+    func listMedia() async throws -> [MediaItem] { media }
+    func deleteMedia(id: String) async throws -> String { record("delete media \(id)"); return "Deleted \(id)." }
+    func deleteAllMedia() async throws -> String { record("delete all media"); return "Deleted everything." }
+    func stopRecording(udid: String) async throws -> String { record("stop recording \(udid)"); return "Stopped \(udid)." }
 }
 
 final class ControlCommandTests: XCTestCase {
@@ -68,7 +73,22 @@ final class ControlCommandTests: XCTestCase {
         let doctor = try await ask(fake, Request(command: "doctor"))
         XCTAssertEqual(doctor.doctor, fake.checks)
 
-        XCTAssertEqual(fake.calls, ["reload", "shutdown SIM-A", "release SIM-B", "delete /w/you/app", "cancel job_1"])
+        fake.media = [MediaItem(id: "AAAAAAAAAAAAAAAAAAAAAA", kind: .screenshot, files: [.init(ext: "jpg", bytes: 10)],
+                                createdAt: Date(timeIntervalSince1970: 1_000_000), expiresAt: Date(timeIntervalSince1970: 2_000_000),
+                                repo: "you/app", ref: "main", url: "https://h/m/AAAAAAAAAAAAAAAAAAAAAA.jpg")]
+        let media = try await ask(fake, Request(command: "list_media"))
+        XCTAssertEqual(media.media, fake.media)
+        let deleteMedia = try await ask(fake, Request(command: "delete_media", id: "AAAAAAAAAAAAAAAAAAAAAA"))
+        XCTAssertEqual(deleteMedia.message, "Deleted AAAAAAAAAAAAAAAAAAAAAA.")
+        let deleteAll = try await ask(fake, Request(command: "delete_all_media"))
+        XCTAssertEqual(deleteAll.message, "Deleted everything.")
+        let stop = try await ask(fake, Request(command: "stop_recording", udid: "SIM-A"))
+        XCTAssertEqual(stop.message, "Stopped SIM-A.")
+        let missing = try await ask(fake, Request(command: "stop_recording"))
+        XCTAssertEqual(missing.error, "stop_recording needs udid.")
+
+        XCTAssertEqual(fake.calls, ["reload", "shutdown SIM-A", "release SIM-B", "delete /w/you/app", "cancel job_1",
+                                    "delete media AAAAAAAAAAAAAAAAAAAAAA", "delete all media", "stop recording SIM-A"])
     }
 
     func testMissingArgumentsAreRefusedBeforeTheyReachTheDaemon() async throws {
@@ -85,7 +105,7 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Request(command: "cancel_job", id: "job_1")), #"{"command":"cancel_job","id":"job_1"}"#)
         let old = try ControlProtocol.decode(ControlProtocol.Response.self, from: #"{"ok":false,"error":"Unknown command doctor."}"#)
         XCTAssertNil(old.controlVersion)
-        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":3,"message":"hi","ok":true}"#)
+        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":4,"message":"hi","ok":true}"#)
     }
 }
 

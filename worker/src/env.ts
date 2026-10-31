@@ -4,6 +4,8 @@ import type { MacRelay } from "./relay";
 export interface Env {
   MAC_RELAY: DurableObjectNamespace<MacRelay>;
   OAUTH_KV: KVNamespace;
+  /** Shared screenshots and recordings, keyed "<id>.<ext>". */
+  MEDIA_KV: KVNamespace;
   /** Injected by OAuthProvider into the default handler. */
   OAUTH_PROVIDER: OAuthHelpers;
   OWNER_PASSWORD: string;
@@ -17,6 +19,7 @@ declare global {
     interface Env {
       MAC_RELAY: DurableObjectNamespace<MacRelay>;
       OAUTH_KV: KVNamespace;
+      MEDIA_KV: KVNamespace;
       OWNER_PASSWORD: string;
       AGENT_TOKEN: string;
     }

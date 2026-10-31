@@ -16,6 +16,7 @@ struct SettingsView: View {
             GeneralTab(store: store).tabItem { Label("General", systemImage: "gearshape") }
             CloudflareTab(store: store).tabItem { Label("Cloudflare", systemImage: "cloud") }
             SimulatorsTab(store: store).tabItem { Label("Simulators", systemImage: "iphone") }
+            SharingTab(store: store).tabItem { Label("Sharing", systemImage: "photo.on.rectangle") }
             WorkspacesTab(store: store).tabItem { Label("Workspaces", systemImage: "folder") }
             SecurityTab(store: store).tabItem { Label("Security", systemImage: "lock.shield") }
             RunnersTab(store: store.menu.runners, menu: store.menu).tabItem { Label("GitHub Runners", systemImage: "server.rack") }
@@ -83,7 +84,7 @@ struct GeneralTab: View {
                 LabeledContent("This app") { Text(MiniRun.version) }
                 LabeledContent("minirun serve") { Text(store.menu.snapshot.daemonVersion ?? "not running") }
                 Toggle("Install updates automatically", isOn: Binding(get: { store.menu.autoUpdate }, set: { store.menu.setAutoUpdate($0) }))
-                Text("Checks GitHub every 6 hours. Updates wait until no job is running and nobody is using a simulator, then restart minirun serve for a moment. The Worker is updated too, with the saved API token.")
+                Text("Checks GitHub every hour. Updates wait until no job is running and nobody is using a simulator, then restart minirun serve for a moment. The Worker is updated too, with the saved API token.")
                     .font(.callout).foregroundStyle(.secondary)
                 if let status = store.menu.updateStatus {
                     Text(status).font(.callout)
@@ -251,6 +252,48 @@ struct SimulatorsTab: View {
     private var choices: [String] {
         let saved = store.form.defaultDevice
         return saved.isEmpty || store.deviceChoices.contains(saved) ? store.deviceChoices : [saved] + store.deviceChoices
+    }
+}
+
+// MARK: Sharing
+
+struct SharingTab: View {
+    @Bindable var store: SettingsStore
+
+    var body: some View {
+        Form {
+            Section {
+                Toggle("Let Claude share screenshots and recordings", isOn: $store.form.shareMedia)
+                Text("Claude can put a screenshot or a short recording of the simulator in a PR description. They're stored on your Worker, at links that are public to anyone who has them, even for private repositories.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Section {
+                Picker("Keep for", selection: $store.form.mediaRetentionDays) {
+                    ForEach(store.form.retentionChoices, id: \.self) { days in
+                        Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                    }
+                }
+                Text("After this, the Worker deletes it and old PRs show a broken image. Deleting stops the Worker serving it, but GitHub may keep a cached copy for a while.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Stepper(value: $store.form.mediaStorageLimitMB, in: SettingsForm.storageLimitRange, step: 50) {
+                    LabeledContent("Storage limit") { Text("\(store.form.mediaStorageLimitMB) MB") }
+                }
+                Text("The oldest uploads are deleted to stay under it. The Cloudflare free plan stores 1 GB.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Section {
+                Stepper(value: $store.form.maxRecordingSeconds, in: SettingsForm.recordingRange, step: 5) {
+                    LabeledContent("Longest recording") { Text("\(store.form.maxRecordingSeconds) s") }
+                }
+                Stepper(value: $store.form.mediaInlineLimitMB, in: SettingsForm.inlineLimitRange) {
+                    LabeledContent("Largest inline GIF") { Text("\(store.form.mediaInlineLimitMB) MB") }
+                }
+                Text("Recordings show in a PR as a GIF that links to the video. Bigger GIFs are made smaller to fit; GitHub may not show very large ones inline.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            SettingsFooter(store: store)
+        }
+        .formStyle(.grouped)
     }
 }
 

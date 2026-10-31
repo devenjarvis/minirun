@@ -232,6 +232,7 @@ final class MacStatusTests: XCTestCase {
         let decoded = try ControlProtocol.decode(ServeStatus.self, from: old)
         XCTAssertEqual(decoded.macApps, [])
         XCTAssertNil(decoded.macPermissions)
+        XCTAssertNil(decoded.media)
         XCTAssertEqual(decoded.version, "0.3.0")
         let response = try ControlProtocol.decode(ControlProtocol.Response.self, from: #"{"ok":true,"controlVersion":2,"status":\#(old)}"#)
         XCTAssertEqual(response.status?.macApps, [])
@@ -267,6 +268,10 @@ final class MacControlTests: XCTestCase {
         func cancelJob(id: String) async throws -> String { "" }
         func workspaces() async throws -> [WorkspaceInfo] { [] }
         func deleteWorkspace(path: String) async throws -> String { "" }
+        func listMedia() async throws -> [MediaItem] { [] }
+        func deleteMedia(id: String) async throws -> String { "" }
+        func deleteAllMedia() async throws -> String { "" }
+        func stopRecording(udid: String) async throws -> String { "" }
         func doctor() async -> [DoctorCheck] { [] }
         func requestMacPermissions() async throws -> String { calls.mutate { $0.append("request") }; return "Asked macOS." }
         func quitMacApp(id: String) async throws -> String { calls.mutate { $0.append("quit \(id)") }; return "Quit \(id)." }
@@ -278,7 +283,7 @@ final class MacControlTests: XCTestCase {
     }
 
     func testMacCommands() async throws {
-        XCTAssertGreaterThanOrEqual(ControlProtocol.version, 3)
+        XCTAssertGreaterThanOrEqual(ControlProtocol.version, 4)
         let commands = Commands()
         let request = try await ask(commands, .init(command: "request_mac_permissions"))
         XCTAssertEqual(request.message, "Asked macOS.")
@@ -356,7 +361,7 @@ final class MacMenuTests: XCTestCase {
         ])
 
         // A daemon from before Mac apps answers with its version but doesn't know the command.
-        daemon.respond = { _ in ControlProtocol.Response(ok: false, error: "Unknown command quit_mac_app.", controlVersion: 2) }
+        daemon.respond = { _ in ControlProtocol.Response(ok: false, error: "Unknown command quit_mac_app.", controlVersion: 3) }
         await model.perform(.quitMacApp("mac-aaaaaa"))
         snapshot = await model.snapshot
         XCTAssertTrue(snapshot.notice?.text.contains("older than the app") == true, snapshot.notice?.text ?? "")

@@ -249,7 +249,11 @@ extension ToolRegistry {
 
     func macScreenshot(_ args: ToolArguments) async throws -> ToolResult {
         let session = try await macApp(args)
-        return ToolResult(try await macScreenshotContent(session, window: macWindow(args), scale: args.double("scale"), quality: args.int("quality") ?? 70))
+        var content = try await macScreenshotContent(session, window: macWindow(args), scale: args.double("scale"), quality: args.int("quality") ?? 70)
+        if args.bool("share") == true {
+            content.append(.text(await shareMacScreenshot(session, window: macWindow(args), caption: args.string("caption"))))
+        }
+        return ToolResult(content)
     }
 
     func macDescribeUI(_ args: ToolArguments) async throws -> ToolResult {

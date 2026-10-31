@@ -91,6 +91,21 @@ enum Simctl {
         _ = try await run(["ui", udid, "appearance", dark ? "dark" : "light"], timeout: 30)
     }
 
+    /// The Dynamic Type sizes `simctl ui content_size` takes, smallest first.
+    static let contentSizes = [
+        "extra-small", "small", "medium", "large", "extra-large", "extra-extra-large", "extra-extra-extra-large",
+        "accessibility-medium", "accessibility-large", "accessibility-extra-large",
+        "accessibility-extra-extra-large", "accessibility-extra-extra-extra-large",
+    ]
+
+    static func setContentSize(_ udid: String, size: String) async throws {
+        _ = try await run(["ui", udid, "content_size", size], timeout: 30)
+    }
+
+    static func setIncreaseContrast(_ udid: String, enabled: Bool) async throws {
+        _ = try await run(["ui", udid, "increase_contrast", enabled ? "enabled" : "disabled"], timeout: 30)
+    }
+
     static func setLocation(_ udid: String, latitude: Double, longitude: Double) async throws {
         _ = try await run(["location", udid, "set", "\(latitude),\(longitude)"], timeout: 30)
     }

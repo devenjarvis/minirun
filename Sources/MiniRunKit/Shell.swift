@@ -9,14 +9,18 @@ public struct ShellResult: Sendable {
     public let exitCode: Int32
     public let stdout: String
     public let stderr: String
+    /// Stopped for running too long, or (see `stalled`) for going quiet too long.
     public let timedOut: Bool
+    /// Stopped because it wrote no output for the stall timeout. `timedOut` is set too.
+    public let stalled: Bool
     public let duration: TimeInterval
 
-    public init(exitCode: Int32, stdout: String, stderr: String = "", timedOut: Bool = false, duration: TimeInterval = 0) {
+    public init(exitCode: Int32, stdout: String, stderr: String = "", timedOut: Bool = false, stalled: Bool = false, duration: TimeInterval = 0) {
         self.exitCode = exitCode
         self.stdout = stdout
         self.stderr = stderr
-        self.timedOut = timedOut
+        self.timedOut = timedOut || stalled
+        self.stalled = stalled
         self.duration = duration
     }
 
@@ -32,12 +36,15 @@ public struct ShellResult: Sendable {
 public enum Shell {
     /// Runs a program and waits for it. Output is captured in memory and, if `logURL` is set,
     /// also appended to that file as it arrives. Cancelling the calling task stops the program.
+    /// With `stallTimeout`, the program is also stopped once it has written nothing for that long:
+    /// a hung xcodebuild otherwise holds its simulator until the overall `timeout`.
     public static func run(
         _ executable: String,
         _ arguments: [String],
         cwd: String? = nil,
         environment: [String: String]? = nil,
         timeout: TimeInterval = 120,
+        stallTimeout: TimeInterval? = nil,
         logURL: URL? = nil,
         stdin: Data? = nil
     ) async throws -> ShellResult {
@@ -82,6 +89,7 @@ public enum Shell {
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
                 process.terminationHandler = { finished in
+                    ChildProcessLedger.shared.remove(finished.processIdentifier)
                     exit.set(finished.terminationStatus)
                     continuation.resume()
                 }
@@ -92,6 +100,11 @@ public enum Shell {
                     continuation.resume(throwing: error)
                     return
                 }
+                // Only long-running work is worth recording (builds, tests, commands); the quick
+                // simctl calls behind taps and screenshots would just rewrite the file.
+                if timeout > 120 {
+                    ChildProcessLedger.shared.add(process.processIdentifier, names: ChildProcessLedger.names(executable: executable, arguments: arguments))
+                }
                 // Cancelled before the program started: onCancel found nothing to stop.
                 if Task.isCancelled { stop(process) }
                 // Watchdog: terminate, then kill, if the deadline passes.
@@ -99,6 +112,9 @@ public enum Shell {
                     guard process.isRunning else { return }
                     exit.markTimedOut()
                     stop(process)
+                }
+                if let stallTimeout, stallTimeout > 0 {
+                    watchForStall(process, collector: collector, exit: exit, after: stallTimeout)
                 }
             }
         } onCancel: {
@@ -124,8 +140,24 @@ public enum Shell {
             stdout: out,
             stderr: err,
             timedOut: exit.timedOut,
+            stalled: exit.stalled,
             duration: Date().timeIntervalSince(started)
         )
+    }
+
+    /// Checks every few seconds whether `process` has gone `seconds` without output, and stops it
+    /// if so. Ends when the process does.
+    private static func watchForStall(_ process: Process, collector: OutputCollector, exit: ExitBox, after seconds: TimeInterval) {
+        let interval = min(10, max(1, seconds / 6))
+        DispatchQueue.global().asyncAfter(deadline: .now() + interval) {
+            guard process.isRunning else { return }
+            if Date().timeIntervalSince(collector.lastOutputAt) >= seconds {
+                exit.markStalled()
+                stop(process)
+            } else {
+                watchForStall(process, collector: collector, exit: exit, after: seconds)
+            }
+        }
     }
 
     /// Terminates a running program and its direct children (e.g. the command a shell is
@@ -178,10 +210,13 @@ final class ExitBox: @unchecked Sendable {
     private let lock = NSLock()
     private var _code: Int32 = -1
     private var _timedOut = false
+    private var _stalled = false
     func set(_ code: Int32) { lock.lock(); _code = code; lock.unlock() }
     func markTimedOut() { lock.lock(); _timedOut = true; lock.unlock() }
+    func markStalled() { lock.lock(); _stalled = true; lock.unlock() }
     var code: Int32 { lock.lock(); defer { lock.unlock() }; return _code }
     var timedOut: Bool { lock.lock(); defer { lock.unlock() }; return _timedOut }
+    var stalled: Bool { lock.lock(); defer { lock.unlock() }; return _stalled }
 }
 
 /// Thread-safe accumulator for process output.
@@ -190,6 +225,7 @@ final class OutputCollector: @unchecked Sendable {
     private var stdout = Data()
     private var stderr = Data()
     private let logHandle: FileHandle?
+    private var _lastOutputAt = Date()
 
     init(logURL: URL?) {
         if let logURL {
@@ -205,11 +241,19 @@ final class OutputCollector: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         if isError { stderr.append(data) } else { stdout.append(data) }
+        _lastOutputAt = Date()
         // Keep memory bounded for very chatty builds; the log file keeps everything.
         let cap = 8 * 1024 * 1024
         if stdout.count > cap { stdout = stdout.suffix(cap / 2) }
         if stderr.count > cap { stderr = stderr.suffix(cap / 2) }
         logHandle?.write(data)
+    }
+
+    /// When the program last wrote anything (or started, if it hasn't yet).
+    var lastOutputAt: Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return _lastOutputAt
     }
 
     var byteCount: Int {
@@ -226,5 +270,119 @@ final class OutputCollector: @unchecked Sendable {
 
     func close() {
         try? logHandle?.close()
+    }
+}
+
+/// A program left running in the background until it's told to stop, like
+/// `simctl io recordVideo`. It's listed in `ChildProcessLedger`, so a restart of minirun stops it.
+public final class BackgroundProcess: @unchecked Sendable {
+    private let process: Process
+    private let collector = OutputCollector(logURL: nil)
+    private let lock = NSLock()
+    private var code: Int32?
+    private var waiters: [Once] = []
+
+    private init(_ process: Process) {
+        self.process = process
+    }
+
+    public static func start(_ executable: String, _ arguments: [String]) throws -> BackgroundProcess {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        let background = BackgroundProcess(process)
+        let collector = background.collector
+        let stdoutPipe = Pipe(), stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { collector.append(data, isError: false) }
+        }
+        stderrPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { collector.append(data, isError: true) }
+        }
+        process.terminationHandler = { finished in
+            ChildProcessLedger.shared.remove(finished.processIdentifier)
+            background.finished(finished.terminationStatus)
+        }
+        try process.run()
+        ChildProcessLedger.shared.add(process.processIdentifier, names: ChildProcessLedger.names(executable: executable, arguments: arguments))
+        return background
+    }
+
+    private func finished(_ status: Int32) {
+        lock.lock()
+        code = status
+        let waiting = waiters
+        waiters = []
+        lock.unlock()
+        for waiter in waiting { waiter.fire() }
+    }
+
+    public var isRunning: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return code == nil
+    }
+
+    /// The exit code, once it has exited.
+    public var exitCode: Int32? {
+        lock.lock()
+        defer { lock.unlock() }
+        return code
+    }
+
+    /// What it has written so far, stdout then stderr.
+    public var output: String {
+        let (out, err) = collector.snapshot()
+        return [out, err].filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    /// Sends SIGINT, which tells a recorder to finish its file and exit.
+    public func interrupt() { send(SIGINT) }
+
+    /// Kills it outright.
+    public func forceKill() { send(SIGKILL) }
+
+    private func send(_ signal: Int32) {
+        guard isRunning else { return }
+        kill(process.processIdentifier, signal)
+    }
+
+    /// Waits up to `seconds` for it to exit. Returns whether it has.
+    @discardableResult
+    public func wait(seconds: TimeInterval) async -> Bool {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let once = Once { continuation.resume() }
+            lock.lock()
+            guard code == nil else {
+                lock.unlock()
+                once.fire()
+                return
+            }
+            waiters.append(once)
+            lock.unlock()
+            DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { once.fire() }
+        }
+        return !isRunning
+    }
+
+    /// Runs its action the first time it fires: the exit and the deadline race to end a wait.
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var action: (() -> Void)?
+
+        init(_ action: @escaping () -> Void) { self.action = action }
+
+        func fire() {
+            lock.lock()
+            let action = self.action
+            self.action = nil
+            lock.unlock()
+            action?()
+        }
     }
 }
