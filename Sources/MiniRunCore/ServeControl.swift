@@ -110,7 +110,7 @@ struct ServeControl: ControlCommands {
 
     func stopRecording(udid: String) async throws -> String {
         guard await registry.recordings.halt(udid, reason: "it was stopped from the menu bar") else {
-            throw ToolError("That simulator isn't recording.")
+            throw ToolError("That simulator or Mac app isn't recording.")
         }
         log("Stopped the recording on \(udid) (from the control socket)")
         return "Stopped the recording. Claude's stop_recording call still gets the video."

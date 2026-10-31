@@ -228,6 +228,14 @@ public enum MacToolSupport {
         return text
     }
 
+    /// start_recording's answer for a Mac app window.
+    public static func recordingStarted(name: String, id: String, windowIndex: Int, title: String, seconds: Int) -> String {
+        let window = title.isEmpty ? "window \(windowIndex)" : "window \(windowIndex) (\"\(title)\")"
+        return "Recording \(name)'s \(window). It stops by itself after \(seconds) s, or if the window closes or the app quits. " +
+            "Only this window is recorded: menus, popovers and other windows don't show, and if the window is resized the video keeps its starting size. " +
+            "Do what you want to show, then call stop_recording with device \"\(id)\"."
+    }
+
     /// The error a simulator-only tool gives for a Mac app, saying what to use instead.
     public static func unsupported(_ tool: String) -> String {
         switch tool {
@@ -241,8 +249,6 @@ public enum MacToolSupport {
             return "Mac apps aren't installed: minirun runs them from where they were built. Use launch_app with device: \"mac\" and app_path, or build_and_run."
         case "uninstall_app":
             return "There's nothing to uninstall: minirun runs Mac apps from their build folder. Use terminate_app to quit it."
-        case "start_recording", "stop_recording":
-            return "Recording isn't supported for Mac apps yet. To show a Mac app in a PR, use screenshot with share: true (a window screenshot, uploaded for the PR description)."
         case "boot_simulator", "shutdown_simulator":
             return "\(tool) is for simulators. Quit a Mac app with terminate_app; launch one with build_and_run or launch_app."
         default:

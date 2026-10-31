@@ -24,8 +24,15 @@
 > allowance) and cancellation (the macOS test lock is let go when a run is cancelled). The orphan
 > cleanup only stops what `ChildProcessLedger` recorded (xcodebuild, commands, recorders), never
 > Mac apps, which are spawned directly and reconciled by `MacAppStore` after a restart.
-> `screenshot {share: true}` with a Mac app id shares the window at 2x; `start_recording` and
-> `stop_recording` say recording Mac apps isn't supported yet (not built). Control protocol 4.
+> `screenshot {share: true}` with a Mac app id shares the window at 2x. Control protocol 4.
+>
+> Later: `start_recording` / `stop_recording` record one Mac app window with ScreenCaptureKit's
+> `SCRecordingOutput` (`MacWindowRecorder`), into the same `ScreenRecordings` actor as simulators,
+> keyed by the app id, so the GIF, stills and sharing are shared. The video is the window's pixel
+> size when recording started (scaled to fit, letterboxed, if resized). It stops when the app is
+> quit or relaunched, or when ScreenCaptureKit loses the window; a recording counts as use for
+> idle quitting. `ServeStatus.MacApp.recording` drives the menu bar's red dot and Stop recording.
+> The minimum is macOS 26 (it was 14), so this needs no availability checks.
 >
 > Deviations: `run_tests` for macOS always takes the global lock (unit tests too), because
 > telling UI test targets apart would need another `xcodebuild` call. `scroll` with `direction`

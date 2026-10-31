@@ -58,6 +58,8 @@ public struct MenuSnapshot: Equatable, Sendable {
         /// "used 3 min ago".
         public var lastUsed: String?
         public var viewerURL: String?
+        /// One of its windows is being recorded.
+        public var recording: Bool = false
 
         public var isRunning: Bool { activity != .notRunning }
 
@@ -134,7 +136,7 @@ public struct MenuSnapshot: Equatable, Sendable {
     public var relay: ServeStatus.Relay?
     /// The running daemon's version.
     public var daemonVersion: String?
-    /// Some simulator is recording its screen, so the menu bar icon shows it.
+    /// Some simulator or Mac app is being recorded, so the menu bar icon shows it.
     public var recording = false
     /// "14 items · 38 MB". Nil from a daemon that predates sharing.
     public var mediaSummary: String?
@@ -251,10 +253,11 @@ public struct MenuSnapshot: Equatable, Sendable {
                 MacAppRow(
                     id: app.id, name: app.name, bundleID: app.bundleID, pid: app.running ? app.pid : nil, reservedFor: app.reservedFor,
                     activity: !app.running ? .notRunning : (app.busy ? .busy : .idle),
-                    lastUsed: app.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: app.viewerURL
+                    lastUsed: app.lastUsed.map { "used " + SimulatorPicker.ago($0, now: now) }, viewerURL: app.viewerURL,
+                    recording: app.recording
                 )
             }
-        snapshot.recording = status.simulators.contains(where: \.recording)
+        snapshot.recording = status.simulators.contains(where: \.recording) || status.macApps.contains(where: \.recording)
         snapshot.mediaSummary = status.media.map(summarize)
         snapshot.mediaCount = status.media?.count ?? 0
         let running = status.jobs.filter { $0.finishedAt == nil }
