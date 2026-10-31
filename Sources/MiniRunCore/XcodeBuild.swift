@@ -1,7 +1,7 @@
 import Foundation
 import MiniRunKit
 
-/// Builds and tests projects with `xcodebuild` for a simulator destination.
+/// Builds and tests projects with `xcodebuild` for a simulator or the Mac.
 enum XcodeBuild {
     struct Container {
         /// e.g. ["-workspace", "App.xcworkspace"], or [] for a Swift package directory.
@@ -14,7 +14,9 @@ enum XcodeBuild {
         var project: String?
         var scheme: String?
         var configuration: String = "Debug"
-        var udid: String
+        /// The simulator to build for; required to test on .ios.
+        var udid: String?
+        var platform: BuildPlatform = .ios
         var extraArgs: [String] = []
         var log: URL?
     }
@@ -111,42 +113,91 @@ enum XcodeBuild {
         return (container, first)
     }
 
-    static func commonArgs(_ container: Container, scheme: String, options: Options) -> [String] {
+    /// The flags every build, test and settings call shares. Simulator and Mac products land in
+    /// different folders under the same derived data (Debug-iphonesimulator, Debug, Debug-maccatalyst).
+    static func baseArgs(_ container: Container, scheme: String, options: Options) -> [String] {
         container.flags + [
             "-scheme", scheme,
             "-configuration", options.configuration,
-            "-destination", "platform=iOS Simulator,id=\(options.udid)",
             "-derivedDataPath", options.directory + "/.minirun/DerivedData",
             "-skipPackagePluginValidation", "-skipMacroValidation",
         ]
     }
 
+    static func commonArgs(_ container: Container, scheme: String, options: Options) -> [String] {
+        baseArgs(container, scheme: scheme, options: options) + ["-destination", options.platform.destination(udid: options.udid)]
+    }
+
+    /// Picks ios or macos for the scheme from its build settings, read without a destination:
+    /// macos only when the app supports macOS and not iOS.
+    static func detectPlatform(_ options: Options) async throws -> BuildPlatform {
+        let (container, scheme) = try await resolveScheme(options)
+        let settings = try await Shell.check(
+            "/usr/bin/xcrun",
+            ["xcodebuild", "-showBuildSettings", "-json"] + baseArgs(container, scheme: scheme, options: options) + options.extraArgs,
+            cwd: options.directory, timeout: 300, what: "xcodebuild -showBuildSettings"
+        )
+        let platform = BuildPlatform.detect(fromBuildSettings: Data(settings.stdout.utf8))
+        appendLog(options.log, "Platform for \(scheme): \(platform.rawValue)\n")
+        return platform
+    }
+
+    /// Build settings that sign "to run locally" instead of with a team's identity and profile.
+    static let adHocSigningArgs = ["CODE_SIGN_IDENTITY=-", "CODE_SIGN_STYLE=Manual", "DEVELOPMENT_TEAM=", "PROVISIONING_PROFILE_SPECIFIER="]
+
+    static let adHocSigningNote = "Signing with the project's team failed on this Mac, so minirun built it again signed to run locally (ad hoc). Entitlements that need a provisioning profile, like iCloud and push notifications, won't work in this build."
+
+    /// Runs an xcodebuild action. If it fails on code signing, and the caller didn't set signing
+    /// themselves, runs it once more with ad-hoc signing. Returns the extra args it ended up using.
+    static func runSigningFallback(_ args: (_ extra: [String]) -> [String], options: Options, timeout: TimeInterval) async throws -> (ShellResult, extra: [String], notes: [String]) {
+        var extra = options.extraArgs
+        var argv = args(extra)
+        appendLog(options.log, "$ xcrun " + argv.joined(separator: " ") + "\n")
+        var result = try await Shell.run("/usr/bin/xcrun", argv, cwd: options.directory, timeout: timeout, logURL: options.log)
+        guard !result.succeeded, !result.timedOut,
+              !options.extraArgs.contains(where: { $0.hasPrefix("CODE_SIGN") }),
+              XcodeParsing.isSigningFailure(result.stdout + "\n" + result.stderr) else { return (result, extra, []) }
+        appendLog(options.log, "\nThe build failed on code signing. Building again with ad-hoc signing (\(adHocSigningArgs.joined(separator: " "))).\n")
+        extra += adHocSigningArgs
+        argv = args(extra)
+        appendLog(options.log, "$ xcrun " + argv.joined(separator: " ") + "\n")
+        result = try await Shell.run("/usr/bin/xcrun", argv, cwd: options.directory, timeout: timeout, logURL: options.log)
+        return (result, extra, [adHocSigningNote])
+    }
+
     struct BuildOutput {
         let scheme: String
+        let platform: BuildPlatform
         let product: XcodeParsing.AppProduct?
+        /// The app and its executable, for .macos and .macCatalyst builds.
+        let macProduct: XcodeParsing.MacAppProduct?
         let duration: TimeInterval
         let warnings: [XcodeParsing.BuildIssue]
+        /// Things to tell the caller, like a fall back to ad-hoc signing.
+        let notes: [String]
     }
 
     static func build(_ options: Options) async throws -> BuildOutput {
         let (container, scheme) = try await resolveScheme(options)
-        let args = ["xcodebuild"] + commonArgs(container, scheme: scheme, options: options) + options.extraArgs + ["build"]
-        appendLog(options.log, "$ xcrun " + args.joined(separator: " ") + "\n")
-        let result = try await Shell.run("/usr/bin/xcrun", args, cwd: options.directory, timeout: 3600, logURL: options.log)
+        let common = commonArgs(container, scheme: scheme, options: options)
+        let (result, extra, notes) = try await runSigningFallback({ ["xcodebuild"] + common + $0 + ["build"] }, options: options, timeout: 3600)
         guard result.succeeded else {
-            throw ToolError(failureReport("Build of \(scheme)", result: result))
+            throw ToolError(failureReport("Build of \(scheme)", result: result) + (notes.isEmpty ? "" : "\n(This was the second try, with ad-hoc signing.)"))
         }
         let settings = try await Shell.run(
             "/usr/bin/xcrun",
-            ["xcodebuild", "-showBuildSettings", "-json"] + commonArgs(container, scheme: scheme, options: options) + options.extraArgs,
+            ["xcodebuild", "-showBuildSettings", "-json"] + common + extra,
             cwd: options.directory, timeout: 300
         )
-        let product = XcodeParsing.parseAppProduct(Data(settings.stdout.utf8))
+        let json = Data(settings.stdout.utf8)
         return BuildOutput(
             scheme: scheme,
-            product: product,
+            platform: options.platform,
+            product: XcodeParsing.parseAppProduct(json),
+            macProduct: options.platform.isMac ? XcodeParsing.parseMacAppProduct(json, scheme: scheme) : nil,
             duration: result.duration,
-            warnings: XcodeParsing.parseIssues(result.stdout, includeWarnings: true, limit: 200).filter { $0.severity == "warning" }
+            warnings: XcodeParsing.parseIssues(result.stdout, includeWarnings: true, limit: 200).filter { $0.severity == "warning" },
+            notes: notes
         )
     }
 
@@ -155,18 +206,22 @@ enum XcodeBuild {
         let passed: Bool
         let summary: String
         let resultBundle: String
+        let notes: [String]
     }
 
     static func test(_ options: Options, onlyTesting: [String], skipTesting: [String]) async throws -> TestOutput {
+        if options.platform == .ios, options.udid == nil { throw ToolError("Tests on iOS need a simulator.") }
         let (container, scheme) = try await resolveScheme(options)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let bundle = options.directory + "/.minirun/results/\(scheme)-\(stamp).xcresult"
         try FileManager.default.createDirectory(atPath: (bundle as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-        var args = ["xcodebuild"] + commonArgs(container, scheme: scheme, options: options) + ["-resultBundlePath", bundle]
-        args += onlyTesting.map { "-only-testing:\($0)" } + skipTesting.map { "-skip-testing:\($0)" }
-        args += options.extraArgs + ["test"]
-        appendLog(options.log, "$ xcrun " + args.joined(separator: " ") + "\n")
-        let result = try await Shell.run("/usr/bin/xcrun", args, cwd: options.directory, timeout: 5400, logURL: options.log)
+        let common = commonArgs(container, scheme: scheme, options: options)
+        let filters = onlyTesting.map { "-only-testing:\($0)" } + skipTesting.map { "-skip-testing:\($0)" }
+        let (result, _, notes) = try await runSigningFallback({ extra in
+            // A retry writes to the same bundle path, which xcodebuild refuses if it exists.
+            try? FileManager.default.removeItem(atPath: bundle)
+            return ["xcodebuild"] + common + ["-resultBundlePath", bundle] + filters + extra + ["test"]
+        }, options: options, timeout: 5400)
 
         var summary = ""
         if FileManager.default.fileExists(atPath: bundle),
@@ -180,7 +235,7 @@ enum XcodeBuild {
             // Compile errors in test targets don't always show up in the result bundle.
             summary += "\n\nBuild issues:\n" + XcodeParsing.parseIssues(result.stdout).map(\.line).joined(separator: "\n")
         }
-        return TestOutput(scheme: scheme, passed: result.succeeded, summary: summary, resultBundle: bundle)
+        return TestOutput(scheme: scheme, passed: result.succeeded, summary: summary, resultBundle: bundle, notes: notes)
     }
 
     /// Turns `xcresulttool get test-results summary` JSON into a short report.

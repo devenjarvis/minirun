@@ -1,0 +1,42 @@
+name: HelloMacApp
+options:
+  bundleIdPrefix: dev.minirun
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    # Signed to run locally, with no team, so it builds on any Mac.
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+    ENABLE_HARDENED_RUNTIME: NO
+    SWIFT_VERSION: "5.0"
+targets:
+  HelloMacApp:
+    type: application
+    platform: macOS
+    sources: [HelloMacApp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.minirun.HelloMacApp
+        GENERATE_INFOPLIST_FILE: YES
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+  HelloMacAppTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [HelloMacAppTests]
+    dependencies:
+      - target: HelloMacApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.minirun.HelloMacAppTests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  HelloMacApp:
+    build:
+      targets:
+        HelloMacApp: all
+    test:
+      targets:
+        - HelloMacAppTests
