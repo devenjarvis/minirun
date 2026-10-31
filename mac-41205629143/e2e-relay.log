@@ -1,0 +1,36 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.swIKIsJLuf/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  36 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (sjc22-be105-6e992999-a5b7-41b8-9896-28ab1ebd0bcc-863A8C0E5E2B).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  3 frames, 6283 bytes, avc1.4D001F
+E2E relay test passed.
+--- minirun status
+minirun 0.3.0 serving (pid 32311, up 7s)
+Relay: connected to 127.0.0.1 for 7s
+Live view: http://127.0.0.1:8787/
+
+Simulators:
+  minirun-smoke (iOS 26.5) 2EBDB27F-E9DD-479D-BFC4-2EF39F6027B3 — not reserved, used just now
+
+Jobs: none yet
+
+Shared media: 0 items, 0 bytes
+--- minirun serve log
+2026-10-31T13:47:20Z minirun 0.3.0 starting
+2026-10-31T13:47:20Z Simulator support loaded
+2026-10-31T13:47:20Z Preventing idle sleep while running
+2026-10-31T13:47:20Z 35 tools ready; workspaces at /Users/runner/minirun/workspaces
+2026-10-31T13:47:20Z Shutting down simulators after 30 idle minutes
+2026-10-31T13:47:20Z Answering control requests on /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.swIKIsJLuf/control.sock
+2026-10-31T13:47:20Z Connected to relay 127.0.0.1
+2026-10-31T13:47:20Z Relay round trip: 3ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
