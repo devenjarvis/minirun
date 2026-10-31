@@ -333,6 +333,9 @@ struct MacAppRowView: View {
                 HStack(spacing: 6) {
                     Text(app.name).lineLimit(1)
                     Badge(text: app.activity.rawValue, color: color)
+                    if app.recording {
+                        Image(systemName: "record.circle").foregroundStyle(.red).help("Recording a window")
+                    }
                 }
                 Text(app.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(2)
             }
@@ -342,6 +345,10 @@ struct MacAppRowView: View {
                     .disabled(app.viewerURL == nil || !app.isRunning)
                 Button("Bring to front") { store.bringToFront(app) }
                     .disabled(!actionsEnabled || !app.isRunning)
+                if app.recording {
+                    Button("Stop recording") { store.perform(.stopRecording(app.id)) }
+                        .disabled(!actionsEnabled)
+                }
                 Divider()
                 Button("Quit") { store.perform(.quitMacApp(app.id)) }
                     .disabled(!actionsEnabled || !app.isRunning)

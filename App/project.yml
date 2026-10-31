@@ -7,12 +7,12 @@ name: minirun-menu
 options:
   bundleIdPrefix: dev.minirun
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "26.0"
   createIntermediateGroups: true
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "26.0"
     # Open source with no Apple Developer ID: ad-hoc signed, no hardened runtime, no sandbox.
     CODE_SIGN_IDENTITY: "-"
     CODE_SIGN_STYLE: Manual

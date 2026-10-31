@@ -295,6 +295,12 @@ final class MacStatusTests: XCTestCase {
         XCTAssertEqual(decoded.version, "0.3.0")
         let response = try ControlProtocol.decode(ControlProtocol.Response.self, from: #"{"ok":true,"controlVersion":2,"status":\#(old)}"#)
         XCTAssertEqual(response.status?.macApps, [])
+        // A Mac app from a daemon that predates Mac recordings has no "recording".
+        let app = #"{"id":"mac-aaaaaa","name":"Fetch","running":true,"busy":false}"#
+        XCTAssertFalse(try ControlProtocol.decode(ServeStatus.MacApp.self, from: app).recording)
+        var recording = apps[0]
+        recording.recording = true
+        XCTAssertEqual(try ControlProtocol.decode(ServeStatus.MacApp.self, from: ControlProtocol.encode(recording)), recording)
     }
 
     func testSessionToStatus() {
@@ -391,6 +397,13 @@ final class MacMenuTests: XCTestCase {
         XCTAssertFalse(snapshot.macApps[3].isRunning)
         XCTAssertEqual(MenuSnapshot.MacAppRow.Activity.notRunning.rawValue, "not running")
         XCTAssertEqual(snapshot.macPermissions?.allGranted, true)
+        XCTAssertFalse(snapshot.recording)
+
+        var recording = status
+        recording.macApps[1].recording = true
+        let shown = MenuSnapshot.make(.answered(ControlProtocol.Response(ok: true, status: recording)), connectorURL: nil, logTail: nil, canStart: true, now: now)
+        XCTAssertTrue(shown.recording, "a Mac app recording shows in the menu bar icon")
+        XCTAssertEqual(shown.macApps.filter(\.recording).map(\.id), ["mac-idle"])
     }
 
     func testActions() async {

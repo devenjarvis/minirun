@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Recordings of macOS apps.** `start_recording` / `stop_recording` now work with a Mac app id:
+  they record one window (the main one, or `window`) with ScreenCaptureKit and share the same GIF
+  and MP4 as simulator recordings. The recording stops by itself when the window closes or the app
+  quits, and the menu bar app shows a red dot and Stop recording for it.
+- **macOS 26 or later is now required** (was macOS 14), for the menu bar app and `minirun serve`.
+
 ## 0.4.0
 
 minirun now builds, runs and drives macOS apps, agents can share screenshots and recordings in
