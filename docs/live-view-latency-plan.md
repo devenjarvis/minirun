@@ -123,15 +123,21 @@ Both branches implement exactly this. Change it here first if it has to change.
   - Viewer → relay: `{type: "rtc", action: "start", device, fps, quality, scale}`. The relay sets
     the viewer's state to `codec: "webrtc"`, which takes it out of `syncStreams` (no WebSocket
     frames for it). It then sends the Mac `{type: "rtc", action: "start", viewer, key, fps,
-    quality, scale, iceServers}`.
+    quality, scale, iceServers}`. `key` is the stream key as in `screen` and `stats` (a UDID, a
+    Mac app id, or `""` for whichever simulator is booted).
   - Mac → relay → viewer: `{type: "rtc", action: "offer", viewer, sdp}`. The Mac makes the offer.
+    The relay adds `iceServers` (the list it sent the Mac in `start`) to the copy it gives the
+    viewer, since the viewer has no other way to get them.
   - Viewer → relay → Mac: `{type: "rtc", action: "answer", sdp}` (the relay adds `viewer`).
   - Both ways: `{type: "rtc", action: "candidate", candidate, sdpMid, sdpMLineIndex}` (trickle
     ICE). `candidate: null` means end of candidates.
   - Both ways: `{type: "rtc", action: "stop"}`. The relay sends `stop` to the Mac when the
     viewer's socket closes or the viewer switches to another device.
   - Mac → relay → viewer: `{type: "rtc", action: "error", viewer, message}`. The viewer falls
-    back to the WebSocket stream.
+    back to the WebSocket stream. The relay sends the same itself when a viewer asks for `start`
+    and the Mac is offline or its hello didn't say `webrtc: true`.
+  - The relay only passes signaling for a viewer between its `start` and the next `stop` or
+    `error` (either way); anything else is dropped.
 - **ICE servers.** The relay sends the same list to both sides. It always includes
   `stun:stun.cloudflare.com:3478`. When the Worker has the secrets `TURN_KEY_ID` and
   `TURN_KEY_API_TOKEN`, the relay also adds short-lived Cloudflare Realtime TURN credentials
@@ -157,7 +163,8 @@ Both branches implement exactly this. Change it here first if it has to change.
 - **Fallback.** The viewer starts with WebRTC when `status.webrtc` is true and the browser has
   `RTCPeerConnection`. If the connection hasn't reached `connected` within 8 s, or later reaches
   `failed`, the viewer sends `rtc stop` and the usual `stream` message (H.264 or JPEG over the
-  WebSocket). `?transport=ws` forces the WebSocket path.
+  WebSocket). `?transport=ws` forces the WebSocket path. A viewer that will try WebRTC opens its
+  socket with `?rtc=1`, so the relay doesn't start a WebSocket stream for it before it knows.
 
 ### Mac side (`claude/webrtc-mac`)
 
@@ -198,6 +205,33 @@ Both branches implement exactly this. Change it here first if it has to change.
   without a Mac using a Playwright Chromium page that connects to `/agent` and acts as the Mac.
   Its video comes from `canvas.captureStream()`, and it answers on the data channels. Run it
   against `wrangler dev`.
+
+As built (viewer and Worker):
+
+- **Relay.** `rtc` handling is in `MacRelay.onViewerRTC` / `onAgentRTC`. The viewer's state
+  (in the socket attachment) gets `codec: "webrtc"` and `rtc: true` on `start`. The viewer's
+  `stop`, a `stream` message, a new `start` (another device, or new settings) and the socket
+  closing each send the Mac `stop` once. ICE servers come from `ice.ts`: STUN, plus TURN from
+  `POST https://rtc.live.cloudflare.com/v1/turn/keys/{TURN_KEY_ID}/credentials/generate-ice-servers`
+  (`{ttl: 86400}`, Bearer `TURN_KEY_API_TOKEN`). Only its TURN entry is kept, without the
+  port 53 URL browsers block. It's cached in memory until an hour before it expires; an error
+  means STUN only for a minute.
+- **Viewer.** It sets H.264 first with `setCodecPreferences` before answering, buffers the Mac's
+  candidates until the offer is set, and shows the `<video>` once it's playing. When the Mac
+  reconnects (a new hello), it starts a new peer connection, and one that fell back tries
+  WebRTC again. The readout takes RTT from the selected candidate pair (`currentRoundTripTime`;
+  a data channel probe fills in without it), the viewer time as jitter buffer delay plus decode
+  time per frame, and labels the transport `webrtc <candidate type> <codec>`, the type being
+  the less direct of the pair's two ends (relay > srflx > prflx > host).
+- **Menu bar window.** `LiveViewWindow` sets `mediaTypesRequiringUserActionForPlayback = []`
+  (already the macOS default) so the muted video starts without a click. Nothing else is
+  needed: WKWebView has `RTCPeerConnection` on macOS, the app isn't sandboxed, and a receive-only
+  connection asks for no camera or microphone. Like Safari, it hides its own host addresses
+  behind mDNS `.local` names, so the Mac either resolves those or learns the address from the
+  incoming checks (peer-reflexive).
+- **Tests.** `worker/test/worker.test.ts` covers routing and the ICE servers;
+  `npm run e2e:webrtc` (`worker/test/e2e-webrtc.mjs`) runs the whole flow in Playwright's
+  Chromium against `wrangler dev`, including both fallbacks and `?transport=ws`.
 
 ### Done when
 

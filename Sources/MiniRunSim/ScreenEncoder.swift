@@ -10,14 +10,7 @@ import MiniRunKit
 /// Encodes a simulator's screen as H.264 with VideoToolbox (the hardware encoder when there is
 /// one). Frames come straight from the simulator's framebuffer, an IOSurface, so there's no PNG
 /// screenshot to take and decode. An unchanged screen produces no frames at all.
-public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Sendable {
-    /// Where frames come from: FBFramebuffer's main screen, or, on devices with several main
-    /// screens (foldables), whichever of them is lit.
-    enum Source {
-        case framebuffer(FBFramebuffer)
-        case displays(MainDisplays)
-    }
-
+public final class ScreenEncoder: NSObject, @unchecked Sendable {
     public struct Frame: Sendable {
         /// NAL units, each prefixed with its length as a `lengthSize`-byte big-endian number.
         public let nalUnits: Data
@@ -33,21 +26,11 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         public let capturedAt: Date
     }
 
-    private let source: Source
+    private let capture: SimulatorScreenCapture
     private let scale: Double
     private let fps: Int
     /// Target bits per second for an encoded size.
     private let bitrate: @Sendable (_ width: Int, _ height: Int) -> Int
-    private let queue = DispatchQueue(label: "dev.minirun.framebuffer")
-    private let lock = NSLock()
-    private var surface: IOSurface?
-    /// The simulator reported damage that no `waitForChange` has picked up yet.
-    private var changePending = false
-    /// The first damage since `encode` last read the screen.
-    private var damagedAt: Date?
-    private var changeWaiter: (id: Int, continuation: CheckedContinuation<Void, Never>)?
-    private var waiterCount = 0
-
     // Only touched by encode() and close(), which the caller doesn't overlap.
     private var session: VTCompressionSession?
     private var transfer: VTPixelTransferSession?
@@ -56,68 +39,17 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     private var lastSeed: UInt32?
     private var lastSurface: IOSurface?
 
-    init(source: Source, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) {
-        self.source = source
+    init(capture: SimulatorScreenCapture, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) {
+        self.capture = capture
         self.scale = scale
         self.fps = fps
         self.bitrate = bitrate
         super.init()
-        if case .framebuffer(let framebuffer) = source {
-            let immediate = framebuffer.attach(self, on: queue)
-            lock.lock()
-            if surface == nil { surface = immediate }
-            lock.unlock()
-        }
     }
 
-    // MARK: FBFramebufferConsumer
-
-    public func didChange(_ surface: IOSurface?) {
-        lock.lock()
-        self.surface = surface
-        lock.unlock()
-        signalChange()
-    }
-
-    public func didReceiveDamageRect() {
-        signalChange()
-    }
-
-    private func signalChange() {
-        let now = Date()
-        lock.lock()
-        if damagedAt == nil { damagedAt = now }
-        let waiter = changeWaiter
-        changeWaiter = nil
-        if waiter == nil { changePending = true }
-        lock.unlock()
-        waiter?.continuation.resume()
-    }
-
-    /// Returns when the simulator reports that the screen changed (or already has since the last
-    /// call), or after `timeout`. Only the main screen's framebuffer reports changes; for the other
-    /// sources this always waits for the timeout, which makes it a plain polling interval.
+    /// Returns when the simulator reports that the screen changed, or after `timeout`.
     public func waitForChange(timeout: TimeInterval) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if changePending {
-                changePending = false
-                lock.unlock()
-                continuation.resume()
-                return
-            }
-            waiterCount += 1
-            let id = waiterCount
-            changeWaiter = (id, continuation)
-            lock.unlock()
-            queue.asyncAfter(deadline: .now() + timeout) { [self] in
-                lock.lock()
-                let waiter = changeWaiter?.id == id ? changeWaiter : nil
-                if waiter != nil { changeWaiter = nil }
-                lock.unlock()
-                waiter?.continuation.resume()
-            }
-        }
+        await capture.waitForChange(timeout: timeout)
     }
 
     // MARK: Encoding
@@ -125,18 +57,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     /// Encodes the current screen. Returns nil when the screen hasn't changed since the last
     /// frame (unless `forceKeyframe`), or before the simulator has delivered its first surface.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
-        let current: IOSurface?
-        var damaged: Date?
-        switch source {
-        case .framebuffer:
-            lock.lock()
-            current = surface
-            damaged = damagedAt
-            damagedAt = nil
-            lock.unlock()
-        case .displays(let displays):
-            current = displays.currentSurface()
-        }
+        let (current, damaged) = capture.takeSurface()
         let capturedAt = damaged ?? Date()
         guard let current else { return nil }
         let seed = current.seed
@@ -191,7 +112,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     }
 
     public func close() {
-        if case .framebuffer(let framebuffer) = source { framebuffer.detach(self) }
+        capture.close()
         invalidate()
     }
 

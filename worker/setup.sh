@@ -3,15 +3,17 @@
 # should use `minirun worker deploy` on the Mac, which needs no node (scripts/install.sh runs it).
 #
 # Prints the settings for the Mac. Safe to re-run: it reuses the KV namespaces and keeps existing
-# secrets unless you pass --new-password or --new-token.
+# secrets unless you pass --new-password or --new-token. The first run asks for an optional
+# Cloudflare Realtime TURN key; --turn asks again.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-NEW_PASSWORD=0; NEW_TOKEN=0
+NEW_PASSWORD=0; NEW_TOKEN=0; ASK_TURN=0
 for arg in "$@"; do
   case "$arg" in
     --new-password) NEW_PASSWORD=1 ;;
     --new-token) NEW_TOKEN=1 ;;
+    --turn) ASK_TURN=1 ;;
   esac
 done
 
@@ -55,11 +57,25 @@ if [[ -z "${AGENT_TOKEN:-}" || $NEW_TOKEN -eq 1 ]]; then
   printf '%s' "$AGENT_TOKEN" | npx wrangler secret put AGENT_TOKEN >/dev/null
 fi
 
+# Optional: TURN for WebRTC viewers that can't reach the Mac directly (mostly on cellular).
+# Without it the live view uses STUN only, and falls back to the WebSocket stream if that fails.
+if [[ $ASK_TURN -eq 1 || ( "${TURN_ASKED:-0}" != 1 && -t 0 ) ]]; then
+  echo "==> Optional: a Cloudflare Realtime TURN key (dashboard → Realtime → TURN Server → Create)"
+  read -r -p "TURN key ID (Enter to skip): " turn_id
+  if [[ -n "$turn_id" ]]; then
+    read -r -s -p "TURN key API token: " turn_token; echo
+    printf '%s' "$turn_id" | npx wrangler secret put TURN_KEY_ID >/dev/null
+    printf '%s' "$turn_token" | npx wrangler secret put TURN_KEY_API_TOKEN >/dev/null
+  fi
+  TURN_ASKED=1
+fi
+
 umask 077
 cat > "$STATE_FILE" <<STATE
 WORKER_URL='$URL'
 OWNER_PASSWORD='$OWNER_PASSWORD'
 AGENT_TOKEN='$AGENT_TOKEN'
+TURN_ASKED='${TURN_ASKED:-0}'
 STATE
 
 cat <<DONE
