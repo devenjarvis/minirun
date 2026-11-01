@@ -79,9 +79,24 @@ final class RelayProtocolTests: XCTestCase {
         XCTAssertEqual(r.bit(), 1, "stop bit")
 
         XCTAssertEqual(H264.withoutReordering(sps: Data(rewritten)), Data(rewritten), "already has a VUI")
+        XCTAssertNil(H264.maxNumReorderFrames(sps: sps))
+        XCTAssertEqual(H264.maxNumReorderFrames(sps: Data(rewritten)), 0)
         XCTAssertEqual(H264.withoutReordering(sps: Data([0x28, 0xce, 0x3c, 0x80])), Data([0x28, 0xce, 0x3c, 0x80]), "not an SPS")
         XCTAssertEqual(H264.escape([0, 0, 1, 0, 0, 0]), [0, 0, 3, 1, 0, 0, 3, 0])
         XCTAssertEqual(H264.unescape([0, 0, 3, 1, 0, 0, 3, 0]), [0, 0, 1, 0, 0, 0])
+    }
+
+    func testLowLatencySPS() throws {
+        // VideoToolbox's low-latency mode, Constrained High (602x1310, five reference frames). It
+        // writes a VUI (video signal type) that already says frames are never reordered.
+        let lowLatency = Data([0x27, 0x64, 0x0c, 0x1f, 0xac, 0x13, 0x14, 0x60, 0x26, 0x02, 0x97, 0x92, 0xa6, 0xa0, 0x40, 0x40, 0x40, 0xf0, 0x80, 0x42, 0x68])
+        XCTAssertEqual(H264.maxNumReorderFrames(sps: lowLatency), 0)
+        XCTAssertEqual(H264.withoutReordering(sps: lowLatency), lowLatency)
+
+        // The same SPS with bitstream_restriction_flag cleared: the restriction is added to its VUI.
+        let unrestricted = Data([0x27, 0x64, 0x0c, 0x1f, 0xac, 0x13, 0x14, 0x60, 0x26, 0x02, 0x97, 0x92, 0xa6, 0xa0, 0x40, 0x40, 0x40, 0x40])
+        XCTAssertNil(H264.maxNumReorderFrames(sps: unrestricted))
+        XCTAssertEqual(H264.withoutReordering(sps: unrestricted), lowLatency)
     }
 
     func testBitrate() {

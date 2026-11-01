@@ -6,9 +6,9 @@ import VideoToolbox
 @testable import MiniRunKit
 
 final class H264SessionTests: XCTestCase {
-    /// Encodes one frame on this Mac's encoder and checks the live view can still patch its SPS.
-    /// Machines without a usable H.264 encoder (some CI virtual machines) skip it.
-    func testEncodesAFrameWithAPatchableSPS() throws {
+    /// Encodes one frame on this Mac's encoder and checks that the SPS the viewer gets says frames
+    /// are never reordered. Machines without a usable H.264 encoder (some CI virtual machines) skip it.
+    func testEncodesAFrameWithoutReordering() throws {
         let (width, height) = (602, 1310)
         let made: (session: VTCompressionSession, lowLatency: Bool)
         do {
@@ -56,7 +56,7 @@ final class H264SessionTests: XCTestCase {
         let rewritten = H264.withoutReordering(sps: encoded)
         print("H264Session: low-latency \(made.lowLatency), profile_idc \(encoded[1]), constraints 0x\(String(encoded[2], radix: 16)), "
             + "SPS \(encoded.map { String(format: "%02x", $0) }.joined())")
-        XCTAssertNotEqual(rewritten, encoded, "withoutReordering adds the no-reordering VUI to this encoder's SPS")
+        XCTAssertEqual(H264.maxNumReorderFrames(sps: rewritten), 0, "the SPS the viewer gets says frames are never reordered")
         XCTAssertEqual(Array(rewritten.prefix(4)), Array(encoded.prefix(4)), "header, profile and level unchanged")
     }
 }
