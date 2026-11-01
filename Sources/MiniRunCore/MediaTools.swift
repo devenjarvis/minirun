@@ -172,7 +172,8 @@ extension ToolRegistry {
         } else {
             do {
                 let mp4 = try Data(contentsOf: done.file)
-                let gif = try await GIFMaker.make(video: done.file, limitBytes: config.mediaInlineLimitBytes)
+                let limit = await MediaSharing.gifLimitBytes(label: label, config: config)
+                let gif = try await GIFMaker.make(video: done.file, pointWidth: done.pointWidth, limitBytes: limit)
                 lines.append(try await MediaSharing.shareAnywhere(
                     kind: .recording, files: [.init(ext: "mp4", data: mp4), .init(ext: "gif", data: gif.data)], caption: options.caption, label: label,
                     folder: options.folder, name: options.name, config: config, ledger: media,
@@ -181,7 +182,7 @@ extension ToolRegistry {
                 let size = WorkspaceInventory.formatSize(Int64(gif.data.count))
                 lines.append("GIF: \(gif.width)x\(gif.height)px, \(gif.fps) fps, \(size).")
                 if !gif.fits {
-                    lines.append("The GIF is over the \(config.mediaInlineLimitMB) MB inline limit even at its smallest, so GitHub may not show it inline; " +
+                    lines.append("The GIF is over the \(WorkspaceInventory.formatSize(Int64(limit))) limit even at its smallest, so GitHub may not show it inline; " +
                         "the link to the video still works. A shorter recording fits better.")
                 }
             } catch {

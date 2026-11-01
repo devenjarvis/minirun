@@ -330,8 +330,10 @@ from the branch tip, but links pinned to earlier commits keep working.
 What the Worker stores:
 
 - A screenshot is a JPEG at 2x points.
-- A recording is a looping GIF (about 10 fps, 320 px wide) that links to a player page for the
-  full MP4. GitHub won't play video hosted elsewhere, so the GIF shows the motion inline.
+- A recording is a looping GIF that links to a player page for the full MP4. GitHub won't play
+  video hosted elsewhere, so the GIF shows the motion inline. It's made at 15 fps and 2x points
+  (as sharp as a screenshot), stores only what changed between frames, and steps down in size
+  and frame rate only when a long or busy clip won't fit the limit.
   Recordings stop by themselves after `maxRecordingSeconds` (60).
 
 Files are stored in a `MEDIA_KV` namespace with an expiry (`mediaRetentionDays`, 7), so KV deletes
@@ -345,7 +347,8 @@ private repository. GitHub's image proxy may keep showing a copy for a while aft
 **How large can a GIF be?** GitHub's image proxy has a size limit that isn't documented. The Worker
 serves test GIFs of any size from 1 to 25 MB at `/m/probe/<n>.gif`. Paste a few into a PR
 description, see which ones show, and set `mediaInlineLimitMB` (default 5) to the largest. Larger
-GIFs are shrunk until they fit.
+GIFs are shrunk until they fit. A GIF committed to a repo's `pr-media` branch is served by
+github.com, not the proxy, so it can be up to 10 MB (or `mediaInlineLimitMB`, if that's higher).
 
 ## The menu bar app
 
@@ -426,7 +429,7 @@ Gatekeeper prompts.
 | `mediaRetentionDays` | `7` | How long shared files last (1–90) |
 | `mediaStorageLimitMB` | `500` | The oldest shared files are deleted to stay under this |
 | `maxRecordingSeconds` | `60` | Recordings stop by themselves after this |
-| `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR; bigger ones are shrunk |
+| `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR through the Worker (10 MB on a `pr-media` branch, or this if higher); bigger ones are shrunk |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a
 new `relayURL` or `agentToken` makes the Mac reconnect to the relay.

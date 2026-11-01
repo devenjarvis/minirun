@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Sharper, smoother recording GIFs.** GIFs are now made at 15 fps and 2x points (as sharp as a
+  screenshot) instead of 10 fps and 320 px. A new encoder gives each frame its own palette and
+  stores only the part of the screen that changed, so a typical clip is a few MB. Longer or busier
+  clips step down in size and frame rate until they fit. GIFs committed to a `pr-media` branch can
+  be up to 10 MB, because github.com serves them directly rather than through its image proxy.
+
 ## 0.5.0
 
 Screenshots and recordings now embed in PR descriptions for repos with a `pr-media` branch, Mac
