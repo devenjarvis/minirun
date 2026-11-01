@@ -1,0 +1,66 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
+Cloned B3B62CDB-F10A-4861-B12D-BB0270312CB6 from the template F61D032C-5E43-4366-B021-F181800AF6C4
++ minirun call boot_simulator {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  11.64 24.32 15.77 , 73% free]
++ minirun call screenshot {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  330.32 118.80 52.75 , 50% free]
++ minirun call build_and_run {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  379.31 140.03 61.48 , 49% free]
++ minirun call describe_ui {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  385.14 216.77 100.59 , 41% free]
++ minirun call tap {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","id":"tapButton"} [load  369.99 216.43 101.15 , 40% free]
++ minirun call describe_ui {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  369.99 216.43 101.15 , 41% free]
++ minirun call tap {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","id":"nameField"} [load  356.38 216.16 101.73 , 41% free]
++ minirun call type_text {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","text":"Claude"} [load  348.66 216.88 102.66 , 40% free]
++ minirun call describe_ui {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  341.72 217.63 103.59 , 40% free]
++ minirun call screenshot {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6"} [load  341.72 217.63 103.59 , 40% free]
++ minirun call swipe {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","direction":"up"} [load  330.50 219.27 105.50 , 40% free]
++ minirun call press_button {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","button":"home"} [load  345.86 226.21 109.29 , 37% free]
++ minirun call app_logs {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","bundle_id":"dev.minirun.HelloApp","seconds":120} [load  353.56 229.79 111.24 , 37% free]
++ minirun call terminate_app {"device":"B3B62CDB-F10A-4861-B12D-BB0270312CB6","bundle_id":"dev.minirun.HelloApp"} [load  379.07 241.48 117.48 , 40% free]
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} [load  394.83 249.38 121.74 , 40% free]
++ minirun call boot_simulator {"label":"smoke/second"} [load  573.63 503.21 316.82 , 26% free]
++ minirun call list_simulators {"include_shutdown":false} [load  598.46 510.88 321.73 , 27% free]
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  598.46 510.88 321.73 , 27% free]
++ minirun call shutdown_simulator {"device":"DD020322-CD77-4842-B217-C9EB9C6B00F8"} [load  638.88 537.37 343.46 , 27% free]
+--- macOS app
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp","scheme":"HelloMacApp","platform":"macos","isolated_home":true,"wait_seconds":600} [load  642.25 539.75 345.44 , 54% free]
++ minirun call list_mac_apps [load  391.63 489.10 336.88 , 56% free]
++ minirun call list_windows {"device":"mac-ee5639"} [load  391.63 489.10 336.88 , 56% free]
+0: "HelloMacApp" 900x450 main at (62, 145) on the screen, key (has keyboard focus)
+Tools take window points from a window's top-left corner, title bar included.
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  391.63 489.10 336.88 , 56% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  367.23 482.42 335.41 , 55% free]
++ minirun call host_info [load  367.23 482.42 335.41 , 55% free]
+✓ Screen Recording (for macOS apps): granted
+✓ Accessibility (for macOS apps): granted
+✓ Display (for macOS apps): active
++ minirun call describe_ui {"device":"mac-ee5639"} [load  344.95 475.89 333.97 , 55% free]
++ minirun call tap {"device":"mac-ee5639","id":"incrementButton"} [load  344.95 475.89 333.97 , 55% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  344.95 475.89 333.97 , 54% free]
++ minirun call describe_ui {"device":"mac-ee5639","format":"json"} [load  344.95 475.89 333.97 , 55% free]
++ minirun call tap {"device":"mac-ee5639","x": 450.5, "y": 226.0} [load  344.95 475.89 333.97 , 55% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  344.95 475.89 333.97 , 54% free]
++ minirun call tap {"device":"mac-ee5639","x": 450.5, "y": 226.0,"input":"hid"} [load  326.62 469.92 332.69 , 55% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  326.62 469.92 332.69 , 55% free]
++ minirun call press_menu_item {"device":"mac-ee5639","path":["Counter","Reset Counter"]} [load  326.62 469.92 332.69 , 55% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  326.62 469.92 332.69 , 54% free]
++ minirun call tap {"device":"mac-ee5639","id":"nameField"} [load  307.03 463.48 331.22 , 54% free]
++ minirun call type_text {"device":"mac-ee5639","text":"Claude"} [load  307.03 463.48 331.22 , 54% free]
++ minirun call app_logs {"device":"mac-ee5639","seconds":60,"contains":"HelloMacApp:"} [load  307.03 463.48 331.22 , 53% free]
++ minirun call describe_ui {"device":"mac-ee5639"} [load  293.17 458.00 330.06 , 53% free]
++ minirun call press_key {"device":"mac-ee5639","key":"r","modifiers":["command"]} [load  293.17 458.00 330.06 , 54% free]
++ minirun call scroll {"device":"mac-ee5639","direction":"down"} [load  293.17 458.00 330.06 , 53% free]
++ minirun call swipe {"device":"mac-ee5639","direction":"left"} [load  293.17 458.00 330.06 , 53% free]
++ minirun call screenshot {"device":"mac-ee5639"} [load  293.17 458.00 330.06 , 54% free]
++ minirun call terminate_app {"device":"mac-ee5639"} [load  293.17 458.00 330.06 , 53% free]
++ minirun call run_tests {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp","scheme":"HelloMacApp","platform":"macos","wait_seconds":600} [load  265.85 446.69 327.54 , 53% free]
+Smoke test passed.
