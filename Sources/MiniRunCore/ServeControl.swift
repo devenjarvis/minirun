@@ -82,15 +82,21 @@ struct ServeControl: ControlCommands {
 
     func deleteMedia(id: String) async throws -> String {
         guard let item = await registry.media.item(id) else { throw ToolError("Nothing shared has id \(id); it may have expired.") }
-        try await MediaUploader(config: registry.config).delete(id: id)
-        await registry.media.remove(id)
+        _ = try await MediaSharing.delete(item, config: registry.config, ledger: registry.media)
         log("Deleted shared \(item.kind.rawValue) \(id) (from the control socket)")
+        if item.isOnGitHub {
+            return "Removed the \(item.kind.rawValue) from the \(item.branch ?? "media") branch of \(item.repo ?? "the repo"). PRs that embed it keep showing it, from the earlier commit."
+        }
         return "Deleted the \(item.kind.rawValue)" + (item.label.map { " shared for \($0)" } ?? "") + ". GitHub may show a cached copy for a while."
     }
 
     func deleteAllMedia() async throws -> String {
-        let items = await registry.media.list()
-        guard !items.isEmpty else { return "Nothing is shared." }
+        // Files on a repo's media branch stay: they're part of that repo, and PRs embed them.
+        let all = await registry.media.list()
+        let onGitHub = all.filter(\.isOnGitHub).count
+        let items = all.filter { !$0.isOnGitHub }
+        let kept = onGitHub == 0 ? "" : " Left \(onGitHub) on GitHub media branches; delete those one at a time."
+        guard !items.isEmpty else { return "Nothing is shared on the Worker." + kept }
         let uploader = try MediaUploader(config: registry.config)
         var deleted = 0
         var failure: Error?
@@ -105,7 +111,7 @@ struct ServeControl: ControlCommands {
         }
         log("Deleted \(deleted) of \(items.count) shared items (from the control socket)")
         if let failure { throw ToolError("Deleted \(deleted) of \(items.count). \(failure.localizedDescription)") }
-        return "Deleted \(deleted) shared item\(deleted == 1 ? "" : "s"). GitHub may show cached copies for a while."
+        return "Deleted \(deleted) shared item\(deleted == 1 ? "" : "s"). GitHub may show cached copies for a while." + kept
     }
 
     func stopRecording(udid: String) async throws -> String {

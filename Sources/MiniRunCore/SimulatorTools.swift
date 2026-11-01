@@ -89,21 +89,23 @@ extension ToolRegistry {
             name: "screenshot",
             description: "Take a screenshot of the simulator, or of a Mac app's window. By default the image is sized so one pixel equals one point, matching the coordinates tap, swipe and describe_ui use " +
                 "(for a Mac app: window points from the window's top-left, title bar included). " +
-                "To show your work in a PR, pass share: true: a sharper copy is uploaded and you get a public link and ready-to-paste markdown for the PR description. " +
+                "To show your work in a PR, pass share: true: a sharper copy is uploaded and you get markdown for the PR description. " +
+                "When the repo has a pr-media branch, it's committed there and the markdown is a github.com embed that works in PRs and doesn't expire; " +
+                "otherwise it goes to the user's Worker, whose links the GitHub tools turn into plain links. The result says which. " +
                 "Never share screens showing credentials or personal data.",
             properties: device.merging([
                 "window": Self.macProperties["window"]!,
                 "scale": Schema.number("Optional scale relative to native pixels (0.1–1); for a Mac app, image pixels per point. Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
-                "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description. Anyone with the link can see it until it expires."),
+                "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description: to the repo's pr-media branch if it has one, else to the Worker."),
                 "caption": Schema.string("With share: a short description, used as the image's alt text, e.g. \"Settings screen, dark mode\"."),
-            ]) { a, _ in a }
+            ]) { a, _ in a }.merging(MediaShareOptions.properties) { a, _ in a }
         )) { [self] args in
             if MacAppID.isMacDevice(args.string("device")) { return try await macScreenshot(args) }
             let sim = try await self.device(args)
             var content = try await screenshotContent(udid: sim.udid, scale: args.double("scale"), quality: args.int("quality") ?? 70)
             if args.bool("share") == true {
-                content.append(.text(await shareScreenshot(udid: sim.udid, caption: args.string("caption"))))
+                content.append(.text(await shareScreenshot(udid: sim.udid, options: MediaShareOptions(args))))
             }
             return ToolResult(content)
         }

@@ -3,10 +3,12 @@ import Foundation
 import FoundationNetworking
 #endif
 
-/// A screenshot or recording shared through the Worker, so it can go in a PR description.
-/// The Worker keeps no index; this Mac's ledger (`MediaLedger`) is the only list.
+/// A screenshot or recording shared for a PR description: through the Worker, or committed to the
+/// repo's media branch on GitHub. Neither keeps an index; this Mac's ledger (`MediaLedger`) is the only list.
 public struct MediaItem: Codable, Equatable, Sendable, Identifiable {
     public enum Kind: String, Codable, Sendable { case screenshot, recording }
+    /// Where the files live. Ledgers from before GitHub uploads have no host: the Worker.
+    public enum Host: String, Codable, Sendable { case worker, github }
 
     public struct File: Codable, Equatable, Sendable {
         /// jpg, png, gif or mp4: the file is served at /m/<id>.<ext>.
@@ -27,11 +29,19 @@ public struct MediaItem: Codable, Equatable, Sendable, Identifiable {
     public var repo: String?
     public var ref: String?
     public var caption: String?
-    /// The page to open: /m/<id>.jpg for a screenshot, the player page /m/<id> for a recording.
+    /// The page to open: /m/<id>.jpg for a screenshot, the player page /m/<id> for a recording,
+    /// or the pinned github.com embed for a GitHub upload.
     public var url: String
+    /// Nil means the Worker (older ledgers).
+    public var host: Host?
+    /// GitHub uploads: the media branch, the file's path on it, and the commit the embed is pinned to.
+    public var branch: String?
+    public var path: String?
+    public var commit: String?
 
     public init(id: String, kind: Kind, files: [File], createdAt: Date, expiresAt: Date,
-                repo: String? = nil, ref: String? = nil, caption: String? = nil, url: String) {
+                repo: String? = nil, ref: String? = nil, caption: String? = nil, url: String,
+                host: Host? = nil, branch: String? = nil, path: String? = nil, commit: String? = nil) {
         self.id = id
         self.kind = kind
         self.files = files
@@ -41,7 +51,16 @@ public struct MediaItem: Codable, Equatable, Sendable, Identifiable {
         self.ref = ref
         self.caption = caption
         self.url = url
+        self.host = host
+        self.branch = branch
+        self.path = path
+        self.commit = commit
     }
+
+    public var isOnGitHub: Bool { host == .github }
+
+    /// GitHub uploads never expire; they're recorded as expiring in the far future.
+    public static let neverExpires = Date(timeIntervalSince1970: 32_503_680_000) // 3000-01-01
 
     public var bytes: Int { files.reduce(0) { $0 + $1.bytes } }
 
@@ -342,7 +361,8 @@ public enum MediaSharing {
         guard config.shareMedia else { throw ToolError(disabledMessage) }
         let incoming = files.reduce(0) { $0 + $1.data.count }
         let limit = config.mediaStorageLimitBytes
-        let plan = MediaLedger.planCap(await ledger.pruneExpired(now: now), incoming: incoming, limit: limit)
+        let onWorker = await ledger.pruneExpired(now: now).filter { !$0.isOnGitHub }
+        let plan = MediaLedger.planCap(onWorker, incoming: incoming, limit: limit)
         guard plan.fits else {
             throw ToolError("This upload is \(WorkspaceInventory.formatSize(Int64(incoming))), more than the whole storage limit "
                 + "(\(config.mediaStorageLimitMB) MB, Settings → Sharing). Record a shorter clip or raise the limit.")
@@ -379,8 +399,24 @@ public enum MediaSharing {
         return (item, plan.delete)
     }
 
-    /// What the agent gets back: the link, when it expires, and markdown to paste.
-    public static func report(_ item: MediaItem, deleted: [MediaItem] = []) -> String {
+    /// Why a share went to the Worker rather than GitHub, for the line that says how to change it.
+    public enum WorkerReason: Equatable, Sendable {
+        /// The caller didn't say (older callers and tests).
+        case unspecified
+        /// `githubMedia` is off in config.json.
+        case githubOff
+        /// The simulator or Mac app isn't reserved for an owner/name repo.
+        case untagged
+        /// The repo has no media branch (or the Mac's gh account can't see it).
+        case noBranch(repo: String, branch: String)
+        /// gh couldn't say whether the branch exists.
+        case cantCheck(repo: String, branch: String, why: String)
+    }
+
+    /// What the agent gets back for a Worker share: the link, when it expires, the markdown, and
+    /// a plain warning that it won't embed in a PR.
+    public static func report(_ item: MediaItem, deleted: [MediaItem] = [], reason: WorkerReason = .unspecified) -> String {
+        if item.isOnGitHub { return githubReport(item, pair: nil) }
         let expires = ISO8601DateFormatter.string(from: item.expiresAt, timeZone: TimeZone(identifier: "UTC")!, formatOptions: [.withFullDate])
         var lines = ["Shared: \(item.url) (expires \(expires))"]
         switch item.kind {
@@ -390,10 +426,152 @@ public enum MediaSharing {
             let gif = item.url + ".gif"
             lines.append("Markdown: " + MediaMarkdown.recording(caption: item.caption, gifURL: gif, pageURL: item.url))
         }
-        lines.append("Paste the markdown into the PR description. Anyone with the link can see it. To take it back, call delete_media with id \"\(item.id)\".")
+        lines.append("This link is on the user's Worker, not github.com. The GitHub tools turn it into a plain link in a PR description, " +
+            "and it expires on \(expires). Use it to check your work or in chat. For a PR, follow the repo's own instructions for embedding media.")
+        switch reason {
+        case .unspecified: break
+        case .githubOff:
+            lines.append("Uploading to GitHub is turned off on this Mac (githubMedia in ~/.config/minirun/config.json).")
+        case .untagged:
+            lines.append("minirun uploads to GitHub only for a simulator or Mac app reserved for an owner/name repo (build_and_run with repo and ref).")
+        case .noBranch(let repo, let branch):
+            lines.append("To get github.com embeds instead, \(repo) needs a `\(branch)` branch that this Mac's gh account can push to. " +
+                "Ask the user before creating one: `git switch --orphan \(branch) && git commit --allow-empty -m \"PR media\" && git push -u origin \(branch)`.")
+        case .cantCheck(let repo, let branch, let why):
+            lines.append("Couldn't check whether \(repo) has a `\(branch)` branch for github.com embeds: \(why)")
+        }
+        lines.append("Anyone with the link can see it. To take it back, call delete_media with id \"\(item.id)\".")
         if !deleted.isEmpty {
             lines.append("Deleted the \(deleted.count) oldest shared item\(deleted.count == 1 ? "" : "s") to stay under the storage limit.")
         }
         return lines.joined(separator: "\n")
+    }
+
+    /// What the agent gets back for a GitHub upload. With `pair` (a `before` for this `after`, or
+    /// the other way round, in the same folder) it adds a ready before/after table.
+    public static func githubReport(_ item: MediaItem, pair: MediaItem?) -> String {
+        let short = String((item.commit ?? "").prefix(7))
+        var lines = ["Uploaded \(item.path ?? "the file") to the \(item.branch ?? "media") branch of \(item.repo ?? "the repo") (commit \(short))."]
+        let fallback = item.kind == .screenshot ? "Screenshot" : "Recording"
+        lines.append("Markdown: ![\(MediaMarkdown.alt(item.caption, fallback: fallback))](\(item.url))")
+        if let pair {
+            let (before, after) = GitHubMediaNames.isBefore(item) ? (item, pair) : (pair, item)
+            lines.append("Before/after table:")
+            lines.append("| Before | After |\n| --- | --- |\n| ![\(MediaMarkdown.alt(before.caption, fallback: "before"))](\(before.url)) | ![\(MediaMarkdown.alt(after.caption, fallback: "after"))](\(after.url)) |")
+        }
+        lines.append("Paste it into the PR description: github.com images survive the GitHub tools and show for anyone who can see the repo. " +
+            "It doesn't expire. It's in the repo's history now: delete_media with id \"\(item.id)\" removes it from the branch, but this pinned link keeps working, " +
+            "so never upload credentials or personal data.")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Commits one file to the repo's media branch and records it.
+    public static func shareToGitHub(
+        kind: MediaItem.Kind, file: Upload, caption: String?, repo: String, ref: String?, branch: String,
+        folder: String, name: String, ledger: MediaLedger, gh: GHCommand, now: Date = Date()
+    ) async throws -> MediaItem {
+        let path = "\(folder)/\(name).\(file.ext)"
+        let commit = try await GitHubMedia.upload(
+            repo: repo, branch: branch, path: path, data: file.data, message: "PR media for \(folder): \(name).\(file.ext)", gh: gh
+        )
+        let item = MediaItem(
+            id: MediaItem.newID(), kind: kind, files: [.init(ext: file.ext, bytes: file.data.count)],
+            createdAt: now, expiresAt: MediaItem.neverExpires, repo: repo, ref: ref, caption: caption,
+            url: GitHubMedia.embedURL(repo: repo, commit: commit, path: path),
+            host: .github, branch: branch, path: path, commit: commit
+        )
+        // A re-upload under the same name replaces the older entry: it's the same file on the branch.
+        for old in await ledger.list(now: now) where old.isOnGitHub && old.repo == repo && old.path == path {
+            await ledger.remove(old.id)
+        }
+        await ledger.add(item)
+        return item
+    }
+
+    /// Where a share should go, and why.
+    public enum Destination: Equatable, Sendable {
+        case github(repo: String, branch: String)
+        case worker(WorkerReason)
+    }
+
+    public static func destination(label: String?, config: MiniRunConfig, branches: GitHubMediaBranches, gh: GHCommand) async -> Destination {
+        guard config.githubMedia else { return .worker(.githubOff) }
+        guard let repo = MediaItem.tag(label: label).repo, GitHubMedia.isValidRepo(repo) else { return .worker(.untagged) }
+        let branch = config.mediaBranch
+        switch await branches.check(repo: repo, branch: branch, gh: gh) {
+        case .present: return .github(repo: repo, branch: branch)
+        case .absent: return .worker(.noBranch(repo: repo, branch: branch))
+        case .unknown(let why): return .worker(.cantCheck(repo: repo, branch: branch, why: why))
+        }
+    }
+
+    /// `screenshot {share}` and `stop_recording {share}`: to the repo's media branch when it has
+    /// one, else to the Worker. Returns the text for the agent. `files` is the jpg for a
+    /// screenshot, or the mp4 and gif for a recording (GitHub gets only the gif, which renders inline).
+    public static func shareAnywhere(
+        kind: MediaItem.Kind, files: [Upload], caption: String?, label: String?, folder: String?, name: String?,
+        config: MiniRunConfig, ledger: MediaLedger, branches: GitHubMediaBranches = .shared, gh: GHCommand = GitHubMedia.defaultGH,
+        makeUploader: @Sendable () throws -> MediaUploader, now: Date = Date()
+    ) async throws -> String {
+        guard config.shareMedia else { throw ToolError(disabledMessage) }
+        if let folder, !GitHubMedia.isValidFolder(folder) {
+            throw ToolError("folder \"\(folder)\" should be one folder name: letters, digits, '.', '_' and '-', not starting with a dot.")
+        }
+        if let name, !GitHubMedia.isValidName(name) {
+            throw ToolError("name \"\(name)\" should be lowercase letters, digits and single dashes, like \"after\" or \"menu-open\".")
+        }
+        switch await destination(label: label, config: config, branches: branches, gh: gh) {
+        case .github(let repo, let branch):
+            let ext = kind == .screenshot ? (files.first?.ext ?? "jpg") : "gif"
+            guard let file = files.first(where: { $0.ext == ext }) else { throw ToolError("Nothing to upload: no \(ext) file.") }
+            let tag = MediaItem.tag(label: label)
+            let folder = folder ?? GitHubMedia.defaultFolder(ref: tag.ref)
+            let name = name ?? GitHubMedia.defaultName(caption: caption, kind: kind, now: now)
+            let item = try await shareToGitHub(
+                kind: kind, file: file, caption: caption, repo: repo, ref: tag.ref, branch: branch,
+                folder: folder, name: name, ledger: ledger, gh: gh, now: now
+            )
+            return githubReport(item, pair: await GitHubMediaNames.pair(for: item, in: ledger.list(now: now)))
+        case .worker(let reason):
+            let (item, deleted) = try await share(
+                kind: kind, files: files, caption: caption, label: label,
+                config: config, ledger: ledger, uploader: try makeUploader(), now: now
+            )
+            return report(item, deleted: deleted, reason: reason)
+        }
+    }
+
+    /// Takes back one shared item, wherever it lives. Returns what to tell the agent.
+    public static func delete(_ item: MediaItem, config: MiniRunConfig, ledger: MediaLedger, gh: GHCommand = GitHubMedia.defaultGH) async throws -> String {
+        if item.isOnGitHub, let repo = item.repo, let branch = item.branch, let path = item.path {
+            try await GitHubMedia.delete(repo: repo, branch: branch, path: path, gh: gh)
+            await ledger.remove(item.id)
+            return "Removed \(path) from the \(branch) branch of \(repo). The pinned link in any PR keeps working, because the commit it points to still has the file."
+        }
+        try await MediaUploader(config: config).delete(id: item.id)
+        await ledger.remove(item.id)
+        return "Deleted \(item.id). Its link no longer works, though GitHub may show a cached copy for a while."
+    }
+}
+
+/// Before/after pairs on the media branch.
+public enum GitHubMediaNames {
+    static func split(_ item: MediaItem) -> (folder: String, name: String)? {
+        guard let path = item.path, let slash = path.lastIndex(of: "/") else { return nil }
+        let file = path[path.index(after: slash)...]
+        let name = file.split(separator: ".").first.map(String.init) ?? String(file)
+        return (String(path[..<slash]), name)
+    }
+
+    static func isBefore(_ item: MediaItem) -> Bool { split(item)?.name == "before" }
+
+    /// The `before` for an `after` (or the reverse) in the same repo and folder, if one was shared.
+    public static func pair(for item: MediaItem, in items: [MediaItem]) -> MediaItem? {
+        guard item.isOnGitHub, let mine = split(item), mine.name == "before" || mine.name == "after" else { return nil }
+        let other = mine.name == "before" ? "after" : "before"
+        return items.first { candidate in
+            guard candidate.isOnGitHub, candidate.id != item.id, candidate.repo == item.repo, let theirs = split(candidate) else { return false }
+            return theirs.folder == mine.folder && theirs.name == other
+        }
     }
 }

@@ -292,7 +292,7 @@ extension ToolRegistry {
         let session = try await macApp(args)
         var content = try await macScreenshotContent(session, window: macWindow(args), scale: args.double("scale"), quality: args.int("quality") ?? 70)
         if args.bool("share") == true {
-            content.append(.text(await shareMacScreenshot(session, window: macWindow(args), caption: args.string("caption"))))
+            content.append(.text(await shareMacScreenshot(session, window: macWindow(args), options: MediaShareOptions(args))))
         }
         return ToolResult(content)
     }
