@@ -19,4 +19,6 @@
   // Secrets (set with `wrangler secret put`, or by ./setup.sh):
   //   OWNER_PASSWORD — you type this to log in to the viewer and to approve Claude's connector
   //   AGENT_TOKEN    — the Mac uses this to connect; also saved in the Mac's minirun config
+  // Optional, for the WebRTC live view (STUN only without them):
+  //   TURN_KEY_ID, TURN_KEY_API_TOKEN — a Cloudflare Realtime TURN key
 }
