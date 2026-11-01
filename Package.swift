@@ -26,7 +26,7 @@ products.append(.executable(name: "minirun", targets: ["minirun"]))
 targets += [
     .target(
         name: "MiniRunSim",
-        dependencies: frameworks.map { .target(name: $0) },
+        dependencies: ["MiniRunKit"] + frameworks.map { .target(name: $0) },
         path: "Sources/MiniRunSim",
         exclude: ["AXe/LICENSE-AXe"],
         swiftSettings: [.unsafeFlags(privateHeaderFlags)]
