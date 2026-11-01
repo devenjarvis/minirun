@@ -12,6 +12,12 @@ export interface Env {
   AGENT_TOKEN: string;
   /** SHA-256 of the deployed code, set by `minirun worker deploy`. Unset when deployed with wrangler. */
   MINIRUN_BUNDLE?: string;
+  /**
+   * Optional Cloudflare Realtime TURN key, for WebRTC viewers that can't reach the Mac directly
+   * (mostly on cellular). Without both, peer connections use STUN only.
+   */
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
 }
 
 declare global {

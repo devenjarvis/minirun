@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import type { Env } from "./env";
+import { iceServers, type IceServer, type TurnCache } from "./ice";
 
 /** MCP tool result shape, as produced by the Mac. */
 export interface ToolResult {
@@ -20,9 +21,12 @@ interface Hello {
   tools: ToolDefinition[];
   /** Random per run of `minirun serve`, so a reconnect can be told apart from a restart. */
   instance?: string;
+  /** Protocol 6: the Mac can stream to viewers over WebRTC (signaled through `rtc` messages). */
+  webrtc?: boolean;
 }
 
-type Codec = "jpeg" | "h264";
+/** "webrtc" viewers get their video over a peer connection, so the relay sends them no frames. */
+type Codec = "jpeg" | "h264" | "webrtc";
 
 interface StreamSettings {
   fps: number;
@@ -41,6 +45,8 @@ interface ViewerState extends StreamSettings {
    * Sockets accepted before ids existed get one when they first need it.
    */
   viewer?: string;
+  /** Whether the Mac has a peer connection for this viewer (from `rtc start` until a `stop` or `error`). */
+  rtc?: boolean;
 }
 
 /**
@@ -68,6 +74,12 @@ const VIEWER_TOOLS = new Set([
   // Mac apps (protocol 5): wheel scrolling and menu commands.
   "scroll", "press_menu_item",
 ]);
+
+/** What a viewer may send in `rtc` messages; anything else is dropped. */
+const RTC_VIEWER_ACTIONS = new Set(["start", "answer", "candidate", "stop"]);
+
+/** What the Mac may send a viewer in `rtc` messages. */
+const RTC_MAC_ACTIONS = new Set(["offer", "candidate", "stop", "error"]);
 
 /** Phases of a live touch from the viewer. */
 const TOUCH_PHASES = new Set(["down", "move", "up"]);
@@ -128,6 +140,10 @@ export class MacRelay extends DurableObject<Env> {
   private touching = new Map<WebSocket, { device: string; x: number; y: number }>();
   /** The Cloudflare data center this object runs in (e.g. "ATL"), looked up once. */
   private location: Promise<string | null> | null = null;
+  /** TURN credentials for peer connections, kept until shortly before they expire. */
+  private turn: { turn: TurnCache | null; pending?: Promise<TurnCache> | null } = { turn: null };
+  /** The ICE servers each viewer's peer connection was started with, for its offer. */
+  private rtcServers = new Map<string, IceServer[]>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -154,6 +170,8 @@ export class MacRelay extends DurableObject<Env> {
     host: Record<string, string> | null;
     /** Whether the Mac takes live touches (otherwise the viewer sends whole gestures). */
     touch: boolean;
+    /** Whether the Mac streams over WebRTC (protocol 6). */
+    webrtc: boolean;
     /** Where this relay runs. Every frame and touch passes through it, so it should be near the Mac and viewers. */
     location: string | null;
     viewers: number;
@@ -167,6 +185,7 @@ export class MacRelay extends DurableObject<Env> {
       online: agent !== null,
       host: hello?.host ?? null,
       touch: (hello?.version ?? 0) >= TOUCH_VERSION,
+      webrtc: hello?.webrtc === true,
       location: await this.dataCenter(),
       viewers: this.viewers().length,
       connectedAt: (await this.ctx.storage.get<number>("connectedAt")) ?? null,
@@ -232,9 +251,12 @@ export class MacRelay extends DurableObject<Env> {
       this.ctx.acceptWebSocket(server, ["agent"]);
       this.ctx.waitUntil(this.ctx.storage.put("connectedAt", Date.now()));
     } else {
-      const key = streamKey(new URL(request.url).searchParams.get("device")) ?? "";
+      const params = new URL(request.url).searchParams;
+      const key = streamKey(params.get("device")) ?? "";
       this.ctx.acceptWebSocket(server, ["viewer"]);
-      server.serializeAttachment({ key, viewer: crypto.randomUUID(), ...DEFAULT_STREAM } satisfies ViewerState);
+      // A viewer that will try WebRTC first (?rtc=1) isn't streamed to until it asks.
+      const codec: Codec = params.get("rtc") === "1" ? "webrtc" : DEFAULT_STREAM.codec;
+      server.serializeAttachment({ key, viewer: crypto.randomUUID(), ...DEFAULT_STREAM, codec } satisfies ViewerState);
       this.viewerFrames.set(server, newFlow());
       this.ctx.waitUntil(this.greetViewer(server));
     }
@@ -269,7 +291,7 @@ export class MacRelay extends DurableObject<Env> {
 
   private async greetViewer(ws: WebSocket) {
     const status = await this.status();
-    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host, touch: status.touch }));
+    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host, touch: status.touch, webrtc: status.webrtc }));
     if (status.simulators) safeSend(ws, JSON.stringify({ type: "simulators", devices: status.simulators }));
     const screen = await this.ctx.storage.get<string>(`screen:${this.viewerState(ws).key}`);
     if (screen) safeSend(ws, screen);
@@ -293,6 +315,8 @@ export class MacRelay extends DurableObject<Env> {
     for (const viewer of this.viewers()) {
       if (viewer === leaving) continue;
       const state = this.viewerState(viewer);
+      // A WebRTC viewer gets its video from its own peer connection, not from these streams.
+      if (state.codec === "webrtc") continue;
       // The newest viewer's settings win, but one viewer without H.264 keeps the stream JPEG.
       const codec = streams.get(state.key)?.codec === "jpeg" ? "jpeg" : state.codec;
       streams.set(state.key, { ...state, codec });
@@ -301,7 +325,7 @@ export class MacRelay extends DurableObject<Env> {
       agent.send(JSON.stringify({ type: "stream", action: "stop" }));
       return;
     }
-    const list = [...streams.values()].map(({ key, fps, quality, scale, codec }) => ({ udid: key || null, fps, quality, scale, codec }));
+    const list = [...streams.values()].map(({ key, fps, quality, scale, codec }) => ({ udid: key || null, fps, quality, scale, codec: codec as Exclude<Codec, "webrtc"> }));
     agent.send(JSON.stringify({ type: "stream", action: "set", streams: list }));
   }
 
@@ -347,7 +371,7 @@ export class MacRelay extends DurableObject<Env> {
         await this.ctx.storage.put("hello", hello);
         // Tells the Mac which code this Worker runs, so it can say when the Worker needs updating.
         this.agent()?.send(JSON.stringify({ type: "welcome", bundle: this.env.MINIRUN_BUNDLE ?? null }));
-        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION }));
+        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION, webrtc: hello.webrtc === true }));
         this.syncStreams();
         this.recoverPending(hello.instance !== undefined && hello.instance === previous?.instance);
         break;
@@ -384,7 +408,37 @@ export class MacRelay extends DurableObject<Env> {
         await this.ctx.storage.put("simulators", Array.isArray(message.devices) ? message.devices : []);
         this.broadcast(text);
         break;
+      case "rtc":
+        await this.onAgentRTC(message);
+        break;
     }
+  }
+
+  /** WebRTC signaling from the Mac: it goes to the one viewer it names, and only while that viewer is on WebRTC. */
+  private async onAgentRTC(message: { [key: string]: unknown }) {
+    const action = String(message.action);
+    if (!RTC_MAC_ACTIONS.has(action)) return;
+    const viewer = typeof message.viewer === "string" && message.viewer ? message.viewer : null;
+    const target = viewer ? this.viewers().find((ws) => this.viewerState(ws).viewer === viewer) : undefined;
+    if (!target) return;
+    const state = this.viewerState(target);
+    if (!state.rtc) return;
+    // The Mac has closed this peer connection; the viewer falls back to the WebSocket stream.
+    if (action === "stop" || action === "error") {
+      target.serializeAttachment({ ...state, rtc: false } satisfies ViewerState);
+      this.rtcServers.delete(viewer!);
+    }
+    const forward: Record<string, unknown> = { type: "rtc", action, viewer };
+    if (action === "offer") {
+      if (typeof message.sdp !== "string") return;
+      forward.sdp = message.sdp;
+      // The viewer uses the same ICE servers as the Mac. They're kept from `start`, unless this
+      // object hibernated since (then the cache has them, or fresh ones that work as well).
+      forward.iceServers = this.rtcServers.get(viewer!) ?? await iceServers(this.env, this.turn);
+    }
+    if (action === "candidate") Object.assign(forward, candidateFields(message));
+    if (action === "error") forward.message = typeof message.message === "string" ? message.message : "WebRTC failed on the Mac.";
+    safeSend(target, JSON.stringify(forward));
   }
 
   private onFrame(frame: ArrayBuffer) {
@@ -405,8 +459,9 @@ export class MacRelay extends DurableObject<Env> {
     for (const viewer of this.viewers()) {
       const viewerState = this.viewerState(viewer);
       if (viewerState.key !== key) continue;
-      // A JPEG-only viewer can't show H.264; the stream switches to JPEG for it shortly.
-      if (video && viewerState.codec !== "h264") continue;
+      // A WebRTC viewer has its own video. A JPEG-only viewer can't show H.264; the stream
+      // switches to JPEG for it shortly.
+      if (viewerState.codec === "webrtc" || (video && viewerState.codec !== "h264")) continue;
       let state = this.viewerFrames.get(viewer);
       if (!state) {
         state = newFlow();
@@ -490,8 +545,13 @@ export class MacRelay extends DurableObject<Env> {
         this.agent()?.send(JSON.stringify({ type: "touch", device, phase, x, y }));
         break;
       }
+      case "rtc":
+        await this.onViewerRTC(ws, message);
+        break;
       case "stream": {
         const previous = this.viewerState(ws);
+        // Back to the WebSocket stream (a fallback, or ?transport=ws): the peer connection goes.
+        if (previous.rtc) this.stopRTC(ws, previous);
         const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
         const state: ViewerState = {
           key,
@@ -500,6 +560,7 @@ export class MacRelay extends DurableObject<Env> {
           quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
           scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),
           codec: message.codec === "h264" ? "h264" : "jpeg",
+          rtc: false,
         };
         ws.serializeAttachment(state);
         if (key !== previous.key) {
@@ -513,6 +574,80 @@ export class MacRelay extends DurableObject<Env> {
         break;
       }
     }
+  }
+
+  /**
+   * WebRTC signaling from a viewer. `start` takes the viewer off the WebSocket stream and asks the
+   * Mac for a peer connection; the rest go to the Mac as they are, tagged with this viewer's id
+   * (never one the page picked).
+   */
+  private async onViewerRTC(ws: WebSocket, message: { [key: string]: unknown }) {
+    const action = String(message.action);
+    if (!RTC_VIEWER_ACTIONS.has(action)) return;
+    const previous = this.viewerState(ws);
+    const viewer = this.viewerId(ws);
+    if (action !== "start") {
+      if (!previous.rtc) return;
+      if (action === "stop") {
+        this.stopRTC(ws, previous);
+        return;
+      }
+      const forward: Record<string, unknown> = { type: "rtc", action, viewer };
+      if (action === "answer") {
+        if (typeof message.sdp !== "string") return;
+        forward.sdp = message.sdp;
+      } else {
+        Object.assign(forward, candidateFields(message));
+      }
+      this.agent()?.send(JSON.stringify(forward));
+      return;
+    }
+
+    const agent = this.agent();
+    const hello = await this.ctx.storage.get<Hello>("hello");
+    if (!agent || hello?.webrtc !== true) {
+      safeSend(ws, JSON.stringify({ type: "rtc", action: "error", viewer, message: agent ? "This Mac can't stream over WebRTC." : "The Mac is offline." }));
+      return;
+    }
+    // A restart, or a switch to another simulator: the old peer connection goes first.
+    if (previous.rtc) this.stopRTC(ws, previous);
+    const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
+    const state: ViewerState = {
+      key,
+      viewer,
+      fps: clamp(Number(message.fps) || DEFAULT_STREAM.fps, 1, 30),
+      quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
+      scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),
+      codec: "webrtc",
+      rtc: true,
+    };
+    ws.serializeAttachment(state);
+    if (key !== previous.key) {
+      this.viewerFrames.set(ws, newFlow());
+      const screen = await this.ctx.storage.get<string>(`screen:${key}`);
+      if (screen) safeSend(ws, screen);
+    }
+    // This viewer no longer needs the WebSocket stream it may have had.
+    this.syncStreams();
+    const servers = await iceServers(this.env, this.turn);
+    // The viewer may have stopped, left or restarted while the credentials were fetched.
+    const current = this.viewerState(ws);
+    if (!current.rtc || current.key !== key || !this.viewers().includes(ws)) return;
+    this.rtcServers.set(viewer, servers);
+    this.agent()?.send(JSON.stringify({
+      type: "rtc", action: "start", viewer, key, fps: state.fps, quality: state.quality, scale: state.scale, iceServers: servers,
+    }));
+  }
+
+  /** Tells the Mac to close this viewer's peer connection. */
+  private stopRTC(ws: WebSocket, state: ViewerState) {
+    if (state.viewer) this.rtcServers.delete(state.viewer);
+    try {
+      ws.serializeAttachment({ ...state, rtc: false } satisfies ViewerState);
+    } catch {
+      // the socket is closing; its attachment goes with it
+    }
+    this.agent()?.send(JSON.stringify({ type: "rtc", action: "stop", viewer: state.viewer ?? this.viewerId(ws) }));
   }
 
   async webSocketClose(ws: WebSocket, code: number) {
@@ -543,6 +678,8 @@ export class MacRelay extends DurableObject<Env> {
         this.broadcast(JSON.stringify({ type: "status", online: false }));
       }
     } else {
+      const state = this.viewerState(ws);
+      if (state.rtc) this.stopRTC(ws, state);
       const held = this.touching.get(ws);
       if (held) {
         this.touching.delete(ws);
@@ -588,6 +725,15 @@ interface FlowState {
 
 function newFlow(): FlowState {
   return { sent: 0, acked: 0, needsKeyframe: true };
+}
+
+/** A trickle ICE candidate's fields; `candidate: null` is the end of candidates. */
+function candidateFields(message: { [key: string]: unknown }): Record<string, unknown> {
+  return {
+    candidate: typeof message.candidate === "string" ? message.candidate : null,
+    sdpMid: typeof message.sdpMid === "string" ? message.sdpMid : null,
+    sdpMLineIndex: typeof message.sdpMLineIndex === "number" ? message.sdpMLineIndex : null,
+  };
 }
 
 function safeSend(ws: WebSocket, data: string | ArrayBuffer): boolean {

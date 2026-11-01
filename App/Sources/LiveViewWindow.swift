@@ -38,6 +38,9 @@ struct WebView: NSViewRepresentable {
         let configuration = WKWebViewConfiguration()
         // The default store keeps the viewer's login cookie between launches.
         configuration.websiteDataStore = .default()
+        // The WebRTC stream is a muted <video autoplay> that starts without a click. That's
+        // already macOS's default; set here so it stays that way.
+        configuration.mediaTypesRequiringUserActionForPlayback = []
         let view = WKWebView(frame: .zero, configuration: configuration)
         view.load(URLRequest(url: url))
         return view
