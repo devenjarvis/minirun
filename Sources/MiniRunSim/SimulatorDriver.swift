@@ -112,12 +112,14 @@ public final class SimulatorDriver {
 
     /// An H.264 encoder fed straight from the simulator's display. `bitrate` gets the encoded size.
     public func screenEncoder(udid: String, scale: Double, fps: Int, bitrate: @escaping @Sendable (_ width: Int, _ height: Int) -> Int) async throws -> ScreenEncoder {
+        ScreenEncoder(capture: try await screenCapture(udid: udid), scale: scale, fps: fps, bitrate: bitrate)
+    }
+
+    /// The simulator's screen as it changes, for the H.264 encoder and WebRTC. Close it when done.
+    public func screenCapture(udid: String) async throws -> SimulatorScreenCapture {
         let target = try await simulator(udid)
-        if let displays = MainDisplays.load(target) {
-            return ScreenEncoder(source: .displays(displays), scale: scale, fps: fps, bitrate: bitrate)
-        }
-        let framebuffer = try FBFramebuffer.mainScreenSurface(for: target, logger: logger)
-        return ScreenEncoder(source: .framebuffer(framebuffer), scale: scale, fps: fps, bitrate: bitrate)
+        if let displays = MainDisplays.load(target) { return SimulatorScreenCapture(source: .displays(displays)) }
+        return SimulatorScreenCapture(source: .framebuffer(try FBFramebuffer.mainScreenSurface(for: target, logger: logger)))
     }
 
     public func screenshotPNG(udid: String) async throws -> Data {
