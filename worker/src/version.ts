@@ -1,5 +1,5 @@
 /** The minirun release this Worker comes from. It must match MiniRun.version in Sources/MiniRunKit/Version.swift. */
-export const VERSION = "0.4.0";
+export const VERSION = "0.5.0";
 
 /** Compares dotted versions like "0.2.0" by number: negative if a is older than b. */
 export function compareVersions(a: string, b: string): number {

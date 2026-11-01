@@ -1,7 +1,22 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
+Screenshots and recordings now embed in PR descriptions for repos with a `pr-media` branch, Mac
+apps can be recorded, and macOS 26 is now required.
+
+- **PR media on GitHub.** When the repo a simulator or Mac app is reserved for has a `pr-media`
+  branch, `screenshot {share: true}` and `stop_recording` commit the image or GIF there with the
+  Mac's `gh` sign-in and return a github.com embed pinned to that commit. These render for anyone
+  who can see the repo, private repos included, survive the GitHub tools agents post with (which
+  strip images hosted elsewhere), and don't expire. `folder` and `name` choose the path, and a
+  `before` and an `after` in one folder also return a before/after table. To opt a repo in, push an
+  orphan `pr-media` branch once; `githubMedia` and `githubMediaBranch` in `config.json` turn it off
+  or rename it. Recordings commit only the GIF for now.
+- **Worker links say what they're for.** Shares that go to the Worker now say the link won't embed
+  in a PR description and expires, and how to opt the repo in, instead of telling agents to paste
+  it. Redeploy the Worker (Settings → Cloudflare, or `minirun worker deploy`) to give agents the
+  updated instructions.
 - **Recordings of macOS apps.** `start_recording` / `stop_recording` now work with a Mac app id:
   they record one window (the main one, or `window`) with ScreenCaptureKit and share the same GIF
   and MP4 as simulator recordings. The recording stops by itself when the window closes or the app
