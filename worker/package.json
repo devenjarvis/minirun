@@ -7,7 +7,8 @@
     "deploy": "wrangler deploy",
     "bundle": "node scripts/bundle.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e:webrtc": "node test/e2e-webrtc.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.4"

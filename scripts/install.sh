@@ -86,6 +86,9 @@ if $NO_APP; then
     [[ -d "$src" ]] || src="$ROOT/Vendor/XCFrameworks/$fw.xcframework/macos-arm64_x86_64/$fw.framework"
     cp -R "$src" "$PREFIX/bin/"
   done
+  # libwebrtc, which SwiftPM downloaded for the build.
+  cp -R "$BIN_DIR/WebRTC.framework" "$PREFIX/bin/"
+  codesign --force --sign - "$PREFIX/bin/WebRTC.framework" >/dev/null 2>&1 || true
   codesign --force --sign - --deep "$PREFIX/bin/minirun" >/dev/null 2>&1 || true
   # The prebuilt Worker that `minirun worker deploy` uploads (made by `npm run bundle` in worker/).
   rm -rf "$PREFIX/worker"
