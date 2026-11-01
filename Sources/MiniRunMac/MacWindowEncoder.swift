@@ -29,6 +29,9 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
         /// The window in points.
         public let pointWidth: Double
         public let pointHeight: Double
+        /// When ScreenCaptureKit delivered the frame (or when it was encoded again, for a keyframe
+        /// of an unchanged window). For the latency readout.
+        public let capturedAt: Date
     }
 
     /// One stream configuration: the window's size and the frames the stream makes for it.
@@ -58,6 +61,8 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
     private var pending: Geometry?
     private var latest: (buffer: CVPixelBuffer, geometry: Geometry, number: Int)?
     private var frameCount = 0
+    /// When `latest` arrived.
+    private var latestAt = Date()
     private var stopError: Error?
     private var changePending = false
     private var changeWaiter: (id: Int, continuation: CheckedContinuation<Void, Never>)?
@@ -130,6 +135,7 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
         }
         frameCount += 1
         latest = (buffer, current, frameCount)
+        latestAt = Date()
         let waiter = changeWaiter
         changeWaiter = nil
         if waiter == nil { changePending = true }
@@ -212,10 +218,11 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
     /// (unless `forceKeyframe`), or before the first frame arrives.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
         try await followResize()
-        let (snapshot, error) = lock.withLock { (self.latest, stopError) }
+        let (snapshot, error, arrived) = lock.withLock { (self.latest, stopError, latestAt) }
         if let error { throw MacDriverError("The window stream stopped: \(error.localizedDescription)") }
         guard let latest = snapshot else { return nil }
         if !forceKeyframe && latest.number == lastEncoded { return nil }
+        let capturedAt = latest.number == lastEncoded ? Date() : arrived
 
         let buffer = latest.buffer, geometry = latest.geometry
         let width = CVPixelBufferGetWidth(buffer), height = CVPixelBufferGetHeight(buffer)
@@ -240,7 +247,7 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
                 } else if flags.contains(.frameDropped) || sample == nil {
                     once.resume(.success(nil))
                 } else {
-                    once.resume(.success(Self.frame(from: sample!, geometry: geometry)))
+                    once.resume(.success(Self.frame(from: sample!, geometry: geometry, capturedAt: capturedAt)))
                 }
             }
             if status != noErr {
@@ -287,34 +294,11 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
     private func makeSession(width: Int, height: Int) throws {
         if let session { VTCompressionSessionInvalidate(session) }
         session = nil
-        var created: VTCompressionSession?
-        try check(VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault, width: Int32(width), height: Int32(height),
-            codecType: kCMVideoCodecType_H264,
-            encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
-            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
-            compressionSessionOut: &created
-        ), "start the H.264 encoder")
-        guard let created else { throw MacDriverError("Could not start the H.264 encoder.") }
-        let properties: [CFString: CFTypeRef] = [
-            kVTCompressionPropertyKey_RealTime: NSNumber(value: true),
-            kVTCompressionPropertyKey_AllowFrameReordering: NSNumber(value: false),
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_Main_AutoLevel,
-            kVTCompressionPropertyKey_AverageBitRate: NSNumber(value: bitrate(width, height)),
-            kVTCompressionPropertyKey_ExpectedFrameRate: NSNumber(value: fps),
-            // Viewers ask for keyframes when they join or fall behind; this is only a backstop.
-            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: NSNumber(value: 10),
-        ]
-        for (key, value) in properties {
-            // Best effort: an encoder that lacks a property still produces a stream.
-            _ = VTSessionSetProperty(created, key: key, value: value)
-        }
-        VTCompressionSessionPrepareToEncodeFrames(created)
-        session = created
+        session = try H264Session.make(width: width, height: height, fps: fps, bitrate: bitrate(width, height)).session
         sessionSize = (width, height)
     }
 
-    private static func frame(from sample: CMSampleBuffer, geometry: Geometry) -> Frame? {
+    private static func frame(from sample: CMSampleBuffer, geometry: Geometry, capturedAt: Date) -> Frame? {
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
         let isKeyframe = !((attachments?.first?[kCMSampleAttachmentKey_NotSync as String] as? Bool) ?? false)
 
@@ -350,12 +334,8 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
         return Frame(
             nalUnits: data, lengthSize: Int(lengthSize), parameterSets: parameterSets, isKeyframe: isKeyframe,
             sourceWidth: geometry.pixels.width, sourceHeight: geometry.pixels.height,
-            pointWidth: geometry.points.width, pointHeight: geometry.points.height
+            pointWidth: geometry.points.width, pointHeight: geometry.points.height, capturedAt: capturedAt
         )
-    }
-
-    private func check(_ status: OSStatus, _ action: String) throws {
-        guard status == noErr else { throw MacDriverError("Could not \(action) (\(status)).") }
     }
 }
 

@@ -116,8 +116,10 @@ struct HIDInteractor {
     }
 
     /// Sends one event with no stabilization delay, for live touches that arrive in a stream.
+    /// These trust a recently checked session (see `liveSessionTrust`) instead of rechecking the
+    /// simulator's boot on every event.
     static func sendImmediately(_ event: FBSimulatorHIDEvent, for simulatorUDID: String, logger: AxeLogger) async throws {
-        let session = try await cachedSession(for: simulatorUDID, logger: logger)
+        let session = try await cachedSession(for: simulatorUDID, trustFor: liveSessionTrust, logger: logger)
         do {
             try await session.hid.send(event: event, logger: logger)
         } catch {
@@ -127,18 +129,27 @@ struct HIDInteractor {
     }
 
     // minirun: sessions are reused while the simulator's boot is the same one, so each event
-    // skips makeSession's simulator-set lookup and readiness checks (one process scan instead).
-    private static var sessions: [String: (session: Session, boot: HIDBrokerBootIdentity)] = [:]
+    // skips makeSession's simulator-set lookup and readiness checks. Checking the boot scans every
+    // process's arguments (a few milliseconds), which adds up over a drag's stream of moves, so
+    // live touches skip it for this long after the last check. A failed send drops the session,
+    // so the next event checks again anyway.
+    private static let liveSessionTrust: Duration = .seconds(3)
+    private static var sessions: [String: (session: Session, boot: HIDBrokerBootIdentity, checked: ContinuousClock.Instant)] = [:]
 
-    static func cachedSession(for simulatorUDID: String, logger: AxeLogger) async throws -> Session {
-        if let cached = sessions[simulatorUDID],
-           (try? HIDBroker.currentBootIdentity(simulatorUDID: simulatorUDID)) == cached.boot {
-            return cached.session
+    static func cachedSession(for simulatorUDID: String, trustFor maxAge: Duration = .zero, logger: AxeLogger) async throws -> Session {
+        if let cached = sessions[simulatorUDID] {
+            if ContinuousClock.now - cached.checked < maxAge { return cached.session }
+            if (try? HIDBroker.currentBootIdentity(simulatorUDID: simulatorUDID)) == cached.boot {
+                sessions[simulatorUDID]?.checked = .now
+                return cached.session
+            }
+            // A new boot (or none): the cached HID connection went with the old one.
+            hidConnections[simulatorUDID] = nil
         }
         sessions[simulatorUDID] = nil
         let session = try await makeSession(for: simulatorUDID, logger: logger)
         if let boot = try? HIDBroker.currentBootIdentity(simulatorUDID: simulatorUDID) {
-            sessions[simulatorUDID] = (session, boot)
+            sessions[simulatorUDID] = (session, boot, .now)
         }
         return session
     }

@@ -5,6 +5,7 @@ import IOSurface
 import VideoToolbox
 import FBControlCore
 import FBSimulatorControl
+import MiniRunKit
 
 /// Encodes a simulator's screen as H.264 with VideoToolbox (the hardware encoder when there is
 /// one). Frames come straight from the simulator's framebuffer, an IOSurface, so there's no PNG
@@ -27,6 +28,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         /// The simulator's screen in pixels, before scaling.
         public let sourceWidth: Int
         public let sourceHeight: Int
+        /// When the change this frame shows was first reported (the earliest framebuffer damage
+        /// since the last frame), or when the screen was read if none was. For the latency readout.
+        public let capturedAt: Date
     }
 
     private let source: Source
@@ -39,6 +43,8 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     private var surface: IOSurface?
     /// The simulator reported damage that no `waitForChange` has picked up yet.
     private var changePending = false
+    /// The first damage since `encode` last read the screen.
+    private var damagedAt: Date?
     private var changeWaiter: (id: Int, continuation: CheckedContinuation<Void, Never>)?
     private var waiterCount = 0
 
@@ -78,7 +84,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     }
 
     private func signalChange() {
+        let now = Date()
         lock.lock()
+        if damagedAt == nil { damagedAt = now }
         let waiter = changeWaiter
         changeWaiter = nil
         if waiter == nil { changePending = true }
@@ -118,14 +126,18 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     /// frame (unless `forceKeyframe`), or before the simulator has delivered its first surface.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
         let current: IOSurface?
+        var damaged: Date?
         switch source {
         case .framebuffer:
             lock.lock()
             current = surface
+            damaged = damagedAt
+            damagedAt = nil
             lock.unlock()
         case .displays(let displays):
             current = displays.currentSurface()
         }
+        let capturedAt = damaged ?? Date()
         guard let current else { return nil }
         let seed = current.seed
         var keyframe = forceKeyframe
@@ -166,7 +178,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
                 } else if flags.contains(.frameDropped) || sample == nil {
                     once.resume(.success(nil))
                 } else {
-                    once.resume(.success(Self.frame(from: sample!, sourceWidth: width, sourceHeight: height)))
+                    once.resume(.success(Self.frame(from: sample!, sourceWidth: width, sourceHeight: height, capturedAt: capturedAt)))
                 }
             }
             if status != noErr {
@@ -197,29 +209,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         let encodedWidth = max(16, Int(Double(width) * scale) & ~1)
         let encodedHeight = max(16, Int(Double(height) * scale) & ~1)
 
-        var created: VTCompressionSession?
-        try check(VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault, width: Int32(encodedWidth), height: Int32(encodedHeight),
-            codecType: kCMVideoCodecType_H264,
-            encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
-            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
-            compressionSessionOut: &created
-        ), "start the H.264 encoder")
-        guard let created else { throw SimulatorDriver.DriverError(message: "Could not start the H.264 encoder.") }
-        let properties: [CFString: CFTypeRef] = [
-            kVTCompressionPropertyKey_RealTime: NSNumber(value: true),
-            kVTCompressionPropertyKey_AllowFrameReordering: NSNumber(value: false),
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_Main_AutoLevel,
-            kVTCompressionPropertyKey_AverageBitRate: NSNumber(value: bitrate(encodedWidth, encodedHeight)),
-            kVTCompressionPropertyKey_ExpectedFrameRate: NSNumber(value: fps),
-            // Viewers ask for keyframes when they join or fall behind; this is only a backstop.
-            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: NSNumber(value: 10),
-        ]
-        for (key, value) in properties {
-            // Best effort: an encoder that lacks a property still produces a stream.
-            _ = VTSessionSetProperty(created, key: key, value: value)
-        }
-        VTCompressionSessionPrepareToEncodeFrames(created)
+        let created = try H264Session.make(
+            width: encodedWidth, height: encodedHeight, fps: fps, bitrate: bitrate(encodedWidth, encodedHeight)
+        ).session
 
         var createdTransfer: VTPixelTransferSession?
         try check(VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &createdTransfer), "start the video scaler")
@@ -240,7 +232,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         sourceSize = (width, height)
     }
 
-    private static func frame(from sample: CMSampleBuffer, sourceWidth: Int, sourceHeight: Int) -> Frame? {
+    private static func frame(from sample: CMSampleBuffer, sourceWidth: Int, sourceHeight: Int, capturedAt: Date) -> Frame? {
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
         let isKeyframe = !((attachments?.first?[kCMSampleAttachmentKey_NotSync as String] as? Bool) ?? false)
 
@@ -275,7 +267,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         guard status == kCMBlockBufferNoErr else { return nil }
         return Frame(
             nalUnits: data, lengthSize: Int(lengthSize), parameterSets: parameterSets, isKeyframe: isKeyframe,
-            sourceWidth: sourceWidth, sourceHeight: sourceHeight
+            sourceWidth: sourceWidth, sourceHeight: sourceHeight, capturedAt: capturedAt
         )
     }
 

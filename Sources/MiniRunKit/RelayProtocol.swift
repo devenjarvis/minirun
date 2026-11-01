@@ -89,6 +89,12 @@ public enum RelayProtocol {
         return .object(object)
     }
 
+    /// The answer to a viewer's `probe`, straight back with the same `t` and `viewer`, so the
+    /// viewer can time the round trip to the Mac.
+    public static func probe(t: Double, viewer: String) -> JSONValue {
+        ["type": "probe", "t": .number(t), "viewer": .string(viewer)]
+    }
+
     /// The booted simulators, for the viewer's simulator picker.
     public static func simulators(_ devices: [JSONValue]) -> JSONValue {
         ["type": "simulators", "devices": .array(devices)]
@@ -150,6 +156,8 @@ public enum RelayProtocol {
         case pending(ids: [String])
         /// One step of a live touch from a viewer, in points: phase is "down", "move" or "up".
         case touch(udid: String, phase: String, x: Double, y: Double)
+        /// A viewer timing its round trip to the Mac: send `t` and `viewer` straight back (`probe`).
+        case probe(t: Double, viewer: String)
         /// The relay's answer to `hello`: the Worker's MINIRUN_BUNDLE (the hash of the code it runs),
         /// or nil for a Worker deployed with wrangler. Older Workers don't send it.
         case welcome(bundle: String?)
@@ -185,6 +193,9 @@ public enum RelayProtocol {
             guard let udid = message["device"]?.stringValue, let phase = message["phase"]?.stringValue,
                   let x = message["x"]?.doubleValue, let y = message["y"]?.doubleValue else { return .unknown(text) }
             return .touch(udid: udid, phase: phase, x: x, y: y)
+        case "probe":
+            guard let t = message["t"]?.doubleValue, let viewer = message["viewer"]?.stringValue else { return .unknown(text) }
+            return .probe(t: t, viewer: viewer)
         case "welcome":
             return .welcome(bundle: message["bundle"]?.stringValue)
         default:

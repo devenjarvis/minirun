@@ -4,6 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import FBControlCore
 import FBSimulatorControl
+import OSLog
 
 /// In-process simulator control built on FBSimulatorControl, using AXe's vendored helpers for
 /// HID input, accessibility and orientation handling (see AXe/LICENSE-AXe).
@@ -51,6 +52,9 @@ public final class SimulatorDriver {
     }
 
     private let logger = AxeLogger()
+    /// Live touch timings, at debug level. To watch them:
+    /// `log stream --level debug --predicate 'subsystem == "dev.minirun" AND category == "touch"'`
+    private static let touchLog = Logger(subsystem: "dev.minirun", category: "touch")
     private var didSetup = false
     private var simulatorSet: FBSimulatorSet?
 
@@ -64,6 +68,14 @@ public final class SimulatorDriver {
     private static let unprobedMappingLifetime: TimeInterval = 2
     /// Where each simulator's live touch is held down, in HID points, so it can be released.
     private var heldTouches: [String: (x: Double, y: Double)] = [:]
+    /// Live touches come many times a second during a drag, so they reuse the simulator lookup
+    /// (`liveTargetTrust`) and the orientation probe (`orientationTrust`) from recent events
+    /// instead of paying for them on each one. A rotation still takes effect within a second, and
+    /// a failed touch drops both so the next one looks again.
+    private var liveTargets: [String: (simulator: FBSimulator, at: ContinuousClock.Instant)] = [:]
+    private var orientations: [String: (orientation: SimulatorOrientation?, at: ContinuousClock.Instant)] = [:]
+    private static let liveTargetTrust: Duration = .seconds(3)
+    private static let orientationTrust: Duration = .seconds(1)
 
     private init() {}
 
@@ -178,9 +190,16 @@ public final class SimulatorDriver {
 
     // MARK: Input (coordinates are in points, in the current UI orientation)
 
-    /// Translates points in the current UI orientation to the HID's portrait space.
-    private func physicalPoints(_ points: [(x: Double, y: Double)], udid: String, simulator: FBSimulator) async throws -> [(x: Double, y: Double)] {
-        let orientation = SimulatorOrientationReader.currentOrientation(simulator: simulator, logger: logger)
+    /// Translates points in the current UI orientation to the HID's portrait space. The
+    /// orientation is probed again unless the last probe is younger than `orientationMaxAge`.
+    private func physicalPoints(_ points: [(x: Double, y: Double)], udid: String, simulator: FBSimulator, orientationMaxAge: Duration = .zero) async throws -> [(x: Double, y: Double)] {
+        let orientation: SimulatorOrientation?
+        if let probed = orientations[udid], ContinuousClock.now - probed.at < orientationMaxAge {
+            orientation = probed.orientation
+        } else {
+            orientation = SimulatorOrientationReader.currentOrientation(simulator: simulator, logger: logger)
+            orientations[udid] = (orientation, .now)
+        }
         let lifetime = orientation == nil ? Self.unprobedMappingLifetime : Self.mappingLifetime
         let mapping: CoordinateMapping
         if let cached = mappings[udid], cached.orientation == orientation, Date().timeIntervalSince(cached.at) < lifetime {
@@ -202,16 +221,47 @@ public final class SimulatorDriver {
     public func touch(udid: String, phase: TouchPhase, x: Double, y: Double) async throws {
         // A move or up with nothing held is left over from a touch that already failed.
         if phase != .down && heldTouches[udid] == nil { return }
-        let target = try await simulator(udid)
-        let point = try await physicalPoints([(x, y)], udid: udid, simulator: target)[0]
+        let clock = ContinuousClock()
+        let start = clock.now
+        let target: FBSimulator
+        if let cached = liveTargets[udid], clock.now - cached.at < Self.liveTargetTrust {
+            target = cached.simulator
+        } else {
+            target = try await simulator(udid)
+            liveTargets[udid] = (target, clock.now)
+        }
+        let found = clock.now
+        let point: (x: Double, y: Double)
+        do {
+            point = try await physicalPoints([(x, y)], udid: udid, simulator: target, orientationMaxAge: Self.orientationTrust)[0]
+        } catch {
+            forgetLiveState(udid: udid)
+            throw error
+        }
+        let mapped = clock.now
         heldTouches[udid] = phase == .up ? nil : point
         do {
             // The HID treats another touch-down at a new point as the finger moving there.
             try await HIDInteractor.sendImmediately(.touch(direction: phase == .up ? .up : .down, x: point.x, y: point.y), for: udid, logger: logger)
         } catch {
             heldTouches[udid] = nil
+            forgetLiveState(udid: udid)
             throw error
         }
+        let sent = clock.now
+        let total = Self.milliseconds(sent - start), lookup = Self.milliseconds(found - start)
+        let map = Self.milliseconds(mapped - found), send = Self.milliseconds(sent - mapped)
+        Self.touchLog.debug("live touch \(phase.rawValue, privacy: .public): \(total, privacy: .public) ms (simulator \(lookup, privacy: .public), map \(map, privacy: .public), send \(send, privacy: .public))")
+    }
+
+    private func forgetLiveState(udid: String) {
+        liveTargets[udid] = nil
+        orientations[udid] = nil
+    }
+
+    private nonisolated static func milliseconds(_ duration: Duration) -> String {
+        let (seconds, attoseconds) = duration.components
+        return String(format: "%.2f", Double(seconds) * 1000 + Double(attoseconds) / 1e15)
     }
 
     /// Lifts any live touch still held, e.g. when the viewer that started it goes away.
@@ -325,9 +375,12 @@ public final class SimulatorDriver {
         if let udid {
             mappings[udid] = nil
             heldTouches[udid] = nil
+            forgetLiveState(udid: udid)
         } else {
             mappings.removeAll()
             heldTouches.removeAll()
+            liveTargets.removeAll()
+            orientations.removeAll()
         }
         simulatorSet = nil
     }

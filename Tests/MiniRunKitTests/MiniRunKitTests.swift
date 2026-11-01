@@ -79,9 +79,24 @@ final class RelayProtocolTests: XCTestCase {
         XCTAssertEqual(r.bit(), 1, "stop bit")
 
         XCTAssertEqual(H264.withoutReordering(sps: Data(rewritten)), Data(rewritten), "already has a VUI")
+        XCTAssertNil(H264.maxNumReorderFrames(sps: sps))
+        XCTAssertEqual(H264.maxNumReorderFrames(sps: Data(rewritten)), 0)
         XCTAssertEqual(H264.withoutReordering(sps: Data([0x28, 0xce, 0x3c, 0x80])), Data([0x28, 0xce, 0x3c, 0x80]), "not an SPS")
         XCTAssertEqual(H264.escape([0, 0, 1, 0, 0, 0]), [0, 0, 3, 1, 0, 0, 3, 0])
         XCTAssertEqual(H264.unescape([0, 0, 3, 1, 0, 0, 3, 0]), [0, 0, 1, 0, 0, 0])
+    }
+
+    func testLowLatencySPS() throws {
+        // VideoToolbox's low-latency mode, Constrained High (602x1310, five reference frames). It
+        // writes a VUI (video signal type) that already says frames are never reordered.
+        let lowLatency = Data([0x27, 0x64, 0x0c, 0x1f, 0xac, 0x13, 0x14, 0x60, 0x26, 0x02, 0x97, 0x92, 0xa6, 0xa0, 0x40, 0x40, 0x40, 0xf0, 0x80, 0x42, 0x68])
+        XCTAssertEqual(H264.maxNumReorderFrames(sps: lowLatency), 0)
+        XCTAssertEqual(H264.withoutReordering(sps: lowLatency), lowLatency)
+
+        // The same SPS with bitstream_restriction_flag cleared: the restriction is added to its VUI.
+        let unrestricted = Data([0x27, 0x64, 0x0c, 0x1f, 0xac, 0x13, 0x14, 0x60, 0x26, 0x02, 0x97, 0x92, 0xa6, 0xa0, 0x40, 0x40, 0x40, 0x40])
+        XCTAssertNil(H264.maxNumReorderFrames(sps: unrestricted))
+        XCTAssertEqual(H264.withoutReordering(sps: unrestricted), lowLatency)
     }
 
     func testBitrate() {
@@ -123,6 +138,69 @@ final class RelayProtocolTests: XCTestCase {
         )
         XCTAssertEqual(RelayProtocol.decode(#"{"type":"touch","phase":"down","x":1,"y":2}"#), .unknown(#"{"type":"touch","phase":"down","x":1,"y":2}"#), "no device")
         if case .unknown = RelayProtocol.decode("garbage") {} else { XCTFail("expected unknown") }
+    }
+
+    func testProbeEchoesTimeAndViewer() {
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"probe","t":1234.5,"viewer":"v-1"}"#), .probe(t: 1234.5, viewer: "v-1"))
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"probe","t":1}"#), .unknown(#"{"type":"probe","t":1}"#), "no viewer")
+        XCTAssertEqual(RelayProtocol.decode(#"{"type":"probe","viewer":"v-1"}"#), .unknown(#"{"type":"probe","viewer":"v-1"}"#), "no time")
+        let echo = RelayProtocol.probe(t: 1234.5, viewer: "v-1")
+        XCTAssertEqual(echo, ["type": "probe", "t": 1234.5, "viewer": "v-1"])
+        XCTAssertEqual(RelayProtocol.decode(echo.encodedString()), .probe(t: 1234.5, viewer: "v-1"))
+    }
+
+    func testStatsMessage() {
+        let message = RelayProtocol.stats(key: "SIM-A", codec: .h264, fps: 29.96, pipelineMs: 12.345, pipelineP95Ms: 20.06)
+        XCTAssertEqual(message, ["type": "stats", "key": "SIM-A", "codec": "h264", "fps": 30, "pipelineMs": 12.3, "pipelineP95Ms": 20.1])
+        let touched = RelayProtocol.stats(key: "", codec: .jpeg, fps: 6, pipelineMs: 40, pipelineP95Ms: 50, touchMs: 80.04, touchP95Ms: 120)
+        XCTAssertEqual(touched["touchMs"], 80)
+        XCTAssertEqual(touched["touchP95Ms"], 120)
+        XCTAssertEqual(touched["codec"], "jpeg")
+    }
+
+    func testLatencyStats() throws {
+        var stats = LatencyStats()
+        let start = Date(timeIntervalSinceReferenceDate: 1000)
+        func at(_ ms: Double) -> Date { start.addingTimeInterval(ms / 1000) }
+        XCTAssertNil(stats.message(key: "K", codec: .h264, now: start), "no frames yet")
+
+        // Frames 10 ms and 30 ms from capture to socket.
+        stats.frameSent(capturedAt: at(0), sentAt: at(10))
+        XCTAssertNil(stats.message(key: "K", codec: .h264, now: at(10)), "less than a second")
+        stats.frameSent(capturedAt: at(500), sentAt: at(530))
+        let first = try XCTUnwrap(stats.message(key: "K", codec: .h264, now: at(1100)))
+        XCTAssertEqual(first["pipelineMs"], 20)
+        XCTAssertEqual(first["pipelineP95Ms"], 30)
+        XCTAssertEqual(first["fps"], 1.8, "2 frames in 1.09 s")
+        XCTAssertNil(first["touchMs"], "no touches yet")
+        XCTAssertNil(stats.message(key: "K", codec: .h264, now: at(1500)), "at most once a second")
+
+        // A touch at 2000 ms. A frame captured before it doesn't show it, nor does one that
+        // repeats the last picture; the next changed frame captured after it does.
+        stats.touched(at: at(2000))
+        stats.touched(at: at(2010)) // the earlier touch still counts
+        stats.frameSent(capturedAt: at(1990), sentAt: at(2020))
+        stats.frameSent(capturedAt: at(2030), sentAt: at(2040), changed: false)
+        stats.frameSent(capturedAt: at(2050), sentAt: at(2070))
+        stats.frameSent(capturedAt: at(2100), sentAt: at(2110)) // no touch pending
+        let second = try XCTUnwrap(stats.message(key: "K", codec: .h264, now: at(2110)))
+        XCTAssertEqual(second["touchMs"], 70)
+        XCTAssertEqual(second["touchP95Ms"], 70)
+        XCTAssertEqual(second["key"], "K")
+
+        // A touch that never changes the screen is dropped, not matched with a later change.
+        stats.touched(at: at(3000))
+        stats.frameSent(capturedAt: at(5500), sentAt: at(5510))
+        stats.touched(at: at(6000))
+        stats.frameSent(capturedAt: at(6000), sentAt: at(6040))
+        let third = try XCTUnwrap(stats.message(key: "K", codec: .h264, now: at(6040)))
+        XCTAssertEqual(third["touchMs"], 55, "(70 + 40) / 2")
+    }
+
+    func testPercentile() {
+        XCTAssertEqual(LatencyStats.percentile([5], 0.95), 5)
+        XCTAssertEqual(LatencyStats.percentile(Array(stride(from: 1.0, through: 100, by: 1)).shuffled(), 0.95), 95)
+        XCTAssertEqual(LatencyStats.percentile([1, 2, 3, 4], 0.5), 2)
     }
 
     func testResultShape() {
