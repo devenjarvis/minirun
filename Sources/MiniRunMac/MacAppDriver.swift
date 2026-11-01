@@ -452,9 +452,19 @@ public final class MacAppDriver {
 
     nonisolated static func makeEncoder(windowID: UInt32, scale: Double, fps: Int, bitrate: @escaping @Sendable (Int, Int) -> Int) async throws -> MacWindowEncoder {
         let window = try await shareableWindow(windowID)
-        let encoder = MacWindowEncoder(window: window, scale: scale, fps: fps, bitrate: bitrate)
+        let encoder = MacWindowEncoder(capture: MacWindowCapture(window: window, scale: scale, fps: fps), fps: fps, bitrate: bitrate)
         try await encoder.start()
         return encoder
+    }
+
+    /// A running capture of the app's window (`scale` video pixels per window pixel), for WebRTC.
+    /// Close it when done.
+    public func windowCapture(pid: Int32, window selector: MacWindowSelector = .main, scale: Double, fps: Int) async throws -> (capture: MacWindowCapture, window: MacWindowInfo) {
+        try MacPermissions.requireScreenRecording(for: "stream Mac app windows")
+        let window = try await self.window(pid: pid, selector)
+        let capture = MacWindowCapture(window: try await Self.shareableWindow(window.windowID), scale: scale, fps: fps)
+        try await capture.start()
+        return (capture, window)
     }
 
     // MARK: Accessibility

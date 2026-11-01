@@ -145,6 +145,6 @@ final class MacToolsTests: XCTestCase {
         let screen = RelayProtocol.screen(key: "mac-aaaaaa", udid: "mac-aaaaaa", name: "Fetch", kind: "mac", pointWidth: 480, pointHeight: 300, pixelWidth: 960, pixelHeight: 600)
         XCTAssertEqual(screen["kind"]?.stringValue, "mac")
         XCTAssertNil(RelayProtocol.screen(udid: "X", name: "iPhone", pointWidth: 1, pointHeight: 1, pixelWidth: 1, pixelHeight: 1)["kind"])
-        XCTAssertEqual(RelayProtocol.version, 5)
+        XCTAssertEqual(RelayProtocol.version, 6)
     }
 }

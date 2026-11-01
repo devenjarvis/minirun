@@ -6,6 +6,8 @@ import PackageDescription
 // Everything that drives simulators needs macOS plus the FBSimulatorControl frameworks, which
 // `scripts/build-frameworks.sh` builds into Vendor/ from AXe's pinned fork of idb.
 // MiniRunMac drives native macOS apps with public Apple frameworks only.
+// WebRTC (live view over a direct connection) uses a prebuilt libwebrtc from stasel/WebRTC,
+// pinned by version and checksum, so its framework is downloaded with the package.
 
 var products: [Product] = [.library(name: "MiniRunKit", targets: ["MiniRunKit"])]
 var targets: [Target] = [
@@ -39,7 +41,7 @@ targets += [
     ),
     .target(
         name: "MiniRunCore",
-        dependencies: ["MiniRunKit", "MiniRunSim", "MiniRunMac"],
+        dependencies: ["MiniRunKit", "MiniRunSim", "MiniRunMac", "WebRTC"],
         path: "Sources/MiniRunCore",
         swiftSettings: [.unsafeFlags(privateHeaderFlags)]
     ),
@@ -59,8 +61,20 @@ targets += [
             ]),
         ]
     ),
+    // Mac-only tests: WebRTC sessions against a viewer peer connection in the same process.
+    .testTarget(
+        name: "MiniRunCoreTests",
+        dependencies: ["MiniRunCore", "MiniRunKit", "MiniRunSim", "WebRTC"],
+        path: "Tests/MiniRunCoreTests",
+        swiftSettings: [.unsafeFlags(privateHeaderFlags)]
+    ),
 ]
 targets += frameworks.map { .binaryTarget(name: $0, path: "Vendor/XCFrameworks/\($0).xcframework") }
+targets.append(.binaryTarget(
+    name: "WebRTC",
+    url: "https://github.com/stasel/WebRTC/releases/download/156.0.0/WebRTC-M156.xcframework.zip",
+    checksum: "43c2a6f7a650185bbc911d7605a979589671886e8fc0ac283f54fdf3f511dc46"
+))
 #endif
 
 let package = Package(

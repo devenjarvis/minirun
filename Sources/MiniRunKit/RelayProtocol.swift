@@ -10,8 +10,9 @@ import Foundation
 /// A stream's key is the simulator UDID viewers asked for, or "" for "whichever is booted".
 public enum RelayProtocol {
     /// 4 added live touches (`touch` messages). 5 added Mac app streams: picker entries and
-    /// `screen` messages with `kind: "mac"`, keyed by the Mac app id.
-    public static let version = 5
+    /// `screen` messages with `kind: "mac"`, keyed by the Mac app id. 6 added WebRTC: `rtc`
+    /// signaling messages (see RTCSignaling.swift) and `webrtc` in `hello`.
+    public static let version = 6
 
     public enum FrameKind: UInt8, Sendable {
         case jpeg = 1
@@ -53,13 +54,15 @@ public enum RelayProtocol {
 
     /// `instance` is random per run of `minirun serve`, so the relay can tell a reconnect (which
     /// still has the calls in flight) from a restart (which lost them).
-    public static func hello(host: [String: JSONValue], tools: [ToolDefinition], instance: String) -> JSONValue {
+    /// `webrtc` says the Mac can stream to viewers over WebRTC, so the relay tells viewers to try it.
+    public static func hello(host: [String: JSONValue], tools: [ToolDefinition], instance: String, webrtc: Bool = false) -> JSONValue {
         [
             "type": "hello",
             "version": JSONValue(version),
             "instance": .string(instance),
             "host": .object(host),
             "tools": .array(tools.map(\.json)),
+            "webrtc": .bool(webrtc),
         ]
     }
 
@@ -161,6 +164,8 @@ public enum RelayProtocol {
         /// The relay's answer to `hello`: the Worker's MINIRUN_BUNDLE (the hash of the code it runs),
         /// or nil for a Worker deployed with wrangler. Older Workers don't send it.
         case welcome(bundle: String?)
+        /// WebRTC signaling for one viewer (protocol 6).
+        case rtc(RTCSignal)
         case unknown(String)
     }
 
@@ -198,6 +203,8 @@ public enum RelayProtocol {
             return .probe(t: t, viewer: viewer)
         case "welcome":
             return .welcome(bundle: message["bundle"]?.stringValue)
+        case "rtc":
+            return RTCSignal(message).map(Incoming.rtc) ?? .unknown(text)
         default:
             return .unknown(text)
         }
