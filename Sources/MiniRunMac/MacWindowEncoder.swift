@@ -294,30 +294,7 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
     private func makeSession(width: Int, height: Int) throws {
         if let session { VTCompressionSessionInvalidate(session) }
         session = nil
-        var created: VTCompressionSession?
-        try check(VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault, width: Int32(width), height: Int32(height),
-            codecType: kCMVideoCodecType_H264,
-            encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
-            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
-            compressionSessionOut: &created
-        ), "start the H.264 encoder")
-        guard let created else { throw MacDriverError("Could not start the H.264 encoder.") }
-        let properties: [CFString: CFTypeRef] = [
-            kVTCompressionPropertyKey_RealTime: NSNumber(value: true),
-            kVTCompressionPropertyKey_AllowFrameReordering: NSNumber(value: false),
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_Main_AutoLevel,
-            kVTCompressionPropertyKey_AverageBitRate: NSNumber(value: bitrate(width, height)),
-            kVTCompressionPropertyKey_ExpectedFrameRate: NSNumber(value: fps),
-            // Viewers ask for keyframes when they join or fall behind; this is only a backstop.
-            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: NSNumber(value: 10),
-        ]
-        for (key, value) in properties {
-            // Best effort: an encoder that lacks a property still produces a stream.
-            _ = VTSessionSetProperty(created, key: key, value: value)
-        }
-        VTCompressionSessionPrepareToEncodeFrames(created)
-        session = created
+        session = try H264Session.make(width: width, height: height, fps: fps, bitrate: bitrate(width, height)).session
         sessionSize = (width, height)
     }
 
@@ -359,10 +336,6 @@ public final class MacWindowEncoder: NSObject, SCStreamOutput, SCStreamDelegate,
             sourceWidth: geometry.pixels.width, sourceHeight: geometry.pixels.height,
             pointWidth: geometry.points.width, pointHeight: geometry.points.height, capturedAt: capturedAt
         )
-    }
-
-    private func check(_ status: OSStatus, _ action: String) throws {
-        guard status == noErr else { throw MacDriverError("Could not \(action) (\(status)).") }
     }
 }
 

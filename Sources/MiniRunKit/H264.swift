@@ -37,25 +37,37 @@ public enum H264 {
         return Int(min(8_000_000, max(150_000, target)))
     }
 
-    /// Adds a VUI to an SPS (NAL unit, header byte first) saying frames are never reordered:
-    /// `max_num_reorder_frames` 0 and `max_dec_frame_buffering` the reference count. VideoToolbox
-    /// leaves the VUI out, and without it decoders (Chrome's and Safari's hardware ones) hold back
-    /// as many frames as the level allows before showing any, so the live view runs ~6 frames late.
-    /// Returns the SPS unchanged if it already has a VUI or uses something this doesn't parse.
+    /// Makes an SPS (NAL unit, header byte first) say frames are never reordered: a VUI with
+    /// `max_num_reorder_frames` 0 and `max_dec_frame_buffering` the reference count. Without that,
+    /// decoders (Chrome's and Safari's hardware ones) hold back as many frames as the level allows
+    /// before showing any, so the live view runs ~6 frames late. VideoToolbox's default mode
+    /// leaves the VUI out, so this adds one; its low-latency mode writes a VUI with the restriction
+    /// already in it, which is kept as is. A VUI without the restriction gets it added. Returns the
+    /// SPS unchanged if it already has the restriction or uses something this doesn't parse.
     public static func withoutReordering(sps: Data) -> Data {
         let bytes = [UInt8](sps)
         guard bytes.count > 4, bytes[0] & 0x1f == 7 else { return sps }
         var reader = BitReader(unescape(Array(bytes[1...])))
         guard let maxNumRefFrames = readSPSUpToVUI(&reader) else { return sps }
         let vuiFlagBit = reader.position
-        guard reader.bit() == 0 else { return sps }
+        guard let hasVUI = reader.bit() else { return sps }
+        let restrictionFlagBit: Int
+        if hasVUI == 1 {
+            guard skipVUIUpToRestriction(&reader) else { return sps }
+            restrictionFlagBit = reader.position
+            guard reader.bit() == 0 else { return sps }
+        } else {
+            restrictionFlagBit = vuiFlagBit
+        }
 
-        // Copy everything before vui_parameters_present_flag, then write the new VUI.
+        // Copy everything before the flag that's 0, then write the rest of the VUI.
         var writer = BitWriter()
         var copy = BitReader(reader.bytes)
-        for _ in 0..<vuiFlagBit { writer.bit(copy.bit()!) }
-        writer.bit(1) // vui_parameters_present_flag
-        for _ in 0..<8 { writer.bit(0) } // aspect ratio, overscan, video signal, chroma loc, timing, NAL HRD, VCL HRD, pic struct
+        for _ in 0..<restrictionFlagBit { writer.bit(copy.bit()!) }
+        if hasVUI == 0 {
+            writer.bit(1) // vui_parameters_present_flag
+            for _ in 0..<8 { writer.bit(0) } // aspect ratio, overscan, video signal, chroma loc, timing, NAL HRD, VCL HRD, pic struct
+        }
         writer.bit(1) // bitstream_restriction_flag
         writer.bit(1) // motion_vectors_over_pic_boundaries_flag
         writer.ue(0) // max_bytes_per_pic_denom (no limit)
@@ -67,6 +79,40 @@ public enum H264 {
         writer.bit(1) // rbsp_stop_one_bit
         while writer.count % 8 != 0 { writer.bit(0) }
         return Data([bytes[0]] + escape(writer.bytes))
+    }
+
+    /// The `max_num_reorder_frames` an SPS declares, or nil if it declares none (or this can't
+    /// parse it). Decoders only show frames straight away when this is 0.
+    static func maxNumReorderFrames(sps: Data) -> Int? {
+        let bytes = [UInt8](sps)
+        guard bytes.count > 4, bytes[0] & 0x1f == 7 else { return nil }
+        var r = BitReader(unescape(Array(bytes[1...])))
+        guard readSPSUpToVUI(&r) != nil, r.bit() == 1, skipVUIUpToRestriction(&r), r.bit() == 1 else { return nil }
+        guard r.bit() != nil, r.ue() != nil, r.ue() != nil, r.ue() != nil, r.ue() != nil else { return nil }
+        return r.ue()
+    }
+
+    /// Reads a VUI from just after vui_parameters_present_flag up to, not including,
+    /// bitstream_restriction_flag. False if it has HRD parameters (not parsed here) or ends early.
+    private static func skipVUIUpToRestriction(_ r: inout BitReader) -> Bool {
+        guard let aspectRatio = r.bit() else { return false }
+        if aspectRatio == 1 {
+            guard let idc = r.bits(8) else { return false }
+            if idc == 255 { guard r.bits(32) != nil else { return false } } // Extended_SAR
+        }
+        guard let overscan = r.bit() else { return false }
+        if overscan == 1 { guard r.bit() != nil else { return false } }
+        guard let videoSignal = r.bit() else { return false }
+        if videoSignal == 1 {
+            guard r.bits(4) != nil, let colour = r.bit() else { return false } // video_format, full_range
+            if colour == 1 { guard r.bits(24) != nil else { return false } }
+        }
+        guard let chromaLocation = r.bit() else { return false }
+        if chromaLocation == 1 { guard r.ue() != nil, r.ue() != nil else { return false } }
+        guard let timing = r.bit() else { return false }
+        if timing == 1 { guard r.bits(32) != nil, r.bits(32) != nil, r.bit() != nil else { return false } }
+        guard r.bit() == 0, r.bit() == 0 else { return false } // NAL and VCL HRD parameters
+        return r.bit() != nil // pic_struct_present_flag
     }
 
     /// Reads an SPS RBSP (after the NAL header) up to, not including, vui_parameters_present_flag.

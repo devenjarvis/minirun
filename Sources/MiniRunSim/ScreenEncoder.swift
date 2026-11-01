@@ -5,6 +5,7 @@ import IOSurface
 import VideoToolbox
 import FBControlCore
 import FBSimulatorControl
+import MiniRunKit
 
 /// Encodes a simulator's screen as H.264 with VideoToolbox (the hardware encoder when there is
 /// one). Frames come straight from the simulator's framebuffer, an IOSurface, so there's no PNG
@@ -208,29 +209,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         let encodedWidth = max(16, Int(Double(width) * scale) & ~1)
         let encodedHeight = max(16, Int(Double(height) * scale) & ~1)
 
-        var created: VTCompressionSession?
-        try check(VTCompressionSessionCreate(
-            allocator: kCFAllocatorDefault, width: Int32(encodedWidth), height: Int32(encodedHeight),
-            codecType: kCMVideoCodecType_H264,
-            encoderSpecification: [kVTVideoEncoderSpecification_EnableHardwareAcceleratedVideoEncoder: true] as CFDictionary,
-            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil, refcon: nil,
-            compressionSessionOut: &created
-        ), "start the H.264 encoder")
-        guard let created else { throw SimulatorDriver.DriverError(message: "Could not start the H.264 encoder.") }
-        let properties: [CFString: CFTypeRef] = [
-            kVTCompressionPropertyKey_RealTime: NSNumber(value: true),
-            kVTCompressionPropertyKey_AllowFrameReordering: NSNumber(value: false),
-            kVTCompressionPropertyKey_ProfileLevel: kVTProfileLevel_H264_Main_AutoLevel,
-            kVTCompressionPropertyKey_AverageBitRate: NSNumber(value: bitrate(encodedWidth, encodedHeight)),
-            kVTCompressionPropertyKey_ExpectedFrameRate: NSNumber(value: fps),
-            // Viewers ask for keyframes when they join or fall behind; this is only a backstop.
-            kVTCompressionPropertyKey_MaxKeyFrameIntervalDuration: NSNumber(value: 10),
-        ]
-        for (key, value) in properties {
-            // Best effort: an encoder that lacks a property still produces a stream.
-            _ = VTSessionSetProperty(created, key: key, value: value)
-        }
-        VTCompressionSessionPrepareToEncodeFrames(created)
+        let created = try H264Session.make(
+            width: encodedWidth, height: encodedHeight, fps: fps, bitrate: bitrate(encodedWidth, encodedHeight)
+        ).session
 
         var createdTransfer: VTPixelTransferSession?
         try check(VTPixelTransferSessionCreate(allocator: kCFAllocatorDefault, pixelTransferSessionOut: &createdTransfer), "start the video scaler")
