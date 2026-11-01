@@ -505,6 +505,22 @@ public enum MediaSharing {
         }
     }
 
+    /// How big a recording's GIF can be on GitHub. A GIF on the media branch is served by
+    /// github.com itself, not through GitHub's image proxy, so the Worker's inline limit doesn't
+    /// apply; this keeps PRs quick to load. It's the same as GitHub's own limit for GIFs
+    /// attached to comments.
+    public static let githubGIFLimitBytes = 10 * 1_048_576
+
+    /// The largest GIF to make for a recording headed wherever `destination` would send it.
+    public static func gifLimitBytes(
+        label: String?, config: MiniRunConfig, branches: GitHubMediaBranches = .shared, gh: GHCommand = GitHubMedia.defaultGH
+    ) async -> Int {
+        switch await destination(label: label, config: config, branches: branches, gh: gh) {
+        case .github: return max(githubGIFLimitBytes, config.mediaInlineLimitBytes)
+        case .worker: return config.mediaInlineLimitBytes
+        }
+    }
+
     /// `screenshot {share}` and `stop_recording {share}`: to the repo's media branch when it has
     /// one, else to the Worker. Returns the text for the agent. `files` is the jpg for a
     /// screenshot, or the mp4 and gif for a recording (GitHub gets only the gif, which renders inline).
