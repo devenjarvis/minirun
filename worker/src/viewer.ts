@@ -45,6 +45,11 @@ footer { display: flex; gap: 8px; align-items: center; padding: 10px 14px calc(e
 footer button { flex: 0 0 auto; padding: 10px 12px; font-size: 14px; }
 footer form { flex: 1; display: flex; gap: 8px; min-width: 0; }
 footer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: #0f1115; color: var(--text); font-size: 16px; }
+.readout { position: absolute; top: 8px; left: 8px; z-index: 2; padding: 6px 8px; border-radius: 8px; background: rgba(0,0,0,.72); color: #d7dae0;
+  font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre; pointer-events: none; }
+.readout[hidden] { display: none; }
+.stats-toggle { flex: 0 0 auto; padding: 3px 8px; font-size: 11px; border-radius: 999px; }
+.stats-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); background: #1d2027; color: var(--text); font-size: 14px; }
 </style>
 </head>
@@ -52,6 +57,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 <header>
   <div class="mark"><i></i>minirun</div>
   <span id="status" class="pill"><i></i><span>Connecting…</span></span>
+  <button id="statsToggle" class="stats-toggle" type="button" title="Latency readout" aria-pressed="false">ms</button>
   <span id="device" class="device"></span>
   <select id="sim" class="sim" title="Simulator or Mac app" hidden></select>
 </header>
@@ -61,6 +67,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     <canvas id="video" hidden></canvas>
     <div id="overlay" class="overlay">Connecting…</div>
   </div>
+  <div id="readout" class="readout" hidden></div>
 </main>
 <footer>
   <button id="home" type="button" title="Home">Home</button>
@@ -105,6 +112,86 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     statusEl.lastElementChild.textContent = text;
   }
   function showOverlay(text) { overlay.textContent = text; overlay.hidden = !text; }
+
+  // The latency readout (?stats=1, or the "ms" button; remembered). It shows whatever it's given
+  // through readout.update, so every transport feeds it the same fields, in ms unless noted:
+  // transport ("ws h264", "ws jpeg"), rtt (viewer ↔ Mac), mac and macP95 (capture → socket on the
+  // Mac), macFps, view (frame received → drawn), fps and kbps (as drawn and received here), and
+  // touch and touchP95 (a live touch reaching the Mac → the next changed frame sent).
+  const readoutEl = $("readout"), statsToggle = $("statsToggle");
+  const readout = {
+    on: false,
+    fields: {},
+    update(fields) { Object.assign(this.fields, fields); if (this.on) this.render(); },
+    reset() { this.fields = {}; if (this.on) this.render(); },
+    render() {
+      const f = this.fields, num = (v) => typeof v === "number" && Number.isFinite(v);
+      const ms = (v) => num(v) ? Math.round(v) + " ms" : "–";
+      const p95 = (v) => num(v) ? "  p95 " + Math.round(v) : "";
+      const row = (label, value) => label.padEnd(13) + value;
+      const lines = [
+        [f.transport || "–", num(f.fps) ? Math.round(f.fps) + " fps" + (num(f.macFps) ? " (Mac " + Math.round(f.macFps) + ")" : "") : "", num(f.kbps) ? Math.round(f.kbps) + " kbps" : ""].filter(Boolean).join(" · "),
+        row("RTT", ms(f.rtt)),
+        row("Mac", ms(f.mac) + p95(f.macP95)),
+        row("Viewer", ms(f.view)),
+        row("Touch (Mac)", ms(f.touch) + p95(f.touchP95)),
+        // A frame: the Mac's pipeline, half the round trip, then the viewer. A touch: half the
+        // round trip there, the Mac's touch time (which includes its pipeline), half back, the viewer.
+        row("Frame total", num(f.mac) && num(f.rtt) && num(f.view) ? "≈ " + ms(f.mac + f.rtt / 2 + f.view) : "–"),
+        row("Touch total", num(f.touch) && num(f.rtt) && num(f.view) ? "≈ " + ms(f.rtt + f.touch + f.view) : "–"),
+      ];
+      readoutEl.textContent = lines.join("\\n");
+    },
+  };
+  // The Mac's figures for the stream on screen (a "stats" message).
+  function macStats(m) {
+    if ((m.key || "") !== wanted) return;
+    readout.update({ mac: m.pipelineMs, macP95: m.pipelineP95Ms, macFps: m.fps, touch: m.touchMs, touchP95: m.touchP95Ms });
+  }
+  // The round trip to the Mac and back: "probe" carries this page's clock, which the Mac echoes.
+  function probe() { send({ type: "probe", t: performance.now() }); }
+  function probeAnswered(m) { if (typeof m.t === "number") readout.update({ rtt: performance.now() - m.t }); }
+
+  // The WebSocket stream's own figures: when each frame arrived (by sequence number), when it
+  // was drawn, and the bytes received, summed up once a second.
+  const meter = { bytes: 0, drawn: 0, waits: [], since: performance.now(), received: new Map(), timer: null };
+  function frameReceived(seq, bytes) {
+    meter.bytes += bytes;
+    // Sequence numbers start again when the Mac restarts a stream; old ones are never drawn.
+    if (meter.received.size > 200) meter.received.clear();
+    meter.received.set(seq, performance.now());
+  }
+  function frameDrawn(seq) {
+    const t = meter.received.get(seq);
+    // Frames skipped on the way (a newer JPEG came first, or H.264 waiting for a keyframe) go too.
+    for (const s of meter.received.keys()) { if (s > seq) break; meter.received.delete(s); }
+    meter.drawn++;
+    if (t !== undefined) meter.waits.push(performance.now() - t);
+  }
+  function meterTick() {
+    const now = performance.now(), seconds = Math.max(0.001, (now - meter.since) / 1000);
+    const fields = { transport: "ws " + codec, fps: meter.drawn / seconds, kbps: meter.bytes * 8 / 1000 / seconds };
+    // A still screen draws nothing; keep the last time rather than show none.
+    if (meter.waits.length) fields.view = meter.waits.reduce((a, b) => a + b, 0) / meter.waits.length;
+    meter.bytes = 0; meter.drawn = 0; meter.waits = []; meter.since = now;
+    readout.update(fields);
+    probe();
+  }
+  function showReadout(on) {
+    readout.on = on;
+    readoutEl.hidden = !on;
+    statsToggle.setAttribute("aria-pressed", String(on));
+    clearInterval(meter.timer);
+    meter.timer = null;
+    if (!on) return;
+    meter.bytes = 0; meter.drawn = 0; meter.waits = []; meter.since = performance.now();
+    meter.timer = setInterval(meterTick, 1000);
+    readout.render();
+    probe();
+  }
+  const statsParam = new URLSearchParams(location.search).get("stats");
+  if (statsParam === "1" || statsParam === "0") store.set("minirun.stats", statsParam);
+  statsToggle.onclick = () => { const on = !readout.on; store.set("minirun.stats", on ? "1" : "0"); showReadout(on); };
 
   function connect() {
     const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/viewer/ws" + (wanted ? "?device=" + encodeURIComponent(wanted) : "");
@@ -178,6 +265,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
     history.replaceState(null, "", url);
     screen = null; live = false; pendingFrame = null; video.needKeyframe = true;
+    readout.reset();
     applyMode();
     setStatus("", "Switching…"); showOverlay(mac ? "Opening the app window…" : "Switching simulator…");
     sendStream();
@@ -210,7 +298,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       if ((m.key || "") !== wanted) return;
       if (m.status === "live") { live = true; setStatus("live", "Live"); showOverlay(""); }
       else if (m.status === "error") { setStatus("offline", "Stream error"); showOverlay(m.message || "The " + noun() + " stream failed."); }
-    }
+    } else if (m.type === "stats") macStats(m);
+    else if (m.type === "probe") probeAnswered(m);
   }
 
   function onFrame(buffer) {
@@ -225,6 +314,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     } else if (bytes[0] !== 1) return;
     if (key !== wanted) return; // a frame from before we switched simulators
     const seq = new DataView(buffer).getUint32(1);
+    frameReceived(seq, bytes.length);
     if (bytes[0] === 3) { onVideo(seq, (bytes[start] & 1) === 1, bytes.subarray(start + 1)); return; }
     pendingFrame = { seq, blob: new Blob([bytes.subarray(start)], { type: "image/jpeg" }) };
     if (!decoding) showNext();
@@ -286,6 +376,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     }
     canvas.getContext("2d").drawImage(frame, 0, 0, canvas.width, canvas.height);
     frame.close();
+    frameDrawn(seq);
     video.errors = 0;
     showSurface(canvas);
     if (!live) { live = true; setStatus("live", "Live"); showOverlay(""); }
@@ -312,6 +403,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     img.onload = () => {
       if (currentURL) URL.revokeObjectURL(currentURL);
       currentURL = url;
+      frameDrawn(seq);
       showSurface(img);
       if (!live) { live = true; setStatus("live", "Live"); showOverlay(""); }
       if (!screen) screenEl.style.setProperty("--ratio", String(img.naturalWidth / img.naturalHeight));
@@ -514,6 +606,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     else if (!document.hidden && (!ws || ws.readyState > 1)) connect();
   });
 
+  showReadout(store.get("minirun.stats") === "1");
   detectH264().then((supported) => { codec = supported ? "h264" : "jpeg"; connect(); });
 })();
 </script>

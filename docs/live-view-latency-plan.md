@@ -73,6 +73,36 @@ The total is about Mac pipeline + RTT/2 + viewer time. Phase 1 reports the same 
 `RTCPeerConnection.getStats()` (`roundTripTime`, `jitterBufferDelay`, `totalDecodeTime`,
 `framesPerSecond`), so the WebSocket path and WebRTC can be compared directly.
 
+As built (protocol stays 5; the binary frame format is unchanged):
+
+- **Viewer ids.** The relay gives each viewer socket a random `viewer` id in its attachment
+  (the one protocol 6 uses). A socket from before ids existed gets one when it first needs it.
+- **Probe.** Viewer → relay: `{type: "probe", t}` (`t` is the page's `performance.now()`; a
+  probe without a finite number is dropped). Relay → Mac: `{type: "probe", t, viewer}`. Mac →
+  relay: the same, straight back. Relay → that viewer only: `{type: "probe", t}`. A Mac older
+  than this ignores probes, and the readout shows no RTT.
+- **Stats.** Mac → relay → the stream's viewers: `{type: "stats", key, codec, fps, pipelineMs,
+  pipelineP95Ms, touchMs?, touchP95Ms?}`, in ms rounded to 0.1. `codec` is `"h264"` or `"jpeg"`,
+  `fps` is frames sent per second. Pipeline figures cover the last 60 frames, touch figures the
+  last 20 touches that changed the screen (left out until there is one). Sent at most once a
+  second, and only when a frame was sent, so a still screen sends nothing (`LatencyStats` in
+  MiniRunKit).
+- **Capture time.** Simulators (H.264): the first framebuffer damage since the last frame, so
+  the figure includes waiting for the frame interval (`ScreenEncoder.Frame.capturedAt`). Mac
+  windows (H.264): when ScreenCaptureKit delivered the frame (`MacWindowEncoder.Frame.capturedAt`).
+  JPEG: just before the screenshot. A keyframe of an unchanged screen counts from when it's
+  encoded.
+- **Touch to screen.** From the Mac decoding a `touch` message to sending the next frame that
+  was captured after it and shows a change (JPEG frames with the same bytes as the last one
+  don't count). A touch with no such frame within 2 s is dropped.
+- **Viewer.** `?stats=1` turns the readout on and `?stats=0` off. Either is remembered in
+  `localStorage` (`minirun.stats`), as is the "ms" button in the header. While it's on, the page
+  probes once a second. The readout takes its numbers from `readout.update({transport, rtt, mac,
+  macP95, macFps, view, fps, kbps, touch, touchP95})`, so WebRTC can feed it from `getStats()`;
+  `macStats(m)` and `probeAnswered(m)` take the Mac's `stats` and `probe` messages from whichever
+  channel they came on. It shows "Frame total ≈ mac + rtt/2 + view" and "Touch total ≈ rtt +
+  touch + view".
+
 ## Phase 1: WebRTC (`claude/webrtc-mac` + `claude/webrtc-viewer`)
 
 The Durable Object becomes the signaling channel. Media and input go directly between the Mac

@@ -542,6 +542,82 @@ describe("minirun worker", () => {
     old.ws.close();
     agent.close();
   });
+
+  it("echoes a viewer's probe to that viewer only, and sends each stream's stats to its viewers", async () => {
+    const form = new FormData();
+    form.set("password", "test-password");
+    const login = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
+    const agent = (await connectAgent()) as WebSocket;
+    agent.send(JSON.stringify({ type: "hello", version: 5, host: { name: "Test Mac" }, tools: [] }));
+    await new Promise((r) => setTimeout(r, 50));
+
+    async function openViewer(device: string) {
+      const response = await SELF.fetch(`${ORIGIN}/viewer/ws?device=${device}`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+      const ws = response.webSocket!;
+      const texts: Array<{ type: string; [key: string]: unknown }> = [];
+      ws.addEventListener("message", (event) => {
+        if (typeof event.data === "string") texts.push(JSON.parse(event.data));
+      });
+      ws.accept();
+      return { ws, of: (type: string) => texts.filter((m) => m.type === type) };
+    }
+    const settle = () => new Promise((r) => setTimeout(r, 100));
+    const a = await openViewer("SIM-A");
+    const b = await openViewer("SIM-A");
+    const c = await openViewer("SIM-B");
+
+    // The relay tags each probe with the viewer it came from; nothing else from the page passes.
+    const fromA = nextMessage(agent, (d) => d.includes('"probe"'));
+    a.ws.send(JSON.stringify({ type: "probe", t: 1234.5, viewer: "spoofed" }));
+    const probeA = JSON.parse(await fromA);
+    expect(probeA).toMatchObject({ type: "probe", t: 1234.5 });
+    expect(typeof probeA.viewer).toBe("string");
+    expect(probeA.viewer).not.toBe("spoofed");
+    const fromB = nextMessage(agent, (d) => d.includes('"probe"'));
+    b.ws.send(JSON.stringify({ type: "probe", t: 99 }));
+    const probeB = JSON.parse(await fromB);
+    expect(probeB.viewer).not.toBe(probeA.viewer);
+
+    // Switching streams keeps a viewer's id.
+    b.ws.send(JSON.stringify({ type: "stream", device: "SIM-A", fps: 6, quality: 45, scale: 0.33 }));
+    await settle();
+    const again = nextMessage(agent, (d) => d.includes('"probe"'));
+    b.ws.send(JSON.stringify({ type: "probe", t: 100 }));
+    expect(JSON.parse(await again).viewer).toBe(probeB.viewer);
+
+    // A probe without a usable time doesn't reach the Mac.
+    let stray = 0;
+    const count = (event: MessageEvent) => { if (typeof event.data === "string" && event.data.includes('"probe"')) stray++; };
+    agent.addEventListener("message", count);
+    a.ws.send(JSON.stringify({ type: "probe", t: "soon" }));
+    await settle();
+    agent.removeEventListener("message", count);
+    expect(stray).toBe(0);
+
+    // The Mac's echo goes to the viewer it names, and only that one. An unknown id goes nowhere.
+    agent.send(JSON.stringify({ type: "probe", t: 1234.5, viewer: probeA.viewer }));
+    agent.send(JSON.stringify({ type: "probe", t: 7, viewer: "nobody" }));
+    agent.send(JSON.stringify({ type: "probe", t: 8 }));
+    await settle();
+    expect(a.of("probe")).toEqual([{ type: "probe", t: 1234.5 }]);
+    expect(b.of("probe")).toEqual([]);
+    expect(c.of("probe")).toEqual([]);
+
+    // Stats reach the viewers of their stream only.
+    const stats = { type: "stats", key: "SIM-A", codec: "h264", fps: 30, pipelineMs: 12.3, pipelineP95Ms: 20.1, touchMs: 48, touchP95Ms: 70 };
+    agent.send(JSON.stringify(stats));
+    agent.send(JSON.stringify({ ...stats, key: "SIM-B", pipelineMs: 40 }));
+    await settle();
+    expect(a.of("stats")).toEqual([stats]);
+    expect(b.of("stats")).toEqual([stats]);
+    expect(c.of("stats")).toEqual([{ ...stats, key: "SIM-B", pipelineMs: 40 }]);
+
+    a.ws.close();
+    b.ws.close();
+    c.ws.close();
+    agent.close();
+  });
 });
 
 describe("compareVersions", () => {

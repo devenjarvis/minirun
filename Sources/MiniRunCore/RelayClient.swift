@@ -249,11 +249,18 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             guard SimulatorDriver.TouchPhase(rawValue: phase) != nil else { break }
             let log = self.log
             let streamer = self.streamer!
+            let arrived = Date()
             Task {
+                // For the latency readout's touch → screen time.
+                await streamer.touched(device: udid, at: arrived)
                 await touches.add(TouchQueue.Event(udid: udid, phase: phase, x: x, y: y), log: log) { key, message in
                     await streamer.inputFailed(key: key, message: message)
                 }
             }
+        case .probe(let t, let viewer):
+            // Answered straight away, so the round trip it times is the network and the relay
+            // (and any frames queued on the same sockets).
+            Task { await send(.string(RelayProtocol.probe(t: t, viewer: viewer).encodedString())) }
         case .welcome(let bundle):
             stateLock.withLock { state.workerBundle = bundle }
         case .unknown:

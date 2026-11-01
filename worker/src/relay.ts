@@ -36,6 +36,11 @@ interface StreamSettings {
 interface ViewerState extends StreamSettings {
   /** The simulator UDID or Mac app id the viewer asked for, or "" for whichever simulator is booted. */
   key: string;
+  /**
+   * A random id for this viewer socket, so the Mac's answers to it (probes) reach only it.
+   * Sockets accepted before ids existed get one when they first need it.
+   */
+  viewer?: string;
 }
 
 /**
@@ -229,7 +234,7 @@ export class MacRelay extends DurableObject<Env> {
     } else {
       const key = streamKey(new URL(request.url).searchParams.get("device")) ?? "";
       this.ctx.acceptWebSocket(server, ["viewer"]);
-      server.serializeAttachment({ key, ...DEFAULT_STREAM } satisfies ViewerState);
+      server.serializeAttachment({ key, viewer: crypto.randomUUID(), ...DEFAULT_STREAM } satisfies ViewerState);
       this.viewerFrames.set(server, newFlow());
       this.ctx.waitUntil(this.greetViewer(server));
     }
@@ -251,6 +256,15 @@ export class MacRelay extends DurableObject<Env> {
   private viewerState(ws: WebSocket): ViewerState {
     // Attachments from before a setting existed get its default.
     return { key: "", ...DEFAULT_STREAM, ...(ws.deserializeAttachment() as Partial<ViewerState> | null) };
+  }
+
+  /** This viewer's id, giving it one if it has none yet. */
+  private viewerId(ws: WebSocket): string {
+    const state = this.viewerState(ws);
+    if (state.viewer) return state.viewer;
+    const viewer = crypto.randomUUID();
+    ws.serializeAttachment({ ...state, viewer } satisfies ViewerState);
+    return viewer;
   }
 
   private async greetViewer(ws: WebSocket) {
@@ -355,8 +369,17 @@ export class MacRelay extends DurableObject<Env> {
         break;
       }
       case "stream_status":
+      // The Mac's latency figures for one stream, about once a second (for the viewer's readout).
+      case "stats":
         this.broadcast(text, streamKey(message.key) ?? "");
         break;
+      case "probe": {
+        // The Mac's echo of a viewer's probe goes back to that viewer only.
+        const viewer = typeof message.viewer === "string" && message.viewer ? message.viewer : null;
+        const target = viewer ? this.viewers().find((ws) => this.viewerState(ws).viewer === viewer) : undefined;
+        if (target) safeSend(target, JSON.stringify({ type: "probe", t: message.t }));
+        break;
+      }
       case "simulators":
         await this.ctx.storage.put("simulators", Array.isArray(message.devices) ? message.devices : []);
         this.broadcast(text);
@@ -427,6 +450,13 @@ export class MacRelay extends DurableObject<Env> {
         this.agent()?.send(JSON.stringify({ type: "ack", seq, key: this.viewerState(ws).key }));
         break;
       }
+      case "probe": {
+        // A round trip to the Mac and back, for the viewer's latency readout. `t` is the viewer's
+        // own clock; only the viewer reads it.
+        if (typeof message.t !== "number" || !Number.isFinite(message.t)) return;
+        this.agent()?.send(JSON.stringify({ type: "probe", t: message.t, viewer: this.viewerId(ws) }));
+        break;
+      }
       case "keyframe": {
         // The viewer's decoder lost its place (e.g. after an error).
         const state = this.viewerFrames.get(ws);
@@ -465,6 +495,7 @@ export class MacRelay extends DurableObject<Env> {
         const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
         const state: ViewerState = {
           key,
+          viewer: this.viewerId(ws),
           fps: clamp(Number(message.fps) || DEFAULT_STREAM.fps, 1, 30),
           quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
           scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),

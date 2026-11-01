@@ -27,6 +27,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         /// The simulator's screen in pixels, before scaling.
         public let sourceWidth: Int
         public let sourceHeight: Int
+        /// When the change this frame shows was first reported (the earliest framebuffer damage
+        /// since the last frame), or when the screen was read if none was. For the latency readout.
+        public let capturedAt: Date
     }
 
     private let source: Source
@@ -39,6 +42,8 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     private var surface: IOSurface?
     /// The simulator reported damage that no `waitForChange` has picked up yet.
     private var changePending = false
+    /// The first damage since `encode` last read the screen.
+    private var damagedAt: Date?
     private var changeWaiter: (id: Int, continuation: CheckedContinuation<Void, Never>)?
     private var waiterCount = 0
 
@@ -78,7 +83,9 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     }
 
     private func signalChange() {
+        let now = Date()
         lock.lock()
+        if damagedAt == nil { damagedAt = now }
         let waiter = changeWaiter
         changeWaiter = nil
         if waiter == nil { changePending = true }
@@ -118,14 +125,18 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
     /// frame (unless `forceKeyframe`), or before the simulator has delivered its first surface.
     public func encode(forceKeyframe: Bool) async throws -> Frame? {
         let current: IOSurface?
+        var damaged: Date?
         switch source {
         case .framebuffer:
             lock.lock()
             current = surface
+            damaged = damagedAt
+            damagedAt = nil
             lock.unlock()
         case .displays(let displays):
             current = displays.currentSurface()
         }
+        let capturedAt = damaged ?? Date()
         guard let current else { return nil }
         let seed = current.seed
         var keyframe = forceKeyframe
@@ -166,7 +177,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
                 } else if flags.contains(.frameDropped) || sample == nil {
                     once.resume(.success(nil))
                 } else {
-                    once.resume(.success(Self.frame(from: sample!, sourceWidth: width, sourceHeight: height)))
+                    once.resume(.success(Self.frame(from: sample!, sourceWidth: width, sourceHeight: height, capturedAt: capturedAt)))
                 }
             }
             if status != noErr {
@@ -240,7 +251,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         sourceSize = (width, height)
     }
 
-    private static func frame(from sample: CMSampleBuffer, sourceWidth: Int, sourceHeight: Int) -> Frame? {
+    private static func frame(from sample: CMSampleBuffer, sourceWidth: Int, sourceHeight: Int, capturedAt: Date) -> Frame? {
         let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
         let isKeyframe = !((attachments?.first?[kCMSampleAttachmentKey_NotSync as String] as? Bool) ?? false)
 
@@ -275,7 +286,7 @@ public final class ScreenEncoder: NSObject, FBFramebufferConsumer, @unchecked Se
         guard status == kCMBlockBufferNoErr else { return nil }
         return Frame(
             nalUnits: data, lengthSize: Int(lengthSize), parameterSets: parameterSets, isKeyframe: isKeyframe,
-            sourceWidth: sourceWidth, sourceHeight: sourceHeight
+            sourceWidth: sourceWidth, sourceHeight: sourceHeight, capturedAt: capturedAt
         )
     }
 

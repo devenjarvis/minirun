@@ -22,6 +22,9 @@ actor FrameStreamer {
         var lastAcked: UInt32 = 0
         var lastAckTime = Date()
         var wantsKeyframe = true
+        /// The simulator UDID or Mac app id on screen, which live touches name.
+        var device: String?
+        var stats = LatencyStats()
 
         init(_ request: RelayProtocol.StreamRequest) {
             self.request = request
@@ -90,6 +93,19 @@ actor FrameStreamer {
 
     private func isStreaming(_ stream: Stream, key: String) -> Bool { streams[key] === stream }
 
+    /// A live touch for `device` reached the Mac, for its streams' touch → screen time.
+    func touched(device: String, at time: Date) {
+        for stream in streams.values where stream.device == device { stream.stats.touched(at: time) }
+    }
+
+    /// Records a frame that just went to the socket, and about once a second tells the stream's
+    /// viewers the latency figures (`stats`).
+    private func frameSent(_ stream: Stream, codec: RelayProtocol.Codec, capturedAt: Date, changed: Bool = true) async {
+        let now = Date()
+        stream.stats.frameSent(capturedAt: capturedAt, sentAt: now, changed: changed)
+        if let message = stream.stats.message(key: stream.request.key, codec: codec, now: now) { await sendText(message) }
+    }
+
     func ack(_ sequence: UInt32, key: String) {
         // An ack past the last frame sent is for an earlier stream (this one restarted, or the Mac
         // reconnected while the viewer stayed open). Counting it would make every later frame
@@ -119,6 +135,7 @@ actor FrameStreamer {
         }
         // Someone is watching, so idle shutdown leaves this simulator alone until they stop.
         await registry.activity.begin(device.udid)
+        stream.device = device.udid
         var streamedVideo = false
         if settings.codec == .h264 { streamedVideo = await runVideo(stream, device: device) }
         if !streamedVideo { await runJPEG(stream, device: device) }
@@ -131,6 +148,7 @@ actor FrameStreamer {
         let key = settings.key
         var announced = false
         var failures = 0
+        var lastJPEG: Data?
         let interval = 1.0 / Double(settings.fps)
         while !Task.isCancelled {
             let started = Date()
@@ -140,6 +158,7 @@ actor FrameStreamer {
                 continue
             }
             do {
+                let capturedAt = Date()
                 let shot = try await SimulatorDriver.shared.screenshotJPEG(udid: device.udid, scale: settings.scale, quality: settings.quality)
                 if !announced {
                     let size = await registry.geometry.pointSize(udid: device.udid)
@@ -157,6 +176,9 @@ actor FrameStreamer {
                 if Task.isCancelled { break }
                 stream.sequence &+= 1
                 await sendFrame(RelayProtocol.encodeFrame(key: key, sequence: stream.sequence, payload: shot.data))
+                // The same picture encodes to the same bytes, so this tells which frames show a change.
+                await frameSent(stream, codec: .jpeg, capturedAt: capturedAt, changed: shot.data != lastJPEG)
+                lastJPEG = shot.data
                 failures = 0
             } catch {
                 failures += 1
@@ -219,6 +241,7 @@ actor FrameStreamer {
                     if frame.isKeyframe { stream.wantsKeyframe = false }
                     stream.sequence &+= 1
                     await sendFrame(RelayProtocol.encodeVideoFrame(key: key, sequence: stream.sequence, keyframe: frame.isKeyframe, payload: payload))
+                    await frameSent(stream, codec: .h264, capturedAt: frame.capturedAt)
                     sent = true
                 }
                 failures = 0
@@ -255,6 +278,7 @@ actor FrameStreamer {
         let key = stream.request.key
         // Someone is watching, so idle quitting leaves this app alone until they stop.
         await registry.activity.begin(key)
+        stream.device = key
         var lastError: String?
         while !Task.isCancelled {
             let session: MacAppSession
@@ -342,6 +366,7 @@ actor FrameStreamer {
                     if frame.isKeyframe { stream.wantsKeyframe = false }
                     stream.sequence &+= 1
                     await sendFrame(RelayProtocol.encodeVideoFrame(key: key, sequence: stream.sequence, keyframe: frame.isKeyframe, payload: payload))
+                    await frameSent(stream, codec: .h264, capturedAt: frame.capturedAt)
                     sent = true
                 }
                 failures = 0
@@ -368,6 +393,7 @@ actor FrameStreamer {
         let key = settings.key
         var announced: MacScreen?
         var failures = 0
+        var lastJPEG: Data?
         let interval = 1.0 / Double(settings.fps)
         while !Task.isCancelled {
             let started = Date()
@@ -376,6 +402,7 @@ actor FrameStreamer {
                 continue
             }
             do {
+                let capturedAt = Date()
                 // `scale` is relative to the window's pixels, two per point on a Retina display.
                 let shot = try await MacAppDriver.shared.screenshotJPEG(pid: pid, window: .main, scale: settings.scale * 2, quality: settings.quality)
                 // Each frame shows the main window as of now; the viewer's input follows it.
@@ -392,6 +419,8 @@ actor FrameStreamer {
                 if Task.isCancelled { break }
                 stream.sequence &+= 1
                 await sendFrame(RelayProtocol.encodeFrame(key: key, sequence: stream.sequence, payload: shot.data))
+                await frameSent(stream, codec: .jpeg, capturedAt: capturedAt, changed: shot.data != lastJPEG)
+                lastJPEG = shot.data
                 failures = 0
             } catch {
                 failures += 1
