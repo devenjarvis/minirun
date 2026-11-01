@@ -4,6 +4,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import FBControlCore
 import FBSimulatorControl
+import OSLog
 
 /// In-process simulator control built on FBSimulatorControl, using AXe's vendored helpers for
 /// HID input, accessibility and orientation handling (see AXe/LICENSE-AXe).
@@ -51,6 +52,9 @@ public final class SimulatorDriver {
     }
 
     private let logger = AxeLogger()
+    /// Live touch timings, at debug level. To watch them:
+    /// `log stream --level debug --predicate 'subsystem == "dev.minirun" AND category == "touch"'`
+    private static let touchLog = Logger(subsystem: "dev.minirun", category: "touch")
     private var didSetup = false
     private var simulatorSet: FBSimulatorSet?
 
@@ -202,8 +206,12 @@ public final class SimulatorDriver {
     public func touch(udid: String, phase: TouchPhase, x: Double, y: Double) async throws {
         // A move or up with nothing held is left over from a touch that already failed.
         if phase != .down && heldTouches[udid] == nil { return }
+        let clock = ContinuousClock()
+        let start = clock.now
         let target = try await simulator(udid)
+        let found = clock.now
         let point = try await physicalPoints([(x, y)], udid: udid, simulator: target)[0]
+        let mapped = clock.now
         heldTouches[udid] = phase == .up ? nil : point
         do {
             // The HID treats another touch-down at a new point as the finger moving there.
@@ -212,6 +220,15 @@ public final class SimulatorDriver {
             heldTouches[udid] = nil
             throw error
         }
+        let sent = clock.now
+        let total = Self.milliseconds(sent - start), lookup = Self.milliseconds(found - start)
+        let map = Self.milliseconds(mapped - found), send = Self.milliseconds(sent - mapped)
+        Self.touchLog.debug("live touch \(phase.rawValue, privacy: .public): \(total, privacy: .public) ms (simulator \(lookup, privacy: .public), map \(map, privacy: .public), send \(send, privacy: .public))")
+    }
+
+    private nonisolated static func milliseconds(_ duration: Duration) -> String {
+        let (seconds, attoseconds) = duration.components
+        return String(format: "%.2f", Double(seconds) * 1000 + Double(attoseconds) / 1e15)
     }
 
     /// Lifts any live touch still held, e.g. when the viewer that started it goes away.
