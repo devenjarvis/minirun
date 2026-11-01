@@ -38,6 +38,11 @@ open ports, and no tunnel to run.
   and the viewer decodes them with WebCodecs. Frames are only sent when the screen changes. A
   browser without WebCodecs gets JPEG frames instead, and so does everyone watching that simulator
   with it, since one stream serves all of a simulator's viewers.
+- **The live view goes direct when it can.** With a Mac on protocol 6, the viewer first tries
+  WebRTC: the Durable Object only passes the connection setup between the browser and the Mac,
+  and video, touches and keys go straight between them (on the same Wi-Fi, without leaving it).
+  If that hasn't connected within 8 seconds, the viewer uses the WebSocket stream above.
+  `?transport=ws` on the viewer URL skips WebRTC, and the "ms" button shows which one is in use.
 - **Long work runs as jobs.** `build`, `build_and_run`, `run_tests`, `swift_test` and
   `run_command` return within `wait_seconds` (default 45, max 50, under the MCP client's 60-second
   request timeout). If the work is still going they return a `job_id`, and Claude waits on it with
@@ -149,6 +154,25 @@ minirun worker status                  # is the deployed Worker this build's?
 minirun worker password                # the password for the viewer and the connector
 minirun worker forget-token            # delete the saved API token
 ```
+
+#### TURN for the live view (optional)
+
+WebRTC finds a direct path with Cloudflare's free STUN server. On some networks (mostly cellular)
+there is none, and the viewer falls back to the WebSocket stream. With a Cloudflare Realtime TURN
+key, those viewers relay through Cloudflare's TURN servers instead (free up to 1,000 GB a month,
+then $0.05/GB):
+
+1. In the Cloudflare dashboard, open **Realtime → TURN Server** and create a TURN key.
+2. Add its ID and API token as Worker secrets:
+   ```bash
+   cd worker
+   npx wrangler secret put TURN_KEY_ID
+   npx wrangler secret put TURN_KEY_API_TOKEN
+   ```
+   (`worker/setup.sh` asks for them too; `./setup.sh --turn` asks again.) Deploys keep them.
+
+The Worker turns the key into short-lived credentials for each viewer and never sends the key
+itself.
 
 Already deployed with `worker/setup.sh`? Run `minirun worker deploy` once. It adopts that Worker,
 its KV namespace and its password (from `worker.env`), and the Mac manages it from then on.
@@ -417,7 +441,9 @@ new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
 - Claude's connector uses OAuth 2.1 with PKCE (`@cloudflare/workers-oauth-provider`). Every
   approval asks for your password, even if you're already logged in to the viewer.
 - Viewers log in with the same password (30-day signed cookie). They can only send touch and
-  keyboard input, not run tools like `build` or `run_command`.
+  keyboard input, not run tools like `build` or `run_command`. Over WebRTC that input goes
+  straight to the Mac, which applies the same limits. A peer connection can only be set up
+  through a logged-in viewer's socket.
 - `run_command` is off by default. Turning it on lets anyone holding a connector token run shell
   commands on your Mac, so keep the password private. Building and testing a repository
   (`build`, `run_tests`, `swift_test`) runs that repository's own code too: build scripts,
@@ -525,6 +551,7 @@ swift build && ./scripts/smoke-test.sh   # macOS: boots a simulator and drives a
 ./scripts/install-app.sh --build-only --with-daemon "$(swift build --show-bin-path)"   # macOS: the app (cd App && xcodegen for Xcode)
 cd worker && npm ci && npm test  # Worker tests (OAuth flow, relay, viewer) in workerd
 cd worker && npm run bundle      # rebuild worker/dist after changing the Worker; commit it
+cd worker && npm run e2e:webrtc  # WebRTC live view in Playwright's Chromium, with wrangler dev and a page playing the Mac
 ```
 
 `worker/dist` is the prebuilt Worker that `minirun worker deploy` uploads, along with a manifest

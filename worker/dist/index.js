@@ -5306,6 +5306,54 @@ __name(relayStub, "relayStub");
 
 // src/relay.ts
 import { DurableObject } from "cloudflare:workers";
+
+// src/ice.ts
+var STUN = { urls: "stun:stun.cloudflare.com:3478" };
+var TURN_TTL_SECONDS = 24 * 60 * 60;
+var TURN_REFRESH_MS = 60 * 60 * 1e3;
+var TURN_RETRY_MS = 60 * 1e3;
+var TURN_TIMEOUT_MS = 3e3;
+async function iceServers(secrets, cache, fetcher = (input, init) => fetch(input, init), now = Date.now()) {
+  const { TURN_KEY_ID: id, TURN_KEY_API_TOKEN: token } = secrets;
+  if (!id || !token) return [STUN];
+  if (!cache.turn || now >= cache.turn.until) {
+    cache.pending ??= generateTurn(id, token, fetcher, now).finally(() => {
+      cache.pending = null;
+    });
+    cache.turn = await cache.pending;
+  }
+  return [STUN, ...cache.turn.servers];
+}
+__name(iceServers, "iceServers");
+async function generateTurn(id, token, fetcher, now) {
+  try {
+    const response = await fetcher(`https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(id)}/credentials/generate-ice-servers`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ ttl: TURN_TTL_SECONDS }),
+      signal: AbortSignal.timeout(TURN_TIMEOUT_MS)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${(await response.text()).slice(0, 200)}`);
+    const body = await response.json();
+    const list = Array.isArray(body.iceServers) ? body.iceServers : body.iceServers ? [body.iceServers] : [];
+    const servers = [];
+    for (const entry of list) {
+      if (typeof entry?.username !== "string" || typeof entry.credential !== "string") continue;
+      const urls = (Array.isArray(entry.urls) ? entry.urls : [entry.urls]).filter(
+        (url) => typeof url === "string" && /^turns?:/.test(url) && !/:53(\?|$)/.test(url)
+      );
+      if (urls.length) servers.push({ urls, username: entry.username, credential: entry.credential });
+    }
+    if (!servers.length) throw new Error("no TURN servers in the response");
+    return { servers, until: now + TURN_TTL_SECONDS * 1e3 - TURN_REFRESH_MS };
+  } catch (error) {
+    console.log("TURN credentials failed, using STUN only", String(error));
+    return { servers: [], until: now + TURN_RETRY_MS };
+  }
+}
+__name(generateTurn, "generateTurn");
+
+// src/relay.ts
 var VIEWER_TOOLS = /* @__PURE__ */ new Set([
   "tap",
   "swipe",
@@ -5318,6 +5366,8 @@ var VIEWER_TOOLS = /* @__PURE__ */ new Set([
   "scroll",
   "press_menu_item"
 ]);
+var RTC_VIEWER_ACTIONS = /* @__PURE__ */ new Set(["start", "answer", "candidate", "stop"]);
+var RTC_MAC_ACTIONS = /* @__PURE__ */ new Set(["offer", "candidate", "stop", "error"]);
 var TOUCH_PHASES = /* @__PURE__ */ new Set(["down", "move", "up"]);
 var TOUCH_VERSION = 4;
 var VIEWER_WINDOW = 3;
@@ -5350,6 +5400,10 @@ var MacRelay = class extends DurableObject {
   touching = /* @__PURE__ */ new Map();
   /** The Cloudflare data center this object runs in (e.g. "ATL"), looked up once. */
   location = null;
+  /** TURN credentials for peer connections, kept until shortly before they expire. */
+  turn = { turn: null };
+  /** The ICE servers each viewer's peer connection was started with, for its offer. */
+  rtcServers = /* @__PURE__ */ new Map();
   constructor(ctx, env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
@@ -5373,6 +5427,7 @@ var MacRelay = class extends DurableObject {
       online: agent !== null,
       host: hello?.host ?? null,
       touch: (hello?.version ?? 0) >= TOUCH_VERSION,
+      webrtc: hello?.webrtc === true,
       location: await this.dataCenter(),
       viewers: this.viewers().length,
       connectedAt: await this.ctx.storage.get("connectedAt") ?? null,
@@ -5428,9 +5483,11 @@ var MacRelay = class extends DurableObject {
       this.ctx.acceptWebSocket(server, ["agent"]);
       this.ctx.waitUntil(this.ctx.storage.put("connectedAt", Date.now()));
     } else {
-      const key = streamKey(new URL(request.url).searchParams.get("device")) ?? "";
+      const params = new URL(request.url).searchParams;
+      const key = streamKey(params.get("device")) ?? "";
       this.ctx.acceptWebSocket(server, ["viewer"]);
-      server.serializeAttachment({ key, viewer: crypto.randomUUID(), ...DEFAULT_STREAM });
+      const codec = params.get("rtc") === "1" ? "webrtc" : DEFAULT_STREAM.codec;
+      server.serializeAttachment({ key, viewer: crypto.randomUUID(), ...DEFAULT_STREAM, codec });
       this.viewerFrames.set(server, newFlow());
       this.ctx.waitUntil(this.greetViewer(server));
     }
@@ -5458,7 +5515,7 @@ var MacRelay = class extends DurableObject {
   }
   async greetViewer(ws) {
     const status = await this.status();
-    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host, touch: status.touch }));
+    safeSend(ws, JSON.stringify({ type: "status", online: status.online, host: status.host, touch: status.touch, webrtc: status.webrtc }));
     if (status.simulators) safeSend(ws, JSON.stringify({ type: "simulators", devices: status.simulators }));
     const screen = await this.ctx.storage.get(`screen:${this.viewerState(ws).key}`);
     if (screen) safeSend(ws, screen);
@@ -5480,6 +5537,7 @@ var MacRelay = class extends DurableObject {
     for (const viewer of this.viewers()) {
       if (viewer === leaving) continue;
       const state = this.viewerState(viewer);
+      if (state.codec === "webrtc") continue;
       const codec = streams.get(state.key)?.codec === "jpeg" ? "jpeg" : state.codec;
       streams.set(state.key, { ...state, codec });
     }
@@ -5528,7 +5586,7 @@ var MacRelay = class extends DurableObject {
         const previous = await this.ctx.storage.get("hello");
         await this.ctx.storage.put("hello", hello);
         this.agent()?.send(JSON.stringify({ type: "welcome", bundle: this.env.MINIRUN_BUNDLE ?? null }));
-        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION }));
+        this.broadcast(JSON.stringify({ type: "status", online: true, host: hello.host, touch: hello.version >= TOUCH_VERSION, webrtc: hello.webrtc === true }));
         this.syncStreams();
         this.recoverPending(hello.instance !== void 0 && hello.instance === previous?.instance);
         break;
@@ -5564,7 +5622,33 @@ var MacRelay = class extends DurableObject {
         await this.ctx.storage.put("simulators", Array.isArray(message.devices) ? message.devices : []);
         this.broadcast(text);
         break;
+      case "rtc":
+        await this.onAgentRTC(message);
+        break;
     }
+  }
+  /** WebRTC signaling from the Mac: it goes to the one viewer it names, and only while that viewer is on WebRTC. */
+  async onAgentRTC(message) {
+    const action = String(message.action);
+    if (!RTC_MAC_ACTIONS.has(action)) return;
+    const viewer = typeof message.viewer === "string" && message.viewer ? message.viewer : null;
+    const target = viewer ? this.viewers().find((ws) => this.viewerState(ws).viewer === viewer) : void 0;
+    if (!target) return;
+    const state = this.viewerState(target);
+    if (!state.rtc) return;
+    if (action === "stop" || action === "error") {
+      target.serializeAttachment({ ...state, rtc: false });
+      this.rtcServers.delete(viewer);
+    }
+    const forward = { type: "rtc", action, viewer };
+    if (action === "offer") {
+      if (typeof message.sdp !== "string") return;
+      forward.sdp = message.sdp;
+      forward.iceServers = this.rtcServers.get(viewer) ?? await iceServers(this.env, this.turn);
+    }
+    if (action === "candidate") Object.assign(forward, candidateFields(message));
+    if (action === "error") forward.message = typeof message.message === "string" ? message.message : "WebRTC failed on the Mac.";
+    safeSend(target, JSON.stringify(forward));
   }
   onFrame(frame2) {
     if (frame2.byteLength < 5) return;
@@ -5582,7 +5666,7 @@ var MacRelay = class extends DurableObject {
     for (const viewer of this.viewers()) {
       const viewerState = this.viewerState(viewer);
       if (viewerState.key !== key) continue;
-      if (video && viewerState.codec !== "h264") continue;
+      if (viewerState.codec === "webrtc" || video && viewerState.codec !== "h264") continue;
       let state = this.viewerFrames.get(viewer);
       if (!state) {
         state = newFlow();
@@ -5656,8 +5740,12 @@ var MacRelay = class extends DurableObject {
         this.agent()?.send(JSON.stringify({ type: "touch", device, phase, x, y }));
         break;
       }
+      case "rtc":
+        await this.onViewerRTC(ws, message);
+        break;
       case "stream": {
         const previous = this.viewerState(ws);
+        if (previous.rtc) this.stopRTC(ws, previous);
         const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
         const state = {
           key,
@@ -5665,7 +5753,8 @@ var MacRelay = class extends DurableObject {
           fps: clamp(Number(message.fps) || DEFAULT_STREAM.fps, 1, 30),
           quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
           scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),
-          codec: message.codec === "h264" ? "h264" : "jpeg"
+          codec: message.codec === "h264" ? "h264" : "jpeg",
+          rtc: false
         };
         ws.serializeAttachment(state);
         if (key !== previous.key) {
@@ -5678,6 +5767,80 @@ var MacRelay = class extends DurableObject {
         break;
       }
     }
+  }
+  /**
+   * WebRTC signaling from a viewer. `start` takes the viewer off the WebSocket stream and asks the
+   * Mac for a peer connection; the rest go to the Mac as they are, tagged with this viewer's id
+   * (never one the page picked).
+   */
+  async onViewerRTC(ws, message) {
+    const action = String(message.action);
+    if (!RTC_VIEWER_ACTIONS.has(action)) return;
+    const previous = this.viewerState(ws);
+    const viewer = this.viewerId(ws);
+    if (action !== "start") {
+      if (!previous.rtc) return;
+      if (action === "stop") {
+        this.stopRTC(ws, previous);
+        return;
+      }
+      const forward = { type: "rtc", action, viewer };
+      if (action === "answer") {
+        if (typeof message.sdp !== "string") return;
+        forward.sdp = message.sdp;
+      } else {
+        Object.assign(forward, candidateFields(message));
+      }
+      this.agent()?.send(JSON.stringify(forward));
+      return;
+    }
+    const agent = this.agent();
+    const hello = await this.ctx.storage.get("hello");
+    if (!agent || hello?.webrtc !== true) {
+      safeSend(ws, JSON.stringify({ type: "rtc", action: "error", viewer, message: agent ? "This Mac can't stream over WebRTC." : "The Mac is offline." }));
+      return;
+    }
+    if (previous.rtc) this.stopRTC(ws, previous);
+    const key = "device" in message ? streamKey(message.device) ?? previous.key : previous.key;
+    const state = {
+      key,
+      viewer,
+      fps: clamp(Number(message.fps) || DEFAULT_STREAM.fps, 1, 30),
+      quality: clamp(Number(message.quality) || DEFAULT_STREAM.quality, 10, 95),
+      scale: clamp(Number(message.scale) || DEFAULT_STREAM.scale, 0.2, 1),
+      codec: "webrtc",
+      rtc: true
+    };
+    ws.serializeAttachment(state);
+    if (key !== previous.key) {
+      this.viewerFrames.set(ws, newFlow());
+      const screen = await this.ctx.storage.get(`screen:${key}`);
+      if (screen) safeSend(ws, screen);
+    }
+    this.syncStreams();
+    const servers = await iceServers(this.env, this.turn);
+    const current = this.viewerState(ws);
+    if (!current.rtc || current.key !== key || !this.viewers().includes(ws)) return;
+    this.rtcServers.set(viewer, servers);
+    this.agent()?.send(JSON.stringify({
+      type: "rtc",
+      action: "start",
+      viewer,
+      key,
+      fps: state.fps,
+      quality: state.quality,
+      scale: state.scale,
+      iceServers: servers
+    }));
+  }
+  /** Tells the Mac to close this viewer's peer connection. */
+  stopRTC(ws, state) {
+    if (state.viewer) this.rtcServers.delete(state.viewer);
+    try {
+      ws.serializeAttachment({ ...state, rtc: false });
+    } catch {
+    }
+    this.agent()?.send(JSON.stringify({ type: "rtc", action: "stop", viewer: state.viewer ?? this.viewerId(ws) }));
   }
   async webSocketClose(ws, code) {
     await this.dropSocket(ws, code);
@@ -5701,6 +5864,8 @@ var MacRelay = class extends DurableObject {
         this.broadcast(JSON.stringify({ type: "status", online: false }));
       }
     } else {
+      const state = this.viewerState(ws);
+      if (state.rtc) this.stopRTC(ws, state);
       const held = this.touching.get(ws);
       if (held) {
         this.touching.delete(ws);
@@ -5737,6 +5902,14 @@ function newFlow() {
   return { sent: 0, acked: 0, needsKeyframe: true };
 }
 __name(newFlow, "newFlow");
+function candidateFields(message) {
+  return {
+    candidate: typeof message.candidate === "string" ? message.candidate : null,
+    sdpMid: typeof message.sdpMid === "string" ? message.sdpMid : null,
+    sdpMLineIndex: typeof message.sdpMLineIndex === "number" ? message.sdpMLineIndex : null
+  };
+}
+__name(candidateFields, "candidateFields");
 function safeSend(ws, data) {
   try {
     ws.send(data);
@@ -6375,8 +6548,8 @@ header .mark { margin: 0; }
 main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
 .screen { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ratio, 0.46); height: 100%; border-radius: 28px; overflow: hidden;
   background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
-.screen img, .screen canvas { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
-.screen img[hidden], .screen canvas[hidden] { display: none; }
+.screen img, .screen canvas, .screen video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.screen img[hidden], .screen canvas[hidden], .screen video[hidden] { display: none; }
 .screen:focus { outline: none; }
 /* A Mac app's window: any shape (it can be resized while streaming), so it's fitted in both directions. */
 body.mac main { container-type: size; }
@@ -6412,6 +6585,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   <div id="screen" class="screen" tabindex="0">
     <img id="frame" alt="Live screen">
     <canvas id="video" hidden></canvas>
+    <video id="rtcVideo" autoplay muted playsinline disablepictureinpicture hidden></video>
     <div id="overlay" class="overlay">Connecting\u2026</div>
   </div>
   <div id="readout" class="readout" hidden></div>
@@ -6437,7 +6611,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     h264: { saver: { fps: 10, quality: 45, scale: 0.33 }, smooth: { fps: 30, quality: 55, scale: 0.5 }, sharp: { fps: 30, quality: 80, scale: 0.8 } },
   };
   const $ = (id) => document.getElementById(id);
-  const screenEl = $("screen"), img = $("frame"), canvas = $("video"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
+  const screenEl = $("screen"), img = $("frame"), canvas = $("video"), videoEl = $("rtcVideo"), overlay = $("overlay"), statusEl = $("status"), deviceEl = $("device"), simEl = $("sim");
   let ws = null, retry = 1000, online = false, live = false;
   // Whether the Mac takes live touches; older ones get whole gestures on finger-up instead.
   let touchLive = false;
@@ -6462,7 +6636,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   // The latency readout (?stats=1, or the "ms" button; remembered). It shows whatever it's given
   // through readout.update, so every transport feeds it the same fields, in ms unless noted:
-  // transport ("ws h264", "ws jpeg"), rtt (viewer \u2194 Mac), mac and macP95 (capture \u2192 socket on the
+  // transport ("ws h264", "ws jpeg", "webrtc host h264"), rtt (viewer \u2194 Mac), mac and macP95 (capture \u2192 socket on the
   // Mac), macFps, view (frame received \u2192 drawn), fps and kbps (as drawn and received here), and
   // touch and touchP95 (a live touch reaching the Mac \u2192 the next changed frame sent).
   const readoutEl = $("readout"), statsToggle = $("statsToggle");
@@ -6496,8 +6670,17 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     readout.update({ mac: m.pipelineMs, macP95: m.pipelineP95Ms, macFps: m.fps, touch: m.touchMs, touchP95: m.touchP95Ms });
   }
   // The round trip to the Mac and back: "probe" carries this page's clock, which the Mac echoes.
-  function probe() { send({ type: "probe", t: performance.now() }); }
-  function probeAnswered(m) { if (typeof m.t === "number") readout.update({ rtt: performance.now() - m.t }); }
+  // On WebRTC it goes over the data channel, and the Mac echoes it there.
+  function probe() {
+    const message = { type: "probe", t: performance.now() };
+    if (!sendInput(message)) send(message);
+  }
+  function probeAnswered(m) {
+    if (typeof m.t !== "number") return;
+    // WebRTC's own round trip (from the candidate pair) is the figure there; a probe fills in without it.
+    if (peer && peer.pairRtt) return;
+    readout.update({ rtt: performance.now() - m.t });
+  }
 
   // The WebSocket stream's own figures: when each frame arrived (by sequence number), when it
   // was drawn, and the bytes received, summed up once a second.
@@ -6516,6 +6699,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     if (t !== undefined) meter.waits.push(performance.now() - t);
   }
   function meterTick() {
+    if (peer) { peerStats(); probe(); return; }
     const now = performance.now(), seconds = Math.max(0.001, (now - meter.since) / 1000);
     const fields = { transport: "ws " + codec, fps: meter.drawn / seconds, kbps: meter.bytes * 8 / 1000 / seconds };
     // A still screen draws nothing; keep the last time rather than show none.
@@ -6541,13 +6725,20 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   statsToggle.onclick = () => { const on = !readout.on; store.set("minirun.stats", on ? "1" : "0"); showReadout(on); };
 
   function connect() {
-    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/viewer/ws" + (wanted ? "?device=" + encodeURIComponent(wanted) : "");
+    const query = new URLSearchParams();
+    if (wanted) query.set("device", wanted);
+    // Tells the relay not to start a WebSocket stream for this page before it knows whether WebRTC works.
+    if (wantRTC()) query.set("rtc", "1");
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/viewer/ws" + (String(query) ? "?" + query : "");
     ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     setStatus("", "Connecting\u2026");
-    ws.onopen = () => { retry = 1000; video.needKeyframe = true; sendStream(); };
+    // WebRTC waits for the relay's status, which says whether the Mac can do it.
+    ws.onopen = () => { retry = 1000; video.needKeyframe = true; requested = false; if (!wantRTC()) beginStream(false); };
     ws.onmessage = (event) => typeof event.data === "string" ? onText(event.data) : onFrame(event.data);
     ws.onclose = (event) => {
+      // The relay tells the Mac to close the peer connection when this socket goes.
+      closePeer();
       live = false;
       if (event.code === 1008 || event.code === 4401) { location.href = "/login"; return; }
       if (document.hidden) { setStatus("", "Paused"); return; }
@@ -6559,6 +6750,193 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   function send(message) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(message)); }
   function sendStream() { send({ type: "stream", device: wanted, codec, ...presets[codec][$("quality").value] }); }
+
+  // WebRTC (protocol 6). The relay passes the signaling between this page and the Mac; the Mac
+  // makes the offer, with its video track and two data channels: "touch" (unordered, no
+  // retransmits) for moves, and "input" (reliable) for everything else, both ways.
+  // ?transport=ws keeps to the WebSocket stream.
+  const RTC_TIMEOUT_MS = 8000;
+  const forceWS = new URLSearchParams(location.search).get("transport") === "ws";
+  const rtcSupported = typeof RTCPeerConnection === "function";
+  // Whether the Mac said it can stream over WebRTC, whether a stream was asked for on this socket,
+  // and whether WebRTC failed (then it's the WebSocket until the Mac reconnects).
+  let macRTC = false, requested = false, rtcFailed = false;
+  // The current peer connection: { pc, touch, input, timer, connected, candidates, pairRtt, last }.
+  let peer = null;
+  function wantRTC() { return !forceWS && rtcSupported && !rtcFailed; }
+
+  // Asks for this page's stream: a peer connection if possible, else WebSocket frames.
+  function beginStream(rtc) {
+    requested = true;
+    if (rtc) startPeer(); else sendStream();
+  }
+
+  function startPeer() {
+    closePeer();
+    peer = { pc: null, touch: null, input: null, connected: false, candidates: [], pairRtt: false, last: null };
+    peer.timer = setTimeout(() => fallBack("didn't connect within " + RTC_TIMEOUT_MS / 1000 + " s"), RTC_TIMEOUT_MS);
+    readout.reset();
+    readout.update({ transport: "webrtc connecting" });
+    send({ type: "rtc", action: "start", device: wanted, ...presets.h264[$("quality").value] });
+  }
+
+  // Closes the peer connection on this side only.
+  function closePeer() {
+    if (!peer) return;
+    clearTimeout(peer.timer);
+    if (peer.pc) { try { peer.pc.close(); } catch {} }
+    peer = null;
+    videoEl.srcObject = null;
+    videoEl.hidden = true;
+  }
+
+  // WebRTC didn't work: tell the Mac, and use the WebSocket stream.
+  function fallBack(reason) {
+    if (!peer) return;
+    console.log("minirun: WebRTC " + reason + "; using the WebSocket stream");
+    closePeer();
+    rtcFailed = true;
+    live = false;
+    readout.reset();
+    send({ type: "rtc", action: "stop" });
+    video.needKeyframe = true;
+    sendStream();
+  }
+
+  async function onRTC(m) {
+    if (!peer) return;
+    if (m.action === "error" || m.action === "stop") { fallBack(m.action === "error" ? "failed on the Mac: " + (m.message || "") : "was stopped by the Mac"); return; }
+    if (m.action === "offer") {
+      if (peer.pc || typeof m.sdp !== "string") return;
+      const current = peer;
+      const pc = new RTCPeerConnection({ iceServers: Array.isArray(m.iceServers) ? m.iceServers : [] });
+      current.pc = pc;
+      pc.ontrack = (event) => {
+        const receiver = event.receiver;
+        // Show frames as soon as they're decoded, rather than buffer them against jitter.
+        try { if ("jitterBufferTarget" in receiver) receiver.jitterBufferTarget = 0; } catch {}
+        try { if ("playoutDelayHint" in receiver) receiver.playoutDelayHint = 0; } catch {}
+        videoEl.srcObject = event.streams && event.streams[0] ? event.streams[0] : new MediaStream([event.track]);
+        videoEl.play().catch(() => {});
+      };
+      pc.ondatachannel = (event) => {
+        const channel = event.channel;
+        if (channel.label === "touch") current.touch = channel;
+        else if (channel.label === "input") {
+          current.input = channel;
+          channel.onmessage = (e) => { if (peer === current && typeof e.data === "string") onText(e.data, true); };
+        }
+      };
+      pc.onicecandidate = (event) => {
+        if (peer !== current) return;
+        const c = event.candidate;
+        send({ type: "rtc", action: "candidate", candidate: c ? c.candidate : null, sdpMid: c ? c.sdpMid : null, sdpMLineIndex: c ? c.sdpMLineIndex : null });
+      };
+      // connectionState is missing in some older Safari versions; the ICE state says the same.
+      const changed = () => {
+        if (peer !== current) return;
+        const state = pc.connectionState || pc.iceConnectionState;
+        if (state === "connected" || state === "completed") {
+          current.connected = true;
+          clearTimeout(current.timer);
+        } else if (state === "failed") {
+          fallBack("connection failed");
+        }
+      };
+      pc.onconnectionstatechange = changed;
+      pc.oniceconnectionstatechange = changed;
+      try {
+        await pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+        // H.264 first, so the Mac's hardware encoder and Safari's hardware decoder are used.
+        const caps = typeof RTCRtpReceiver !== "undefined" && RTCRtpReceiver.getCapabilities ? RTCRtpReceiver.getCapabilities("video") : null;
+        if (caps) {
+          const codecs = caps.codecs.slice().sort((a, b) => (b.mimeType === "video/H264") - (a.mimeType === "video/H264"));
+          for (const t of pc.getTransceivers()) { try { if (t.setCodecPreferences) t.setCodecPreferences(codecs); } catch {} }
+        }
+        for (const c of current.candidates.splice(0)) await addCandidate(pc, c);
+        await pc.setLocalDescription(await pc.createAnswer());
+        if (peer !== current) return;
+        send({ type: "rtc", action: "answer", sdp: pc.localDescription.sdp });
+      } catch (error) {
+        if (peer === current) fallBack("couldn't answer the offer: " + error);
+      }
+    } else if (m.action === "candidate") {
+      // Candidates can come before the offer is set; they wait for it.
+      if (!peer.pc || !peer.pc.remoteDescription) peer.candidates.push(m);
+      else await addCandidate(peer.pc, m);
+    }
+  }
+  async function addCandidate(pc, m) {
+    try {
+      // null (or an empty candidate in older browsers) ends the candidates.
+      await pc.addIceCandidate(m.candidate ? { candidate: m.candidate, sdpMid: m.sdpMid, sdpMLineIndex: m.sdpMLineIndex } : null);
+    } catch {}
+  }
+
+  // Sends on a data channel when the peer connection has it open. Returns whether it did.
+  function sendInput(message) {
+    if (!peer || !peer.input || peer.input.readyState !== "open") return false;
+    try { peer.input.send(JSON.stringify(message)); return true; } catch { return false; }
+  }
+  function sendTouchMove(point) {
+    if (!peer || !peer.touch || peer.touch.readyState !== "open") return false;
+    try { peer.touch.send(JSON.stringify({ phase: "move", x: point.x, y: point.y })); return true; } catch { return false; }
+  }
+
+  // The readout's figures from getStats(): the candidate pair's round trip, and for the video,
+  // jitter buffer delay + decode time per frame (the viewer's time), frames per second and kbps.
+  async function peerStats() {
+    const current = peer;
+    if (!current || !current.pc) return;
+    let report;
+    try { report = await current.pc.getStats(); } catch { return; }
+    if (peer !== current) return;
+    const byId = new Map();
+    report.forEach((s) => byId.set(s.id, s));
+    let pair = null, inbound = null;
+    report.forEach((s) => {
+      if (s.type === "transport" && s.selectedCandidatePairId) pair = byId.get(s.selectedCandidatePairId) || pair;
+      if (s.type === "inbound-rtp" && (s.kind || s.mediaType) === "video") inbound = s;
+    });
+    // Without a transport report (older Safari), the nominated pair in use.
+    if (!pair) report.forEach((s) => { if (!pair && s.type === "candidate-pair" && s.nominated && s.state === "succeeded") pair = s; });
+    const fields = {};
+    let route = "";
+    if (pair) {
+      if (typeof pair.currentRoundTripTime === "number") { fields.rtt = pair.currentRoundTripTime * 1000; current.pairRtt = true; }
+      // The pair's route: relay if either side is a TURN relay, else the less direct of the two.
+      const rank = { host: 0, prflx: 1, srflx: 2, relay: 3 };
+      const types = [byId.get(pair.localCandidateId), byId.get(pair.remoteCandidateId)].map((c) => c && c.candidateType).filter(Boolean);
+      route = types.sort((a, b) => (rank[b] || 0) - (rank[a] || 0))[0] || "";
+    }
+    let codecName = "";
+    if (inbound) {
+      const codecStats = inbound.codecId ? byId.get(inbound.codecId) : null;
+      if (codecStats && codecStats.mimeType) codecName = codecStats.mimeType.split("/")[1].toLowerCase();
+      const now = { t: performance.now(), bytes: inbound.bytesReceived || 0, frames: inbound.framesDecoded || 0,
+        jitter: inbound.jitterBufferDelay || 0, emitted: inbound.jitterBufferEmittedCount || 0, decode: inbound.totalDecodeTime || 0 };
+      const last = current.last;
+      if (last) {
+        const seconds = Math.max(0.001, (now.t - last.t) / 1000), frames = now.frames - last.frames, emitted = now.emitted - last.emitted;
+        fields.kbps = (now.bytes - last.bytes) * 8 / 1000 / seconds;
+        fields.fps = typeof inbound.framesPerSecond === "number" ? inbound.framesPerSecond : frames / seconds;
+        // A still screen decodes nothing; keep the last time rather than show none.
+        if (frames > 0 && emitted > 0) fields.view = (now.jitter - last.jitter) / emitted * 1000 + (now.decode - last.decode) / frames * 1000;
+      }
+      current.last = now;
+    }
+    fields.transport = ["webrtc", current.connected ? route : "connecting", codecName].filter(Boolean).join(" ");
+    readout.update(fields);
+  }
+
+  videoEl.addEventListener("playing", () => {
+    if (!peer) return;
+    showSurface(videoEl);
+    if (!live) { live = true; setStatus("live", "Live"); showOverlay(""); }
+  });
+  videoEl.addEventListener("resize", () => {
+    if (!screen && videoEl.videoWidth) screenEl.style.setProperty("--ratio", String(videoEl.videoWidth / videoEl.videoHeight));
+  });
 
   // Mac app ids look like "mac-3f9a2c"; the Mac also says so with kind: "mac".
   function isMacId(udid) {
@@ -6615,16 +6993,35 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     readout.reset();
     applyMode();
     setStatus("", "Switching\u2026"); showOverlay(mac ? "Opening the app window\u2026" : "Switching simulator\u2026");
-    sendStream();
+    // A new peer connection for the new device; the relay closes the old one on the Mac.
+    if (peer) startPeer(); else if (requested) sendStream();
   }
 
-  function onText(text) {
+  // Text from the relay, or (fromPeer) from the Mac over the "input" data channel.
+  function onText(text, fromPeer) {
     let m; try { m = JSON.parse(text); } catch { return; }
+    // On WebRTC, the stream's status, figures and probe echoes come over the data channel; the
+    // relay's are about the WebSocket stream.
+    if (peer && !fromPeer && (m.type === "stream_status" || m.type === "stats" || m.type === "probe")) return;
+    if (m.type === "rtc") { onRTC(m); return; }
     if (m.type === "status") {
       online = m.online;
       touchLive = m.touch === true;
-      if (!online) { live = false; setStatus("offline", "Mac offline"); showOverlay("Your Mac is offline. Make sure it's awake and minirun is running."); }
-      else { setStatus("", "Starting stream\u2026"); if (!live) showOverlay("Waiting for the " + noun() + "\u2026"); }
+      macRTC = m.webrtc === true;
+      if (!online) {
+        live = false; setStatus("offline", "Mac offline"); showOverlay("Your Mac is offline. Make sure it's awake and minirun is running.");
+        // Its peer connections go with it. When it's back, WebRTC gets another try.
+        closePeer();
+        requested = false;
+        rtcFailed = false;
+      } else {
+        setStatus("", "Starting stream\u2026"); if (!live) showOverlay("Waiting for the " + noun() + "\u2026");
+        if (!requested) beginStream(macRTC && wantRTC());
+        // The Mac reconnected (a new connection replaces the old without an offline status in
+        // between) and may have restarted, so its peer connections may be gone: start again.
+        else if ((peer || rtcFailed) && macRTC && !forceWS && rtcSupported) { rtcFailed = false; beginStream(true); }
+        else if (peer) { closePeer(); sendStream(); }
+      }
       if (m.host && m.host.name && !screen) deviceEl.textContent = m.host.name;
     } else if (m.type === "simulators") {
       simulators = Array.isArray(m.devices) ? m.devices : [];
@@ -6660,6 +7057,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       key = new TextDecoder().decode(bytes.subarray(6, start));
     } else if (bytes[0] !== 1) return;
     if (key !== wanted) return; // a frame from before we switched simulators
+    if (peer) return; // from before this page switched to WebRTC
     const seq = new DataView(buffer).getUint32(1);
     frameReceived(seq, bytes.length);
     if (bytes[0] === 3) { onVideo(seq, (bytes[start] & 1) === 1, bytes.subarray(start + 1)); return; }
@@ -6670,6 +7068,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function showSurface(element) {
     img.hidden = element !== img;
     canvas.hidden = element !== canvas;
+    videoEl.hidden = element !== videoEl;
   }
 
   // The WebCodecs codec string ("avc1.PPCCLL") from the SPS NAL unit in an Annex B keyframe.
@@ -6763,9 +7162,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   // Touch \u2192 tap / long press / swipe, in simulator (or Mac window) points, from the latest screen message.
   function geometry() {
-    const surface = canvas.hidden ? img : canvas;
+    const surface = !videoEl.hidden ? videoEl : canvas.hidden ? img : canvas;
     const rect = surface.getBoundingClientRect();
-    const naturalWidth = canvas.hidden ? img.naturalWidth : canvas.width, naturalHeight = canvas.hidden ? img.naturalHeight : canvas.height;
+    const naturalWidth = surface === videoEl ? videoEl.videoWidth : surface === canvas ? canvas.width : img.naturalWidth;
+    const naturalHeight = surface === videoEl ? videoEl.videoHeight : surface === canvas ? canvas.height : img.naturalHeight;
     const w = screen ? screen.pointWidth : naturalWidth / (mac ? 1 : 3), h = screen ? screen.pointHeight : naturalHeight / (mac ? 1 : 3);
     // object-fit: contain \u2014 account for letterboxing.
     const scale = Math.min(rect.width / w, rect.height / h);
@@ -6797,7 +7197,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   }
   function input(tool, args) {
     if (typed) flushText();
-    if (online) send({ type: "input", tool, arguments: args });
+    const message = { type: "input", tool, arguments: args };
+    if (online && !sendInput(message)) send(message);
   }
 
   // Live touches: down, moves (at most one per animation frame) and up are sent as they happen,
@@ -6806,9 +7207,14 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   let start = null, moved = null, moveQueued = false;
   // The last plain mouse click on a Mac app, so a second one soon after becomes a double click.
   let lastClick = null, lastPointerType = "";
+  // On WebRTC, moves go on the "touch" channel (a lost one is soon replaced by the next) and
+  // down and up on "input", so they always arrive.
   function touch(phase, point) {
     if (typed) flushText();
-    if (online) send({ type: "touch", phase, x: point.x, y: point.y });
+    if (!online) return;
+    const message = { type: "touch", phase, x: point.x, y: point.y };
+    if (phase === "move" ? sendTouchMove(point) : sendInput(message)) return;
+    send(message);
   }
   function flushMove() {
     moveQueued = false;
@@ -6945,7 +7351,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     if (field.value) input("type_text", { text: field.value });
     field.value = "";
   };
-  $("quality").onchange = () => { store.set("minirun.quality", $("quality").value); sendStream(); };
+  $("quality").onchange = () => {
+    store.set("minirun.quality", $("quality").value);
+    if (peer) startPeer(); else if (requested) sendStream();
+  };
   simEl.onchange = () => watch(simEl.value);
   document.addEventListener("visibilitychange", () => {
     // Stop streaming in background tabs to save the Mac and your data plan.

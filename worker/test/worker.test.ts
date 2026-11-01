@@ -1,6 +1,7 @@
 import { env, SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { streamKey } from "../src/relay";
+import { iceServers, STUN, TURN_REFRESH_MS, TURN_RETRY_MS, TURN_TTL_SECONDS } from "../src/ice";
 import { probeStream } from "../src/media";
 import { compareVersions, VERSION } from "../src/version";
 
@@ -817,3 +818,251 @@ function walkGIF(bytes: Uint8Array): { frames: number; end: number } {
     }
   }
 }
+
+describe("WebRTC signaling (protocol 6)", () => {
+  type Message = { type: string; [key: string]: unknown };
+  const settle = () => new Promise((r) => setTimeout(r, 100));
+
+  async function login(): Promise<string> {
+    const form = new FormData();
+    form.set("password", "test-password");
+    const response = await SELF.fetch(`${ORIGIN}/login`, { method: "POST", body: form, redirect: "manual" });
+    return response.headers.get("Set-Cookie")!.split(";")[0]!;
+  }
+
+  /** A socket that keeps what it receives: text as parsed JSON, binary as a count. */
+  function record(ws: WebSocket) {
+    const texts: Message[] = [];
+    let binary = 0;
+    ws.addEventListener("message", (event) => {
+      if (typeof event.data === "string") texts.push(JSON.parse(event.data));
+      else binary++;
+    });
+    return {
+      ws,
+      texts,
+      binary: () => binary,
+      of: (type: string, action?: string) => texts.filter((m) => m.type === type && (action === undefined || m.action === action)),
+      clear: () => { texts.length = 0; binary = 0; },
+    };
+  }
+
+  async function macWith(hello: Record<string, unknown>) {
+    const agent = (await connectAgent()) as WebSocket;
+    const mac = record(agent);
+    agent.send(JSON.stringify({ type: "hello", version: 6, host: { name: "Test Mac" }, tools: [], ...hello }));
+    await settle();
+    return mac;
+  }
+
+  async function openViewer(cookie: string, query: string) {
+    const response = await SELF.fetch(`${ORIGIN}/viewer/ws?${query}`, { headers: { Upgrade: "websocket", Cookie: cookie } });
+    const viewer = record(response.webSocket!);
+    response.webSocket!.accept();
+    await settle();
+    return viewer;
+  }
+
+  const lastStreams = (mac: ReturnType<typeof record>) =>
+    ((mac.of("stream").at(-1)?.streams ?? []) as Array<{ udid: string | null; codec: string }>);
+
+  it("routes each viewer's signaling to and from its own peer connection only", async () => {
+    const cookie = await login();
+    const mac = await macWith({ webrtc: true });
+    const a = await openViewer(cookie, "device=SIM-A&rtc=1");
+    const b = await openViewer(cookie, "device=SIM-A&rtc=1");
+    const c = await openViewer(cookie, "device=SIM-B");
+    expect(a.of("status")[0]).toMatchObject({ online: true, touch: true, webrtc: true });
+    // ?rtc=1 viewers wait to be asked for; the WebSocket stream is only for c.
+    expect(lastStreams(mac).map((s) => s.udid)).toEqual(["SIM-B"]);
+
+    // The relay picks the viewer id; the page can't.
+    mac.clear();
+    a.ws.send(JSON.stringify({ type: "rtc", action: "start", device: "SIM-A", fps: 30, quality: 55, scale: 0.5, viewer: "spoofed" }));
+    await settle();
+    const startA = mac.of("rtc", "start")[0]!;
+    expect(startA).toMatchObject({ key: "SIM-A", fps: 30, quality: 55, scale: 0.5, iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] });
+    expect(typeof startA.viewer).toBe("string");
+    expect(startA.viewer).not.toBe("spoofed");
+    b.ws.send(JSON.stringify({ type: "rtc", action: "start", device: "SIM-A", fps: 30, quality: 55, scale: 0.5 }));
+    await settle();
+    const viewerA = startA.viewer as string, viewerB = mac.of("rtc", "start")[1]!.viewer as string;
+    expect(viewerB).not.toBe(viewerA);
+    // WebRTC viewers stay out of the WebSocket streams.
+    expect(lastStreams(mac).map((s) => s.udid)).toEqual(["SIM-B"]);
+
+    // The Mac's offer reaches the viewer it names, with the same ICE servers, and nobody else.
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "offer", viewer: viewerA, sdp: "v=0 offer-a" }));
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "offer", viewer: "nobody", sdp: "v=0 stray" }));
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "offer", sdp: "v=0 no viewer" }));
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "candidate", viewer: viewerB, candidate: "candidate:1 1 udp 1 192.168.1.2 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 }));
+    await settle();
+    expect(a.of("rtc")).toEqual([{ type: "rtc", action: "offer", viewer: viewerA, sdp: "v=0 offer-a", iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] }]);
+    expect(b.of("rtc")).toEqual([{ type: "rtc", action: "candidate", viewer: viewerB, candidate: "candidate:1 1 udp 1 192.168.1.2 5000 typ host", sdpMid: "0", sdpMLineIndex: 0 }]);
+    expect(c.of("rtc")).toEqual([]);
+
+    // Answers and candidates go to the Mac tagged with the sender's own id, whatever the page says.
+    mac.clear();
+    a.ws.send(JSON.stringify({ type: "rtc", action: "answer", sdp: "v=0 answer-a", viewer: viewerB }));
+    a.ws.send(JSON.stringify({ type: "rtc", action: "candidate", candidate: null, sdpMid: null, sdpMLineIndex: null, viewer: viewerB }));
+    // A viewer without a peer connection can't send signaling, and pages can't send offers.
+    c.ws.send(JSON.stringify({ type: "rtc", action: "answer", sdp: "v=0 answer-c" }));
+    a.ws.send(JSON.stringify({ type: "rtc", action: "offer", sdp: "v=0 offer from a page" }));
+    await settle();
+    expect(mac.of("rtc")).toEqual([
+      { type: "rtc", action: "answer", viewer: viewerA, sdp: "v=0 answer-a" },
+      { type: "rtc", action: "candidate", viewer: viewerA, candidate: null, sdpMid: null, sdpMLineIndex: null },
+    ]);
+
+    // Frames for a stream go to its WebSocket viewers only.
+    const key = new TextEncoder().encode("SIM-A");
+    b.clear();
+    mac.ws.send(new Uint8Array([2, 0, 0, 0, 1, key.length, ...key, 0xff, 0xd8]));
+    await settle();
+    expect(b.binary()).toBe(0);
+
+    // Switching device: the old peer connection is stopped before the new one starts.
+    mac.clear();
+    a.ws.send(JSON.stringify({ type: "rtc", action: "start", device: "SIM-B", fps: 30, quality: 55, scale: 0.5 }));
+    await settle();
+    expect(mac.of("rtc").map((m) => [m.action, m.viewer, m.key])).toEqual([["stop", viewerA, undefined], ["start", viewerA, "SIM-B"]]);
+
+    // Falling back to the WebSocket stream stops the peer connection and puts the viewer back in the streams.
+    mac.clear();
+    b.ws.send(JSON.stringify({ type: "rtc", action: "stop" }));
+    b.ws.send(JSON.stringify({ type: "stream", device: "SIM-A", codec: "h264", fps: 30, quality: 55, scale: 0.5 }));
+    await settle();
+    expect(mac.of("rtc")).toEqual([{ type: "rtc", action: "stop", viewer: viewerB }]);
+    expect(lastStreams(mac)).toEqual(expect.arrayContaining([expect.objectContaining({ udid: "SIM-A", codec: "h264" })]));
+
+    // An error from the Mac reaches the viewer and ends its peer connection: later signaling for it is dropped.
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "error", viewer: viewerA, message: "no encoder" }));
+    await settle();
+    expect(a.of("rtc", "error")).toEqual([{ type: "rtc", action: "error", viewer: viewerA, message: "no encoder" }]);
+    mac.ws.send(JSON.stringify({ type: "rtc", action: "offer", viewer: viewerA, sdp: "v=0 late" }));
+    await settle();
+    expect(a.of("rtc", "offer").map((m) => m.sdp)).toEqual(["v=0 offer-a"]);
+
+    // A viewer that leaves while on WebRTC has its peer connection stopped.
+    a.ws.send(JSON.stringify({ type: "rtc", action: "start", device: "SIM-B", fps: 30, quality: 55, scale: 0.5 }));
+    await settle();
+    mac.clear();
+    a.ws.close();
+    await settle();
+    expect(mac.of("rtc")).toEqual([{ type: "rtc", action: "stop", viewer: viewerA }]);
+    // b fell back, so closing it stops nothing.
+    mac.clear();
+    b.ws.close();
+    await settle();
+    expect(mac.of("rtc")).toEqual([]);
+
+    c.ws.close();
+    mac.ws.close();
+  });
+
+  it("tells a viewer when the Mac can't do WebRTC", async () => {
+    const cookie = await login();
+    const mac = await macWith({ version: 5 });
+    const viewer = await openViewer(cookie, "device=SIM-A&rtc=1");
+    expect(viewer.of("status")[0]).toMatchObject({ online: true, webrtc: false });
+    viewer.ws.send(JSON.stringify({ type: "rtc", action: "start", device: "SIM-A", fps: 30, quality: 55, scale: 0.5 }));
+    await settle();
+    expect(viewer.of("rtc", "error")).toHaveLength(1);
+    expect(mac.of("rtc")).toEqual([]);
+    viewer.ws.close();
+    mac.ws.close();
+  });
+});
+
+describe("ICE servers", () => {
+  const TURN_RESPONSE = {
+    iceServers: [
+      { urls: ["stun:stun.cloudflare.com:3478", "stun:stun.cloudflare.com:53"] },
+      {
+        urls: [
+          "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:53?transport=udp",
+          "turn:turn.cloudflare.com:3478?transport=tcp", "turns:turn.cloudflare.com:5349?transport=tcp",
+          "turn:turn.cloudflare.com:80?transport=tcp", "turns:turn.cloudflare.com:443?transport=tcp",
+        ],
+        username: "user-1",
+        credential: "secret-1",
+      },
+    ],
+  };
+  const SECRETS = { TURN_KEY_ID: "key-id", TURN_KEY_API_TOKEN: "api-token" };
+
+  function mockFetch(respond: () => Response | Promise<Response>) {
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const fetcher = (async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      return respond();
+    }) as unknown as typeof fetch;
+    return { calls, fetcher };
+  }
+
+  it("is STUN only without the TURN secrets", async () => {
+    const { calls, fetcher } = mockFetch(() => Response.json(TURN_RESPONSE, { status: 201 }));
+    expect(await iceServers({}, { turn: null }, fetcher)).toEqual([STUN]);
+    expect(await iceServers({ TURN_KEY_ID: "key-id" }, { turn: null }, fetcher)).toEqual([STUN]);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("adds Cloudflare TURN credentials when the secrets are set, and caches them", async () => {
+    const { calls, fetcher } = mockFetch(() => Response.json(TURN_RESPONSE, { status: 201 }));
+    const cache = { turn: null };
+    const now = 1_000_000;
+    const servers = await iceServers(SECRETS, cache, fetcher, now);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toBe("https://rtc.live.cloudflare.com/v1/turn/keys/key-id/credentials/generate-ice-servers");
+    expect(calls[0]!.init.method).toBe("POST");
+    expect((calls[0]!.init.headers as Record<string, string>).Authorization).toBe("Bearer api-token");
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ ttl: TURN_TTL_SECONDS });
+    // STUN once, then the TURN entry without the port 53 URL browsers block.
+    expect(servers).toEqual([
+      STUN,
+      {
+        urls: [
+          "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:3478?transport=tcp",
+          "turns:turn.cloudflare.com:5349?transport=tcp", "turn:turn.cloudflare.com:80?transport=tcp",
+          "turns:turn.cloudflare.com:443?transport=tcp",
+        ],
+        username: "user-1",
+        credential: "secret-1",
+      },
+    ]);
+
+    // Cached until shortly before they expire, then fetched again.
+    const expiry = now + TURN_TTL_SECONDS * 1000;
+    expect(await iceServers(SECRETS, cache, fetcher, expiry - TURN_REFRESH_MS - 1)).toEqual(servers);
+    expect(calls).toHaveLength(1);
+    await iceServers(SECRETS, cache, fetcher, expiry - TURN_REFRESH_MS);
+    expect(calls).toHaveLength(2);
+  });
+
+  it("shares one request between viewers starting together", async () => {
+    const { calls, fetcher } = mockFetch(() => Response.json(TURN_RESPONSE, { status: 201 }));
+    const cache = { turn: null };
+    const [one, two] = await Promise.all([iceServers(SECRETS, cache, fetcher), iceServers(SECRETS, cache, fetcher)]);
+    expect(calls).toHaveLength(1);
+    expect(one).toEqual(two);
+    expect(one).toHaveLength(2);
+  });
+
+  it("falls back to STUN only when the TURN API fails, and tries again later", async () => {
+    let fail = true;
+    const { calls, fetcher } = mockFetch(() => fail ? new Response("Unauthorized", { status: 401 }) : Response.json(TURN_RESPONSE, { status: 201 }));
+    const cache = { turn: null };
+    expect(await iceServers(SECRETS, cache, fetcher, 0)).toEqual([STUN]);
+    expect(await iceServers(SECRETS, cache, fetcher, TURN_RETRY_MS - 1)).toEqual([STUN]);
+    expect(calls).toHaveLength(1);
+    fail = false;
+    expect(await iceServers(SECRETS, cache, fetcher, TURN_RETRY_MS)).toHaveLength(2);
+    expect(calls).toHaveLength(2);
+
+    // A network error or a response with no TURN entry is the same.
+    const thrown = mockFetch(() => { throw new Error("network down"); });
+    expect(await iceServers(SECRETS, { turn: null }, thrown.fetcher)).toEqual([STUN]);
+    const empty = mockFetch(() => Response.json({ iceServers: [{ urls: "stun:stun.cloudflare.com:3478" }] }, { status: 201 }));
+    expect(await iceServers(SECRETS, { turn: null }, empty.fetcher)).toEqual([STUN]);
+  });
+});

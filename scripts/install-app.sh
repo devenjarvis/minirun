@@ -5,6 +5,7 @@
 #   minirun.app/Contents/MacOS/minirun          the menu bar app (links MiniRunKit only)
 #   minirun.app/Contents/Helpers/minirun        the CLI and `minirun serve`, run by the LaunchAgent
 #   minirun.app/Contents/Frameworks/FB*.framework   the simulator frameworks the helper loads
+#   minirun.app/Contents/Frameworks/WebRTC.framework libwebrtc, for live view over WebRTC
 #   minirun.app/Contents/Resources/worker/      the prebuilt Worker that `minirun worker deploy` uploads
 #   minirun.app/Contents/Resources/github-runner.sh   what Settings → GitHub Runners runs
 #
@@ -63,6 +64,12 @@ if [[ -n "$DAEMON_DIR" ]]; then
     cp -R "$src" "$APP/Contents/Frameworks/"
     codesign --force --sign - "$APP/Contents/Frameworks/$fw.framework" >/dev/null
   done
+  # libwebrtc comes with the package (a binary target SwiftPM downloads), not from Vendor/.
+  src="$DAEMON_DIR/WebRTC.framework"
+  [[ -d "$src" ]] || src="$(ls -d "$ROOT"/.build/artifacts/*/WebRTC/WebRTC.xcframework/macos-*/WebRTC.framework 2>/dev/null | head -1)"
+  [[ -d "$src" ]] || { echo "Missing WebRTC.framework. Run swift build first."; exit 1; }
+  cp -R "$src" "$APP/Contents/Frameworks/"
+  codesign --force --sign - "$APP/Contents/Frameworks/WebRTC.framework" >/dev/null
   cp -R "$ROOT/worker/dist" "$APP/Contents/Resources/worker"
   codesign --force --sign - "$APP/Contents/Helpers/minirun" >/dev/null
   # Proves the helper finds its frameworks inside the bundle (dyld fails at launch otherwise).

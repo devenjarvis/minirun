@@ -14,6 +14,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var streamer: FrameStreamer!
     private var streamControl: Task<Void, Never>?
     private let touches: TouchQueue
+    /// Viewers on WebRTC (protocol 6). Their peer connections outlive a dropped relay connection:
+    /// only setting them up goes through the relay.
+    private var webrtc: WebRTCSessions!
+    private var rtcControl: Task<Void, Never>?
     /// When the last keep-alive ping went out, to time the round trip to the relay.
     private var pingSentAt: Date?
     private var pingsTimed = 0
@@ -44,6 +48,10 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         streamer = FrameStreamer(
             registry: registry,
             sendFrame: { [weak self] data in await self?.send(.data(data)) },
+            sendText: { [weak self] json in await self?.send(.string(json.encodedString())) }
+        )
+        webrtc = WebRTCSessions(
+            environment: .live(registry: registry, touches: touches, log: log), log: log,
             sendText: { [weak self] json in await self?.send(.string(json.encodedString())) }
         )
     }
@@ -130,7 +138,7 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
         socket = task
         task.resume()
 
-        let hello = RelayProtocol.hello(host: Self.hostInfo(), tools: registry.definitions, instance: instance)
+        let hello = RelayProtocol.hello(host: Self.hostInfo(), tools: registry.definitions, instance: instance, webrtc: true)
         do {
             try await task.send(.string(hello.encodedString()))
         } catch {
@@ -263,6 +271,14 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             Task { await send(.string(RelayProtocol.probe(t: t, viewer: viewer).encodedString())) }
         case .welcome(let bundle):
             stateLock.withLock { state.workerBundle = bundle }
+        case .rtc(let signal):
+            // In the order they arrived: an answer must follow its offer.
+            let previous = rtcControl
+            let webrtc = self.webrtc!
+            rtcControl = Task {
+                await previous?.value
+                await webrtc.handle(signal)
+            }
         case .unknown:
             break
         }
