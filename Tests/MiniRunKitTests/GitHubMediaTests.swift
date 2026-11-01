@@ -132,6 +132,20 @@ final class GitHubMediaTests: XCTestCase {
         XCTAssertEqual(off, .worker(.githubOff))
     }
 
+    func testGIFLimitDependsOnWhereItGoes() async {
+        let branches = GitHubMediaBranches()
+        let present = freshRepo()
+        var config = MiniRunConfig()
+        let mb = 1_048_576
+        let onGitHub = await MediaSharing.gifLimitBytes(label: "you/app@feature", config: config, branches: branches, gh: present.command)
+        XCTAssertEqual(onGitHub, 10 * mb)
+        let onWorker = await MediaSharing.gifLimitBytes(label: "my phone", config: config, branches: branches, gh: present.command)
+        XCTAssertEqual(onWorker, 5 * mb)
+        config.mediaInlineLimitMB = 15
+        let raised = await MediaSharing.gifLimitBytes(label: "you/app@feature", config: config, branches: branches, gh: present.command)
+        XCTAssertEqual(raised, 15 * mb)
+    }
+
     func testBranchAnswersAreRemembered() async {
         let branches = GitHubMediaBranches()
         let gh = FakeGH { _ in FakeGH.ok("pr-media") }

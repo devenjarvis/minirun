@@ -288,7 +288,7 @@ struct SharingTab: View {
                 Stepper(value: $store.form.mediaInlineLimitMB, in: SettingsForm.inlineLimitRange) {
                     LabeledContent("Largest inline GIF") { Text("\(store.form.mediaInlineLimitMB) MB") }
                 }
-                Text("Recordings show in a PR as a GIF that links to the video. Bigger GIFs are made smaller to fit; GitHub may not show very large ones inline.")
+                Text("Recordings show in a PR as a GIF that links to the video. Bigger GIFs are made smaller to fit; GitHub may not show very large ones inline. GIFs on a repo's pr-media branch can be up to 10 MB, or this if it's higher.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             SettingsFooter(store: store)
