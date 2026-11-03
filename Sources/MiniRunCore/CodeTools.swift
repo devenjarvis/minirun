@@ -11,6 +11,10 @@ extension ToolRegistry {
             "Each repo + ref has its own checkout and build folder on the Mac, so sessions on different branches don't collide: " +
             "pass the same ref on every call for this work. Prefer a branch name over a commit SHA, which gets a fresh checkout."
         ),
+        "commit": Schema.string(
+            "Optional: the exact commit (SHA) to check out in ref's checkout instead of ref's latest. ref then only names the checkout. " +
+            "CI uses it to build the commit it was started for in a checkout that stays warm between runs."
+        ),
         "path": Schema.string("Instead of repo: a folder on the Mac (absolute, or relative to the workspaces folder). Rarely needed: with repo + ref, use project to pick a package or project inside the checkout."),
         "project": Schema.string(
             "What to build inside the checkout, relative to its top: an .xcworkspace, an .xcodeproj, or a Swift package's folder " +
@@ -75,6 +79,7 @@ extension ToolRegistry {
             properties: [
                 "repo": Schema.string("owner/name or clone URL."),
                 "ref": Schema.string("Branch, tag or commit (default: the default branch). Each ref gets its own checkout; pass the same ref to later calls."),
+                "commit": Self.sourceProperties["commit"]!,
             ].merging(wait) { a, _ in a },
             required: ["repo"]
         )) { [self] args in
@@ -84,7 +89,7 @@ extension ToolRegistry {
             let log = newLogURL("sync")
             return await runAsJob(args, title: "sync \(workspace)", log: log) { [self] in
                 let checkout = try await self.withCheckout(args, log: log) {
-                    try await Workspace.sync(repo: repo, ref: ref, config: self.config, log: log)
+                    try await Workspace.sync(repo: repo, ref: ref, commit: args.string("commit"), config: self.config, log: log)
                 }
                 return .text("\(checkout.label) at \(checkout.commit.prefix(10)) “\(checkout.subject)”\nPath: \(checkout.path)")
             }
@@ -256,7 +261,7 @@ extension ToolRegistry {
                 "Use it for packages that build for macOS; code that needs iOS goes through run_tests. Pass repo + ref, and package for a package in a subfolder. " +
                 "Reports totals and each failure with file:line. Stopped if it prints nothing for stall_seconds. Runs as a job; cancel_job stops it.",
             properties: [
-                "repo": source["repo"]!, "ref": source["ref"]!, "path": source["path"]!,
+                "repo": source["repo"]!, "ref": source["ref"]!, "commit": source["commit"]!, "path": source["path"]!,
                 "package": Schema.string("The package's folder inside the checkout, e.g. \"Packages/Core\" (default: the top of the checkout). Its Package.swift works too."),
                 "filter": Schema.stringArray("Only run tests matching these (swift test --filter), e.g. [\"CoreTests.ParserTests\"]."),
                 "skip": Schema.stringArray("Skip tests matching these (swift test --skip)."),
@@ -439,8 +444,8 @@ extension ToolRegistry {
     func sourceDirectory(_ args: ToolArguments, log: URL) async throws -> String {
         if let repo = args.string("repo") {
             let existing = Workspace.path(for: try config.resolveRepo(repo).slug, ref: args.string("ref"), config: config)
-            guard args.string("ref") != nil || !FileManager.default.fileExists(atPath: existing + "/.git") else { return existing }
-            let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), config: config, log: log)
+            guard args.string("ref") != nil || args.string("commit") != nil || !FileManager.default.fileExists(atPath: existing + "/.git") else { return existing }
+            let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), commit: args.string("commit"), config: config, log: log)
             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
             return checkout.path
         }

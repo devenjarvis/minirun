@@ -23,13 +23,16 @@ enum Workspace {
     private static let mirrors = KeyedLock()
 
     /// Clones or updates `repo` and checks out `ref` (branch, tag or commit; default branch if nil).
+    /// With `commit`, checks out that commit instead, in `ref`'s checkout: CI builds the commit it
+    /// was started for in a checkout that stays warm between runs.
     /// Local changes in the checkout are discarded; build output under `.minirun/` is kept.
     ///
     /// A new checkout is a worktree of the repository's bare mirror (`WorkspaceNaming.mirror`), so
     /// a new ref only downloads what the mirror doesn't have yet. Checkouts made before that are
     /// full clones, and keep working as they are; so does a checkout made when the mirror fails.
-    static func sync(repo: String, ref: String?, config: MiniRunConfig, log: URL?) async throws -> Checkout {
+    static func sync(repo: String, ref: String?, commit: String? = nil, config: MiniRunConfig, log: URL?) async throws -> Checkout {
         let (url, slug) = try config.resolveRepo(repo)
+        if let commit, !CIRun.isCommit(commit) { throw ToolError("commit must be a commit SHA (hex), not \(commit).") }
         let dir = path(for: slug, ref: ref, config: config)
         let mirror = WorkspaceNaming.mirror(root: config.workspaceRoot, slug: slug)
         let fm = FileManager.default
@@ -53,7 +56,7 @@ enum Workspace {
         let gitDir = WorkspaceNaming.gitDirectory(checkout: dir)
         let isWorktree = gitDir != dir + "/.git"
         try await mirrors.withLock(isWorktree ? mirror : dir) {
-            let target = ref?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "HEAD"
+            let target = commit ?? ref?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "HEAD"
             // FETCH_HEAD is per worktree, so fetches for other refs of the mirror don't replace it.
             try await git(["fetch", "--prune", "--tags", "--force", "origin", target], cwd: dir, log: log, timeout: 900)
             try await git(["checkout", "--force", "--detach", "FETCH_HEAD"], cwd: dir, log: log)

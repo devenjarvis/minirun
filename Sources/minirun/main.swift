@@ -17,6 +17,8 @@ Usage:
   minirun doctor [--json]               Check Xcode, simulators and the relay settings
   minirun tools                         Print the MCP tool definitions as JSON
   minirun call TOOL ['{"json":"args"}'] Run one tool locally (images are saved to /tmp)
+  minirun ci build|test|swift-test|sync Run a CI job's build or tests through minirun serve
+        [--scheme S] [--project P] ...  (see `minirun ci --help`)
   minirun version
 """
 
@@ -143,6 +145,9 @@ func main() async {
         }
         exit(result.isError ? 1 : 0)
 
+    case "ci":
+        exit(runCI(Array(args.dropFirst())))
+
     case "version", "--version", "-v":
         print(MiniRun.version)
 
@@ -152,6 +157,52 @@ func main() async {
     default:
         fail("Unknown command \(command).\n\n\(usage)")
     }
+}
+
+/// `minirun ci`: starts the job in `minirun serve` and follows it. SIGINT and SIGTERM (GitHub
+/// cancelling the run) cancel the job, so its simulator is freed, and then follow it to its end.
+func runCI(_ argv: [String]) -> Int32 {
+    let environment = ProcessInfo.processInfo.environment
+    let invocation: CIRun.Invocation
+    do {
+        invocation = try CIRun.parse(argv, environment: environment)
+    } catch {
+        FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+        return 2
+    }
+    // A minute per poll: a status or job answer can wait on a busy daemon.
+    let follower = CIFollower(
+        send: { try ControlProtocol.send($0, timeout: 60) },
+        output: { line in print(line); fflush(stdout) },
+        stepSummary: environment["GITHUB_STEP_SUMMARY"]
+    )
+    let started: ControlProtocol.JobReport
+    do {
+        started = try follower.start(invocation)
+    } catch {
+        print("::error title=minirun::\(error.localizedDescription)")
+        return CIFollower.unavailable
+    }
+
+    let cancelled = Flag()
+    var sources: [DispatchSourceSignal] = []
+    for signo in [SIGINT, SIGTERM] {
+        signal(signo, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: signo, queue: .global())
+        source.setEventHandler { cancelled.set() }
+        source.resume()
+        sources.append(source)
+    }
+    defer { sources.forEach { $0.cancel() } }
+    return follower.follow(started, cancelled: { cancelled.isSet })
+}
+
+/// Set from a signal handler's queue, read by the follower.
+final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+    func set() { lock.withLock { value = true } }
+    var isSet: Bool { lock.withLock { value } }
 }
 
 func notAnswering(_ error: Error) -> String {

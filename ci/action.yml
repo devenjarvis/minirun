@@ -1,0 +1,87 @@
+name: minirun CI
+description: >
+  Build or test on a self-hosted minirun Mac through the running `minirun serve`, so the job
+  shares its checkouts, build folders, simulator reservations and limits.
+inputs:
+  command:
+    description: build, test, swift-test or sync
+    required: true
+  scheme:
+    description: Scheme to build or test (picked automatically if empty)
+    required: false
+  project:
+    description: An .xcworkspace, .xcodeproj or Swift package folder, relative to the repository
+    required: false
+  package:
+    description: For swift-test, the package's folder (default the top of the repository)
+    required: false
+  configuration:
+    description: Build configuration (default Debug)
+    required: false
+  platform:
+    description: ios, macos or mac-catalyst (found from the scheme if empty)
+    required: false
+  extra-args:
+    description: Extra xcodebuild arguments, one per line
+    required: false
+  only-testing:
+    description: Tests to run, one per line (for swift-test, --filter patterns)
+    required: false
+  skip-testing:
+    description: Tests to skip, one per line (for swift-test, --skip patterns)
+    required: false
+  timeout:
+    description: Stop after this many seconds in all
+    required: false
+  stall:
+    description: Stop if nothing is printed for this many seconds
+    required: false
+  args:
+    description: More tool arguments as a JSON object (the inputs above win)
+    required: false
+  minirun:
+    description: Path to the minirun command (found on PATH or in /Applications/minirun.app if empty)
+    required: false
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        MR_COMMAND: ${{ inputs.command }}
+        MR_SCHEME: ${{ inputs.scheme }}
+        MR_PROJECT: ${{ inputs.project }}
+        MR_PACKAGE: ${{ inputs.package }}
+        MR_CONFIGURATION: ${{ inputs.configuration }}
+        MR_PLATFORM: ${{ inputs.platform }}
+        MR_EXTRA_ARGS: ${{ inputs.extra-args }}
+        MR_ONLY_TESTING: ${{ inputs.only-testing }}
+        MR_SKIP_TESTING: ${{ inputs.skip-testing }}
+        MR_TIMEOUT: ${{ inputs.timeout }}
+        MR_STALL: ${{ inputs.stall }}
+        MR_ARGS: ${{ inputs.args }}
+        MR_BIN: ${{ inputs.minirun }}
+      # Inputs go through the environment, never into the script text, so they can't run as shell.
+      run: |
+        set -euo pipefail
+        bin="${MR_BIN:-}"
+        if [[ -z "$bin" ]]; then
+          bin=$(command -v minirun || true)
+          [[ -n "$bin" ]] || bin=/Applications/minirun.app/Contents/Helpers/minirun
+        fi
+        [[ -x "$bin" ]] || { echo "::error title=minirun::No minirun on this runner. Install minirun on the Mac, or set the minirun input."; exit 3; }
+        argv=("$MR_COMMAND")
+        add() { if [[ -n "$2" ]]; then argv+=("$1" "$2"); fi; }
+        add_lines() { while IFS= read -r line; do if [[ -n "$line" ]]; then argv+=("$1" "$line"); fi; done <<< "$2"; }
+        add --scheme "$MR_SCHEME"
+        add --project "$MR_PROJECT"
+        add --package "$MR_PACKAGE"
+        add --configuration "$MR_CONFIGURATION"
+        add --platform "$MR_PLATFORM"
+        add --timeout "$MR_TIMEOUT"
+        add --stall "$MR_STALL"
+        add --args "$MR_ARGS"
+        add_lines --extra-arg "$MR_EXTRA_ARGS"
+        add_lines --only-testing "$MR_ONLY_TESTING"
+        add_lines --skip-testing "$MR_SKIP_TESTING"
+        # exec, so GitHub's cancel signal reaches minirun, which cancels the job on the Mac.
+        exec "$bin" ci "${argv[@]}"

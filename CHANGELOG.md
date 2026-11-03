@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **`minirun ci` and a GitHub Action for CI jobs.** A workflow on a minirun runner can hand its
+  build or tests to `minirun serve` (`uses: devenjarvis/minirun/ci@main` with `command: test`, or
+  `minirun ci test --scheme App` in a `run:` step). The job builds the run's commit in a checkout
+  of its own that stays warm between runs of a branch (`ci/<branch>`), gets a simulator from
+  minirun's reservations and limits, and can be cancelled. Its log streams into the step,
+  compiler errors and failed tests become annotations, and the exit status is the job's. Adds the
+  `start_tool` and `job` control commands (protocol 7) and a `commit` argument to the build, test
+  and sync tools: the exact commit to check out in `ref`'s checkout.
+
 - **New branches check out in seconds.** Each repository now has one bare, blobless git mirror
   (`<workspaceRoot>/.git-mirrors/<owner>/<name>.git`), and every repo + ref checkout is a worktree
   of it, so a new ref only downloads what the Mac doesn't already have. Checkouts keep their paths;
