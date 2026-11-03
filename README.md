@@ -168,11 +168,19 @@ Use `/usr/bin/openssl`: a Homebrew OpenSSL 3 writes a `.p12` that `security impo
 expected and doesn't matter. Keep `minirun-local.p12` and `p12-password.txt` somewhere safe: the
 grants are tied to this certificate, so on a new Mac import the same one.
 
-Then install minirun once from a checkout (`./scripts/install.sh`), so the installed app is signed
-with the certificate and carries the updater that re-signs, and grant Screen Recording and
-Accessibility one last time, removing the old minirun entries first. Afterwards
-`codesign -dr - /Applications/minirun.app/Contents/Helpers/minirun` shows `certificate leaf`, not
-`cdhash`. To sign with a different identity, set `MINIRUN_SIGN_IDENTITY` for the install scripts.
+Then sign the installed app with it once (installing from a checkout with `./scripts/install.sh`
+does this too) and restart `minirun serve`:
+
+```zsh
+/Applications/minirun.app/Contents/Resources/sign-app.sh /Applications/minirun.app
+launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+codesign -dr - /Applications/minirun.app/Contents/Helpers/minirun   # shows "certificate leaf", not "cdhash"
+```
+
+Grant Screen Recording and Accessibility one last time. First remove every old minirun entry from
+both lists with **−**: an entry left over from an ad-hoc build keeps its switch on but no longer
+matches, so it does nothing. Then use **Request Access**, or **+** with the path above, and restart
+`minirun serve`. To sign with a different identity, set `MINIRUN_SIGN_IDENTITY` for the scripts.
 
 ### The Worker
 

@@ -2,12 +2,28 @@
 
 ## Unreleased
 
+## 0.6.0
+
+Live view goes over a direct WebRTC connection with much less lag, Screen Recording and
+Accessibility can survive updates, and stopped Mac apps no longer pile up in the menu.
+
+- **Live view over WebRTC (protocol 6).** The Mac now streams to viewers over a direct WebRTC
+  connection: an H.264 track for the screen and data channels for touch and input. The Worker only
+  carries connection setup, and the Mac enforces the viewer input rules the relay used to. STUN
+  via `stun.cloudflare.com` is always used; Cloudflare TURN is optional, with the `TURN_KEY_ID` and
+  `TURN_KEY_API_TOKEN` secrets. The WebSocket stream stays as an automatic fallback, and
+  `?transport=ws` forces it. Update the Worker too (the app does it with the saved API token, or
+  run `minirun worker deploy`).
+- **Lower live view latency.** Both encoders ask VideoToolbox for low-latency settings, and an SPS
+  that made browsers hold frames back is fixed. Live touches no longer look the simulator up on every
+  event: about 0.3 ms each instead of 6–7 ms. Open the viewer with `?stats=1`, or tap **ms** in its
+  header, for a readout of round trip, Mac pipeline and draw times, fps, bitrate and touch-to-screen.
 - **Screen Recording and Accessibility survive updates.** A Mac with its own `minirun local`
   code-signing certificate now has minirun signed with it: `scripts/install.sh` and
   `scripts/install-app.sh` use it (or `MINIRUN_SIGN_IDENTITY`), and the menu bar app re-signs each
   update with it before installing. macOS then sees every build as the same program, so the grants
-  no longer reset. The README's "Keep permissions across updates" says how to make the certificate;
-  then install once from a checkout and grant both permissions one last time. Without a
+  no longer reset. The README's "Keep permissions across updates" says how to make the certificate,
+  sign the installed app with it once, and grant both permissions one last time. Without a
   certificate nothing changes: releases are still ad-hoc signed.
 - **Stopped Mac apps no longer pile up in the menu.** The menu lists every running Mac app but only
   the three most recently used stopped ones; the rest go in a "N more not running" submenu. Stopped
