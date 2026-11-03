@@ -1,7 +1,7 @@
 {
   "name": "minirun",
   "mainModule": "index.js",
-  "bundleHash": "e40df13feb6cda241b2dece825db17bb6b5b6aecd396a67e7b8f84dbac02d640",
+  "bundleHash": "a8d0cbcf4ca6d692d2df8ee9ba5459be54a8e033c6e7d8da47ee94ebb676cbcc",
   "compatibilityDate": "2026-10-01",
   "compatibilityFlags": [
     "nodejs_compat",

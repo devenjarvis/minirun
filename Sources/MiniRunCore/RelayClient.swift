@@ -5,7 +5,7 @@ import MiniRunSim
 
 /// Keeps a WebSocket open to the Cloudflare relay, runs tool calls that arrive on it, and streams
 /// the screen while someone is watching. Reconnects with backoff forever, and at once when the
-/// relay URL or agent token changes.
+/// relay URL or agent token changes or the Worker is updated.
 public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSocketDelegate {
     private let config: LiveConfig
     private let registry: ToolRegistry
@@ -26,6 +26,11 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     private var state: ServeStatus.Relay
     /// Set when the relay settings change, so the run loop reconnects without waiting.
     private var reconnectRequested = false
+    /// After a Worker update: the code it should now run, and the waits (in seconds) before each
+    /// further reconnect while the relay still answers with older code. A deploy takes a few
+    /// seconds to reach every Cloudflare location.
+    private var awaitedBundle: (hash: String, waits: [UInt64])?
+    static let bundleWaits: [UInt64] = [2, 4, 8, 15, 30]
     /// Tells the relay this is the same run of minirun when it reconnects.
     private let instance = UUID().uuidString
     private let calls = CallLedger()
@@ -63,12 +68,41 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
     }
 
     /// Drops the current connection and connects again straight away with the current settings.
-    public func reconnect() {
+    public func reconnect(because reason: String = "Relay settings changed") {
         stateLock.lock()
         reconnectRequested = true
         stateLock.unlock()
-        log("Relay settings changed; reconnecting")
+        log("\(reason); reconnecting")
         socket?.cancel(with: .goingAway, reason: nil)
+    }
+
+    /// Reconnects after a Worker update, so the relay's welcome says which code it runs now: the
+    /// relay's sockets hibernate, so the open connection outlives the deploy and its welcome is
+    /// the old one. With `bundle`, reconnects again (see `bundleWaits`) while the relay still
+    /// reports other code.
+    public func reconnect(expectingBundle bundle: String?) {
+        stateLock.withLock { awaitedBundle = bundle.map { ($0, Self.bundleWaits) } }
+        reconnect(because: "The Worker was updated")
+    }
+
+    /// What to do when the relay says it runs `bundle`: nil, or seconds to wait before
+    /// reconnecting because it isn't yet the code a Worker update deployed.
+    private func checkAwaitedBundle(_ bundle: String?) -> UInt64? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard var awaited = awaitedBundle else { return nil }
+        if bundle == awaited.hash {
+            awaitedBundle = nil
+            return nil
+        }
+        guard !awaited.waits.isEmpty else {
+            awaitedBundle = nil
+            log("The relay still runs Worker \(bundle.map { String($0.prefix(12)) } ?? "unknown"), not \(awaited.hash.prefix(12)). Giving up; restart minirun serve to check again.")
+            return nil
+        }
+        let wait = awaited.waits.removeFirst()
+        awaitedBundle = awaited
+        return wait
     }
 
     private func takeReconnectRequest() -> Bool {
@@ -271,6 +305,12 @@ public final class RelayClient: NSObject, @unchecked Sendable, URLSessionWebSock
             Task { await send(.string(RelayProtocol.probe(t: t, viewer: viewer).encodedString())) }
         case .welcome(let bundle):
             stateLock.withLock { state.workerBundle = bundle }
+            if let wait = checkAwaitedBundle(bundle) {
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: wait * 1_000_000_000)
+                    self?.reconnect(because: "The relay doesn't run the updated Worker yet (\(bundle.map { String($0.prefix(12)) } ?? "unknown")); checking again")
+                }
+            }
         case .rtc(let signal):
             // In the order they arrived: an answer must follow its offer.
             let previous = rtcControl

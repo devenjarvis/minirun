@@ -40,18 +40,23 @@ public struct WorkerCommand: Sendable {
     /// Makes `minirun serve` pick up a new relay or token (reload, or restart if that fails). Says
     /// what happened, or nil if it isn't installed.
     public var restartServe: @Sendable () async -> String?
+    /// Makes `minirun serve` reconnect after the Worker's code changed (same relay settings), until
+    /// it runs the given bundle hash. Says what happened, or nil if nothing answered.
+    public var reconnectServe: @Sendable (String) async -> String?
     /// Waits between checks that the new Worker answers.
     public var verifyDelays: [TimeInterval] = [0, 2, 4, 8, 15, 30]
 
     public init(environment: [String: String], transport: HTTPTransport, loadBundle: @escaping @Sendable () throws -> WorkerBundle,
                 output: @escaping @Sendable (String) -> Void, readSecret: @escaping @Sendable (String) -> String?,
-                restartServe: @escaping @Sendable () async -> String?) {
+                restartServe: @escaping @Sendable () async -> String?,
+                reconnectServe: @escaping @Sendable (String) async -> String? = { _ in nil }) {
         self.environment = environment
         self.transport = transport
         self.loadBundle = loadBundle
         self.output = output
         self.readSecret = readSecret
         self.restartServe = restartServe
+        self.reconnectServe = reconnectServe
     }
 
     /// The real thing, for the `minirun` binary at `executable`.
@@ -62,7 +67,8 @@ public struct WorkerCommand: Sendable {
             loadBundle: { try WorkerBundle.locate(executable: executable) },
             output: { print($0) },
             readSecret: { prompt in WorkerCommand.readHidden(prompt) },
-            restartServe: { await WorkerCommand.reloadServe() }
+            restartServe: { await WorkerCommand.reloadServe() },
+            reconnectServe: { await WorkerCommand.reconnectServe(expecting: $0) }
         )
     }
 
@@ -82,7 +88,7 @@ public struct WorkerCommand: Sendable {
     }
 
     var manager: WorkerManager {
-        var manager = WorkerManager(transport: transport, loadBundle: loadBundle, reloadServe: restartServe)
+        var manager = WorkerManager(transport: transport, loadBundle: loadBundle, reloadServe: restartServe, reconnectServe: reconnectServe)
         manager.verifyDelays = verifyDelays
         return manager
     }
@@ -184,6 +190,15 @@ public struct WorkerCommand: Sendable {
             // An older daemon without reload_config: restart it instead.
         }
         return await restartLaunchAgent()
+    }
+
+    /// After a Worker update with the same relay settings: asks the running `minirun serve` to
+    /// reconnect, so it learns the Worker runs `bundle`. Nil if nothing answers.
+    public static func reconnectServe(expecting bundle: String) async -> String? {
+        guard let response = try? ControlProtocol.send(ControlProtocol.Request(command: "reconnect_relay", bundle: bundle)) else { return nil }
+        if response.ok { return response.message ?? "minirun serve is reconnecting to the updated Worker." }
+        // Older than protocol 6: it doesn't know reconnect_relay, and only a restart reconnects it.
+        return "minirun serve is older than this app and still reports the old Worker until it restarts (Restart minirun serve in the menu bar app, or `launchctl kickstart -k gui/$(id -u)/dev.minirun.agent`)."
     }
 
     /// `launchctl kickstart -k` for the LaunchAgent that install.sh sets up.
