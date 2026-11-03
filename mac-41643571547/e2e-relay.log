@@ -1,0 +1,129 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  40 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, list_mac_apps, list_windows, scroll, press_menu_item, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (iad20-fj921-b0d08d89-c6bd-40f2-b4e5-9f017867f00b-62E32D1E8E7C).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  1 frames, 2934 bytes, avc1.640C1F
+• macOS app: build_and_run through the relay
+  mac-ee5639: Launched HelloMacApp (pid 48562).
+• macOS app: H.264 live view and live mouse
+  23 frames; screen HelloMacApp 900x450 pt, 900x450 px; in the picker: true
+  live click reached the app (count=1)
+E2E relay test passed.
+--- minirun status
+minirun 0.6.1 serving (pid 46417, up 58s)
+Relay: connected to 127.0.0.1 for 57s
+Live view: http://127.0.0.1:8787/
+
+Simulators:
+  minirun-smoke (iOS 26.5) 323B0727-258C-4549-9B25-2646EFB28AA3 — not reserved, used just now
+
+Mac apps:
+  HelloMacApp mac-ee5639 (dev.minirun.HelloMacApp) — not running, for /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp, used just now
+
+Jobs (0 running):
+  job_ee360801 build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp: succeeded in 29s
+
+Shared media: 0 items, 0 bytes
+--- minirun ci
+minirun: swift test you/pkg@ci/main (job_1a6eb3b5) in /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683
+Making the mirror /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/.git-mirrors/you/pkg.git; later refs of this repo are checked out from it.
+bug/PkgPackageTests.derived/runner.swift
+[1/7] Write sources
+[4/7] Write swift-version-7974D3F7F03D5E95.txt
+[6/9] Emitting module Pkg
+[7/9] Compiling Pkg Pkg.swift
+[8/11] Emitting module PkgTests
+[9/11] Compiling PkgTests PkgTests.swift
+[10/13] Emitting module PkgPackageTests
+[11/13] Compiling PkgPackageTests runner.swift
+[11/13] Write Objects.LinkFileList
+[12/13] Linking PkgPackageTests
+Build complete! (89.32s)
+Test Suite 'Selected tests' started at 2026-11-03 13:49:58.777.
+Test Suite 'PkgPackageTests.xctest' started at 2026-11-03 13:49:58.800.
+Test Suite 'PkgTests' started at 2026-11-03 13:49:58.800.
+Test Case '-[PkgTests.PkgTests testFails]' started.
+/private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5: error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+::error line=5::-[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+Test Case '-[PkgTests.PkgTests testFails]' failed (0.265 seconds).
+Test Case '-[PkgTests.PkgTests testPasses]' started.
+Test Case '-[PkgTests.PkgTests testPasses]' passed (0.002 seconds).
+Test Suite 'PkgTests' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.269) seconds
+Test Suite 'PkgPackageTests.xctest' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.269) seconds
+Test Suite 'Selected tests' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.293) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+minirun: swift test you/pkg@ci/main failed
+Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.293) seconds
+Test run with 0 tests in 0 suites passed after 0.001 seconds.
+
+✗ /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+::error title=Test failed::/private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+Package: /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683
+Log: /Users/runner/Library/Logs/minirun/jobs/2026-11-03T13-48-18Z-swift-test.log
+::error title=minirun failed::Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.293) seconds%0ATest run with 0 tests in 0 suites passed after 0.001 seconds.%0A%0A✗ /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose%0APackage: /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683%0ALog: /Users/runner/Library/Logs/minirun/jobs/2026-11-03T13-48-18Z-swift-test.log
+FAILED: minirun ci didn't annotate the failing test with its file
+--- minirun serve log
+2026-11-03T13:47:19Z minirun 0.6.1 starting
+2026-11-03T13:47:19Z Simulator support loaded
+2026-11-03T13:47:19Z Preventing idle sleep while running
+2026-11-03T13:47:19Z 39 tools ready; workspaces at /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces
+2026-11-03T13:47:19Z Shutting down simulators and quitting Mac apps after 30 idle minutes
+2026-11-03T13:47:19Z Answering control requests on /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/control.sock
+2026-11-03T13:47:20Z Connected to relay 127.0.0.1
+2026-11-03T13:47:20Z Relay round trip: 13ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
+2026-11-03T13:47:41Z Relay round trip: 1ms
+2026-11-03T13:48:02Z Relay round trip: 7ms
+2026-11-03T13:48:18Z Started job_1a6eb3b5 swift test you/pkg@ci/main (from the control socket)
+2026-11-03T13:50:02Z Started job_b5791f97 sync you/pkg@main (from the control socket)
+--- wrangler log
+
+ ⛅️ wrangler 4.155.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.MAC_RELAY (MacRelay)                           Durable Object            local
+env.OAUTH_KV (REPLACE_WITH_KV_ID)                  KV Namespace              local
+env.MEDIA_KV (REPLACE_WITH_MEDIA_KV_ID)            KV Namespace              local
+env.OWNER_PASSWORD ("(hidden)")                    Environment Variable      local
+env.AGENT_TOKEN ("(hidden)")                       Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8787
+[wrangler:info] GET /login 200 OK (804ms)
+[wrangler:info] GET /login 200 OK (4ms)
+[wrangler:info] POST /register 201 Created (55ms)
+[wrangler:info] GET /authorize 200 OK (19ms)
+[wrangler:info] POST /authorize 302 Found (48ms)
+[wrangler:info] POST /token 200 OK (20ms)
+[wrangler:info] POST /mcp 200 OK (11ms)
+[wrangler:info] POST /mcp 200 OK (57ms)
+[wrangler:info] GET /agent 101 Switching Protocols (15ms)
+[wrangler:info] POST /mcp 200 OK (12ms)
+[wrangler:info] POST /mcp 200 OK (93ms)
+[wrangler:info] POST /mcp 200 OK (2699ms)
+[wrangler:info] POST /mcp 200 OK (899ms)
+[wrangler:info] POST /login 302 Found (5ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (13ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (20ms)
+[wrangler:info] POST /mcp 200 OK (28788ms)
+[wrangler:info] POST /mcp 200 OK (303ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (9ms)
+[wrangler:info] POST /mcp 200 OK (3434ms)
+[wrangler:info] POST /mcp 200 OK (307ms)

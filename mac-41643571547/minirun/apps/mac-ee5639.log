@@ -1,0 +1,17 @@
+
+=== minirun launch 2026-11-03T13:45:04Z /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp/.minirun/DerivedData/Build/Products/Debug/HelloMacApp.app/Contents/MacOS/HelloMacApp ===
+HelloMacApp: launched
+HelloMacApp: screen-capture-access=false
+HelloMacApp: count=1
+HelloMacApp: count=2
+HelloMacApp: count=3
+HelloMacApp: reset count=0
+HelloMacApp: name=
+HelloMacApp: name=
+HelloMacApp: name=Claude
+HelloMacApp: reset count=0
+
+=== minirun launch 2026-11-03T13:48:03Z /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp/.minirun/DerivedData/Build/Products/Debug/HelloMacApp.app/Contents/MacOS/HelloMacApp ===
+HelloMacApp: launched
+HelloMacApp: screen-capture-access=false
+HelloMacApp: count=1

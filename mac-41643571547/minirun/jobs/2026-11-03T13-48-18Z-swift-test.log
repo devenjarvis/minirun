@@ -1,0 +1,31 @@
+Building for debugging...
+[0/7] /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/.build/arm64-apple-macosx/debug/PkgPackageTests.derived/runner.swift
+[1/7] Write sources
+[4/7] Write swift-version-7974D3F7F03D5E95.txt
+[6/9] Emitting module Pkg
+[7/9] Compiling Pkg Pkg.swift
+[8/11] Emitting module PkgTests
+[9/11] Compiling PkgTests PkgTests.swift
+[10/13] Emitting module PkgPackageTests
+[11/13] Compiling PkgPackageTests runner.swift
+[11/13] Write Objects.LinkFileList
+[12/13] Linking PkgPackageTests
+Build complete! (89.32s)
+Test Suite 'Selected tests' started at 2026-11-03 13:49:58.777.
+Test Suite 'PkgPackageTests.xctest' started at 2026-11-03 13:49:58.800.
+Test Suite 'PkgTests' started at 2026-11-03 13:49:58.800.
+Test Case '-[PkgTests.PkgTests testFails]' started.
+/private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.axEDQ6LH66/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5: error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+Test Case '-[PkgTests.PkgTests testFails]' failed (0.265 seconds).
+Test Case '-[PkgTests.PkgTests testPasses]' started.
+Test Case '-[PkgTests.PkgTests testPasses]' passed (0.002 seconds).
+Test Suite 'PkgTests' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.269) seconds
+Test Suite 'PkgPackageTests.xctest' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.269) seconds
+Test Suite 'Selected tests' failed at 2026-11-03 13:49:59.070.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.268 (0.293) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
