@@ -250,7 +250,8 @@ by side. Keys, scrolls and drags are posted to the app's process, so they don't 
 or need the window in front. A tap (or a live view click) on a button or text field presses or
 focuses it through Accessibility, because SwiftUI controls ignore clicks posted to the app.
 `input: "hid"` uses the real cursor and keyboard instead, for anything those don't reach. `list_mac_apps` shows every Mac app minirun launched and who it's for.
-Apps nobody has used for `idleShutdownMinutes` are quit, like idle simulators.
+Apps nobody has used for `idleShutdownMinutes` are quit, like idle simulators. Stopped apps are
+forgotten after a day (at most the 10 most recent are kept), and the menu bar app can forget them sooner.
 
 It needs Screen Recording and Accessibility for `minirun serve`: see
 [Permissions for macOS apps](#permissions-for-macos-apps).
