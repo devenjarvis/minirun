@@ -18,33 +18,76 @@ enum Workspace {
         config.workspaceRoot + "/" + WorkspaceNaming.directory(slug: slug, ref: ref)
     }
 
+    /// Git work on one mirror (fetches, checkouts, adding worktrees) writes its shared object
+    /// store and tags, so it runs one at a time per mirror.
+    private static let mirrors = KeyedLock()
+
     /// Clones or updates `repo` and checks out `ref` (branch, tag or commit; default branch if nil).
     /// Local changes in the checkout are discarded; build output under `.minirun/` is kept.
+    ///
+    /// A new checkout is a worktree of the repository's bare mirror (`WorkspaceNaming.mirror`), so
+    /// a new ref only downloads what the mirror doesn't have yet. Checkouts made before that are
+    /// full clones, and keep working as they are; so does a checkout made when the mirror fails.
     static func sync(repo: String, ref: String?, config: MiniRunConfig, log: URL?) async throws -> Checkout {
         let (url, slug) = try config.resolveRepo(repo)
         let dir = path(for: slug, ref: ref, config: config)
+        let mirror = WorkspaceNaming.mirror(root: config.workspaceRoot, slug: slug)
         let fm = FileManager.default
 
         if !fm.fileExists(atPath: dir + "/.git") {
-            try fm.createDirectory(atPath: (dir as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
-            if fm.fileExists(atPath: dir) { try fm.removeItem(atPath: dir) }
-            try await git(["clone", "--filter=blob:none", "--no-checkout", url, dir], cwd: nil, log: log, timeout: 900)
+            do {
+                try await mirrors.withLock(mirror) { try await addWorktree(url: url, mirror: mirror, dir: dir, log: log) }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                XcodeBuild.appendLog(log, "Couldn't make a worktree of \(mirror) (\(error.localizedDescription)); cloning instead.\n")
+                try? fm.removeItem(atPath: dir)
+                try fm.createDirectory(atPath: (dir as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+                try await git(["clone", "--filter=blob:none", "--no-checkout", url, dir], cwd: nil, log: log, timeout: 900)
+            }
         } else {
             try await git(["remote", "set-url", "origin", url], cwd: dir, log: log)
         }
 
-        let target = ref?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "HEAD"
-        try await git(["fetch", "--prune", "--tags", "--force", "origin", target], cwd: dir, log: log, timeout: 900)
-        try await git(["checkout", "--force", "--detach", "FETCH_HEAD"], cwd: dir, log: log)
-        try await git(["clean", "-ffd", "-e", ".minirun/"], cwd: dir, log: log)
-        if fm.fileExists(atPath: dir + "/.gitmodules") {
-            try await git(["submodule", "update", "--init", "--recursive", "--force"], cwd: dir, log: log, timeout: 900)
+        // A worktree shares the mirror's objects and tags with its other worktrees.
+        let gitDir = WorkspaceNaming.gitDirectory(checkout: dir)
+        let isWorktree = gitDir != dir + "/.git"
+        try await mirrors.withLock(isWorktree ? mirror : dir) {
+            let target = ref?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "HEAD"
+            // FETCH_HEAD is per worktree, so fetches for other refs of the mirror don't replace it.
+            try await git(["fetch", "--prune", "--tags", "--force", "origin", target], cwd: dir, log: log, timeout: 900)
+            try await git(["checkout", "--force", "--detach", "FETCH_HEAD"], cwd: dir, log: log)
+            try await git(["clean", "-ffd", "-e", ".minirun/"], cwd: dir, log: log)
+            if fm.fileExists(atPath: dir + "/.gitmodules") {
+                try await git(["submodule", "update", "--init", "--recursive", "--force"], cwd: dir, log: log, timeout: 900)
+            }
         }
-        ensureIgnored(dir)
+        // Worktrees read info/exclude from the mirror, so one entry there covers all of them.
+        ensureIgnored(gitDirectory: isWorktree ? mirror : gitDir)
 
         let info = try await Shell.check("/usr/bin/git", ["log", "-1", "--format=%H%n%s"], cwd: dir, timeout: 30)
         let lines = info.stdout.split(separator: "\n", maxSplits: 1).map(String.init)
         return Checkout(path: dir, slug: slug, ref: ref, commit: lines.first ?? "", subject: lines.count > 1 ? lines[1] : "")
+    }
+
+    /// Makes `dir` a worktree of the bare mirror, making the mirror first if there isn't one.
+    /// The worktree starts with nothing checked out; `sync` fetches and checks out its ref.
+    private static func addWorktree(url: String, mirror: String, dir: String, log: URL?) async throws {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: mirror + "/HEAD") {
+            try await git(["remote", "set-url", "origin", url], cwd: mirror, log: log)
+        } else {
+            try? fm.removeItem(atPath: mirror)
+            try fm.createDirectory(atPath: (mirror as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            XcodeBuild.appendLog(log, "Making the mirror \(mirror); later refs of this repo are checked out from it.\n")
+            try await git(["clone", "--bare", "--filter=blob:none", url, mirror], cwd: nil, log: log, timeout: 900)
+        }
+        // Forget worktrees whose folders are gone (deleted from the menu or by hand), so one can
+        // be added at the same path again.
+        try await git(["worktree", "prune"], cwd: mirror, log: log)
+        if fm.fileExists(atPath: dir) { try fm.removeItem(atPath: dir) }
+        try fm.createDirectory(atPath: (dir as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try await git(["worktree", "add", "--detach", "--no-checkout", dir], cwd: mirror, log: log)
     }
 
     @discardableResult
@@ -88,11 +131,11 @@ enum Workspace {
     }
 
     /// Makes sure `.minirun/` is git-ignored locally without touching the tracked .gitignore.
-    private static func ensureIgnored(_ dir: String) {
-        let exclude = dir + "/.git/info/exclude"
+    private static func ensureIgnored(gitDirectory: String) {
+        let exclude = gitDirectory + "/info/exclude"
         let current = (try? String(contentsOfFile: exclude, encoding: .utf8)) ?? ""
         guard !current.contains(".minirun/") else { return }
-        try? FileManager.default.createDirectory(atPath: dir + "/.git/info", withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(atPath: gitDirectory + "/info", withIntermediateDirectories: true)
         try? (current + (current.hasSuffix("\n") || current.isEmpty ? "" : "\n") + ".minirun/\n").write(toFile: exclude, atomically: true, encoding: .utf8)
     }
 }

@@ -30,6 +30,9 @@ enum XcodeBuild {
         var stallTimeout: TimeInterval?
         /// The overall limit.
         var timeout: TimeInterval = 3600
+        /// The workspace root when `sharedBuildCache` is on: checkouts under it share package
+        /// checkouts and the compilation cache with the other checkouts of their repository.
+        var sharedCacheRoot: String?
     }
 
     /// Finds the workspace/project to build in a checkout, preferring an explicit `project` path.
@@ -168,12 +171,56 @@ enum XcodeBuild {
     /// The flags every build, test and settings call shares. Simulator and Mac products land in
     /// different folders under the same derived data (Debug-iphonesimulator, Debug, Debug-maccatalyst).
     static func baseArgs(_ container: Container, scheme: String, options: Options) -> [String] {
-        container.flags + [
+        let cache = sharedCache(container, options: options)
+        let packages = cache?.packages.flatMap { FileManager.default.fileExists(atPath: $0 + "/" + BuildCache.resolvedMarker) ? $0 : nil }
+        return container.flags + [
             "-scheme", scheme,
             "-configuration", options.configuration,
             "-derivedDataPath", options.directory + "/.minirun/DerivedData",
             "-skipPackagePluginValidation", "-skipMacroValidation",
-        ]
+        ] + BuildCache.arguments(extraArgs: options.extraArgs, packagesDirectory: packages, compilationCacheDirectory: cache?.compilation)
+    }
+
+    /// The shared cache folders for a build (see `BuildCache`), or nil when `sharedBuildCache` is
+    /// off or the build isn't in a checkout under the workspace root. `packages` is nil when the
+    /// project has no Package.resolved to key the folder by.
+    static func sharedCache(_ container: Container, options: Options) -> (packages: String?, compilation: String)? {
+        guard let root = options.sharedCacheRoot, let slug = BuildCache.slug(checkout: options.directory, root: root) else { return nil }
+        let containerPath = container.isPackage ? (container.workingDirectory ?? options.directory) : container.flags.last
+        let packages = containerPath
+            .flatMap { FileManager.default.contents(atPath: BuildCache.resolvedFile(container: $0)) }
+            .map { BuildCache.packagesDirectory(root: root, slug: slug, resolved: $0) }
+        return (packages, BuildCache.compilationCacheDirectory(root: root, slug: slug))
+    }
+
+    /// Builds share a package folder only once it's resolved, so two builds never fill one at the
+    /// same time. The first build to want a folder resolves it here, holding a lock on it, and
+    /// marks it done; until then (and if that fails) builds use their own DerivedData's folder.
+    private static let packageFolders = KeyedLock()
+
+    static func prepareSharedPackages(_ container: Container, scheme: String, options: Options) async throws {
+        guard let folder = sharedCache(container, options: options)?.packages,
+              !options.extraArgs.contains(where: { $0.hasPrefix("-clonedSourcePackagesDirPath") }) else { return }
+        let marker = folder + "/" + BuildCache.resolvedMarker
+        guard !FileManager.default.fileExists(atPath: marker) else { return }
+        try await packageFolders.withLock(folder, onWait: {
+            appendLog(options.log, "Waiting for another build to resolve the shared packages in \(folder)…\n")
+        }) {
+            guard !FileManager.default.fileExists(atPath: marker) else { return }
+            try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+            var args = baseArgs(container, scheme: scheme, options: options) + options.extraArgs
+            args += ["-clonedSourcePackagesDirPath", folder, "-resolvePackageDependencies"]
+            appendLog(options.log, "$ xcrun xcodebuild " + args.joined(separator: " ") + "\n")
+            let result = try await Shell.run("/usr/bin/xcrun", ["xcodebuild"] + args, cwd: container.workingDirectory ?? options.directory,
+                                             timeout: 900, stallTimeout: options.stallTimeout, logURL: options.log)
+            if result.succeeded {
+                FileManager.default.createFile(atPath: marker, contents: Data())
+            } else {
+                // Not this build's problem: it builds with its own package folder, as before.
+                appendLog(options.log, "Couldn't resolve packages into the shared folder; building with this checkout's own.\n")
+                try? FileManager.default.removeItem(atPath: folder)
+            }
+        }
     }
 
     static func commonArgs(_ container: Container, scheme: String, options: Options) -> [String] {
@@ -236,6 +283,7 @@ enum XcodeBuild {
 
     static func build(_ options: Options) async throws -> BuildOutput {
         let (container, scheme) = try await resolveScheme(options)
+        try await prepareSharedPackages(container, scheme: scheme, options: options)
         let common = commonArgs(container, scheme: scheme, options: options)
         let cwd = container.workingDirectory ?? options.directory
         let (result, extra, notes) = try await runSigningFallback({ ["xcodebuild"] + common + $0 + ["build"] }, options: options, cwd: cwd)
@@ -282,6 +330,7 @@ enum XcodeBuild {
     static func test(_ options: Options, onlyTesting: [String], skipTesting: [String]) async throws -> TestOutput {
         if options.platform == .ios, options.udid == nil { throw ToolError("Tests on iOS need a simulator.") }
         let (container, scheme) = try await resolveScheme(options, forTesting: true)
+        try await prepareSharedPackages(container, scheme: scheme, options: options)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let bundle = options.directory + "/.minirun/results/\(scheme)-\(stamp).xcresult"
         try FileManager.default.createDirectory(atPath: (bundle as NSString).deletingLastPathComponent, withIntermediateDirectories: true)

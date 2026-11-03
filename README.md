@@ -254,6 +254,9 @@ different branches of the same app (for example, two worktrees). minirun keeps t
 - **Each repo + ref has its own checkout.** `you/app` at `feature-a` builds in
   `~/minirun/workspaces/you/app@feature-a`, with its own build folder, so one session's sync never
   swaps the source under another session's build. Builds of the same checkout wait their turn.
+  Checkouts are git worktrees of one mirror per repository (`~/minirun/workspaces/.git-mirrors`),
+  so a new branch only downloads what the Mac doesn't have yet. Checkouts made by older versions
+  are full clones and keep working.
 - **Each piece of work gets its own simulator.** `build_and_run` without `device` uses the simulator
   reserved for its repo + ref. If there isn't one, it takes an unreserved booted simulator or
   boots a separate one, creating a copy such as "iPhone 17 Pro (minirun 2)" if every simulator of
@@ -483,6 +486,7 @@ Gatekeeper prompts.
 | `mediaStorageLimitMB` | `500` | The oldest shared files are deleted to stay under this |
 | `maxRecordingSeconds` | `60` | Recordings stop by themselves after this |
 | `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR through the Worker (10 MB on a `pr-media` branch, or this if higher); bigger ones are shrunk |
+| `sharedBuildCache` | `false` | Checkouts of one repository share Swift package checkouts (one folder per Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. Experimental: see [docs/faster-ci-plan.md](docs/faster-ci-plan.md) |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a
 new `relayURL` or `agentToken` makes the Mac reconnect to the relay.
