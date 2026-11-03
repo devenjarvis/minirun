@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.0
+
+A minirun Mac becomes a faster CI machine: GitHub Actions jobs can hand their builds and tests to
+`minirun serve`, and new branches check out from one git mirror per repository. The plan behind
+this, with what comes next, is in `docs/faster-ci-plan.md`. The Worker only changes its version
+number; update it from the menu when it asks.
+
 - **`minirun ci` and a GitHub Action for CI jobs.** A workflow on a minirun runner can hand its
   build or tests to `minirun serve` (`uses: devenjarvis/minirun/ci@main` with `command: test`, or
   `minirun ci test --scheme App` in a `run:` step). The job builds the run's commit in a checkout
@@ -10,7 +17,6 @@
   compiler errors and failed tests become annotations, and the exit status is the job's. Adds the
   `start_tool` and `job` control commands (protocol 7) and a `commit` argument to the build, test
   and sync tools: the exact commit to check out in `ref`'s checkout.
-
 - **New branches check out in seconds.** Each repository now has one bare, blobless git mirror
   (`<workspaceRoot>/.git-mirrors/<owner>/<name>.git`), and every repo + ref checkout is a worktree
   of it, so a new ref only downloads what the Mac doesn't already have. Checkouts keep their paths;
@@ -20,6 +26,8 @@
   Swift package checkouts, in one folder per Package.resolved, and Xcode's compilation cache
   (`COMPILATION_CACHE_ENABLE_CACHING`), under `<workspaceRoot>/.cache`. Arguments you pass in
   `extra_args` win. See `docs/faster-ci-plan.md` for what to measure before turning it on.
+- **Synced commit subjects lose a stray newline.** `sync_repo` printed a commit's subject with
+  git's trailing newline inside the quotes.
 
 ## 0.6.1
 
