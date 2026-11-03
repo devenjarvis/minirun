@@ -106,6 +106,18 @@ final class CIAnnotationTests: XCTestCase {
         XCTAssertEqual(annotations.annotate(logLine: base + "/link/you/pkg/A.swift:1:2: error: too"), "::error file=A.swift,line=1,col=2::too")
     }
 
+    func testTheCheckoutCanAppearAfterFollowingStarts() throws {
+        // The first run of a branch: the job makes the checkout after `minirun ci` starts following it.
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("minirun-late-\(UUID().uuidString.prefix(8))").path
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        try FileManager.default.createDirectory(atPath: base + "/real", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: base + "/link", withDestinationPath: base + "/real")
+        var annotations = CIAnnotations(checkout: base + "/link/you/pkg")
+        try FileManager.default.createDirectory(atPath: base + "/real/you/pkg", withIntermediateDirectories: true)
+        let real = try XCTUnwrap(CIAnnotations.realPath(base + "/real/you/pkg"))
+        XCTAssertEqual(annotations.annotate(logLine: real + "/Tests/T.swift:5: error: boom"), "::error file=Tests/T.swift,line=5::boom")
+    }
+
     func testFileNamesWithColonsAndCommasAreEscaped() {
         var annotations = CIAnnotations(checkout: "/w")
         XCTAssertEqual(annotations.annotate(logLine: "/w/a:b,c.swift:3:4: error: no"), "::error file=a%3Ab%2Cc.swift,line=3,col=4::no")

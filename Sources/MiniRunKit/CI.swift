@@ -131,7 +131,8 @@ public struct CIAnnotations {
     /// The checkout the job builds in, so errors get paths relative to the repository.
     public var checkout: String?
     /// `checkout` with symbolic links resolved: tools print real paths (/private/var/… for
-    /// /var/… on macOS), which may not start with the checkout as the daemon named it.
+    /// /var/… on macOS), which may not start with the checkout as the daemon named it. Found
+    /// when first needed: on a branch's first run the job makes the checkout after following starts.
     private var realCheckout: String?
     public var limit = 50
     private var emitted: Set<String> = []
@@ -139,7 +140,6 @@ public struct CIAnnotations {
 
     public init(checkout: String?, limit: Int = 50) {
         self.checkout = checkout
-        self.realCheckout = checkout.flatMap(Self.realPath)
         self.limit = limit
     }
 
@@ -167,8 +167,9 @@ public struct CIAnnotations {
         return text
     }
 
-    private func relative(_ file: String) -> String? {
+    private mutating func relative(_ file: String) -> String? {
         guard let checkout else { return file }
+        if realCheckout == nil { realCheckout = Self.realPath(checkout) }
         for candidate in [checkout, realCheckout].compactMap({ $0 }) {
             var root = candidate
             while root.count > 1, root.hasSuffix("/") { root.removeLast() }
