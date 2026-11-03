@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.6.1
+
+- **Updating the Worker clears "out of date".** After Update Worker (or `minirun worker deploy`)
+  the menu kept saying the Worker was out of date until `minirun serve` restarted. The Worker's
+  WebSockets hibernate, so the Mac's connection survived the deploy and still carried the old
+  Worker's version. Now a deploy asks `minirun serve` to reconnect, and it keeps reconnecting for
+  up to a minute until the relay runs the new code, which a deploy takes a few seconds to roll out.
+  Adds the `reconnect_relay` control command (protocol 6). Live view viewers reconnect by
+  themselves.
+
 ## 0.6.0
 
 Live view goes over a direct WebRTC connection with much less lag, Screen Recording and

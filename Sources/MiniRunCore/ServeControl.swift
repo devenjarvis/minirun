@@ -154,6 +154,11 @@ struct ServeControl: ControlCommands {
         return message
     }
 
+    func reconnectRelay(expectingBundle bundle: String?) async throws -> String {
+        client.reconnect(expectingBundle: bundle)
+        return "minirun serve is reconnecting to the updated Worker."
+    }
+
     /// Folders in use by a sync, build or command, standardized like the checkout paths.
     private func busyFolders() async -> Set<String> {
         let held = await registry.checkouts.held

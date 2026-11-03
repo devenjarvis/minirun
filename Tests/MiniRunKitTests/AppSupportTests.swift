@@ -257,10 +257,12 @@ final class WorkerManagerTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    func manager(_ fake: FakeCloudflare, reloaded: @escaping @Sendable () -> Void = {}) -> WorkerManager {
+    func manager(_ fake: FakeCloudflare, reloaded: @escaping @Sendable () -> Void = {},
+                 reconnected: @escaping @Sendable (String) -> Void = { _ in }) -> WorkerManager {
         let manifest = CloudflareFixture.manifest
         var manager = WorkerManager(transport: fake, loadBundle: { WorkerBundle(manifest: manifest, code: Data("x".utf8)) },
-                                    reloadServe: { reloaded(); return "reloaded" })
+                                    reloadServe: { reloaded(); return "reloaded" },
+                                    reconnectServe: { reconnected($0); return "reconnecting" })
         manager.verifyDelays = [0]
         return manager
     }
@@ -276,6 +278,29 @@ final class WorkerManagerTests: XCTestCase {
         XCTAssertEqual(steps.lock.withLock { steps.list }.last, "Checking that the Worker answers")
         XCTAssertEqual(MiniRunConfig.load().relayURL, "wss://minirun.me.workers.dev/agent")
         XCTAssertEqual(WorkerSettings.load().apiToken, "cf")
+    }
+
+    /// Updating the Worker's code keeps the relay settings, so minirun serve isn't reloaded. Its
+    /// connection outlives the deploy, so it's asked to reconnect until the relay runs the new code.
+    func testRedeployReconnectsServeToTheNewCode() async throws {
+        let fake = CloudflareFixture.freshAccount()
+        fake.on("GET /login") { _ in (200, JSONValue.null) }
+        _ = try await manager(fake).deploy(apiToken: "cf", options: .init())
+        // The Worker now has both secrets, so the update keeps them and the relay settings.
+        let account = CloudflareFixture.account
+        fake.on("GET /accounts/\(account)/workers/scripts/minirun/secrets",
+                result: [["name": .string(WorkerDeployer.passwordSecret)], ["name": .string(WorkerDeployer.tokenSecret)]])
+        let before = MiniRunConfig.load()
+
+        final class Calls: @unchecked Sendable { let lock = NSLock(); var reloads = 0; var bundles: [String] = [] }
+        let calls = Calls()
+        let again = try await manager(fake, reloaded: { calls.lock.withLock { calls.reloads += 1 } },
+                                      reconnected: { bundle in calls.lock.withLock { calls.bundles.append(bundle) } })
+            .deploy(apiToken: "cf", options: .init())
+        XCTAssertEqual(again.serveMessage, "reconnecting")
+        XCTAssertEqual(calls.lock.withLock { calls.reloads }, 0, "the relay settings didn't change")
+        XCTAssertEqual(calls.lock.withLock { calls.bundles }, [CloudflareFixture.manifest.bundleHash])
+        XCTAssertEqual(MiniRunConfig.load().agentToken, before.agentToken)
     }
 
     func testRotate() async throws {

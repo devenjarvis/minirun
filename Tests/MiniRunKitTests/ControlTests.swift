@@ -32,6 +32,24 @@ final class FakeControlCommands: ControlCommands, @unchecked Sendable {
     func deleteMedia(id: String) async throws -> String { record("delete media \(id)"); return "Deleted \(id)." }
     func deleteAllMedia() async throws -> String { record("delete all media"); return "Deleted everything." }
     func stopRecording(udid: String) async throws -> String { record("stop recording \(udid)"); return "Stopped \(udid)." }
+    func reconnectRelay(expectingBundle bundle: String?) async throws -> String { record("reconnect \(bundle ?? "-")"); return "Reconnecting." }
+}
+
+/// Only what every daemon answers, so the defaults for newer commands apply.
+struct MinimalControlCommands: ControlCommands {
+    let snapshot: ServeStatus
+    func status() async -> ServeStatus { snapshot }
+    func reloadConfig() async throws -> ConfigReload { ConfigReload(applied: [], reconnecting: []) }
+    func shutdownSimulator(udid: String) async throws -> String { "" }
+    func releaseSimulator(udid: String) async throws -> String { "" }
+    func cancelJob(id: String) async throws -> String { "" }
+    func workspaces() async throws -> [WorkspaceInfo] { [] }
+    func deleteWorkspace(path: String) async throws -> String { "" }
+    func doctor() async -> [DoctorCheck] { [] }
+    func listMedia() async throws -> [MediaItem] { [] }
+    func deleteMedia(id: String) async throws -> String { "" }
+    func deleteAllMedia() async throws -> String { "" }
+    func stopRecording(udid: String) async throws -> String { "" }
 }
 
 final class ControlCommandTests: XCTestCase {
@@ -41,6 +59,27 @@ final class ControlCommandTests: XCTestCase {
         let line = await ControlProtocol.respond(to: ControlProtocol.encode(request), commands: commands)
         XCTAssertFalse(line.contains("\n"), "one response line")
         return try ControlProtocol.decode(ControlProtocol.Response.self, from: line)
+    }
+
+    func testReconnectRelayPassesTheDeployedBundle() async throws {
+        let fake = FakeControlCommands(status: status)
+        let response = try await ask(fake, ControlProtocol.Request(command: "reconnect_relay", bundle: "e40df13feb6c"))
+        XCTAssertTrue(response.ok)
+        XCTAssertEqual(response.message, "Reconnecting.")
+        let bare = try await ask(fake, ControlProtocol.Request(command: "reconnect_relay"))
+        XCTAssertTrue(bare.ok)
+        XCTAssertEqual(fake.calls, ["reconnect e40df13feb6c", "reconnect -"])
+        XCTAssertGreaterThanOrEqual(ControlProtocol.version, 6, "reconnect_relay is protocol 6")
+
+        let minimal = try await ask(MinimalControlCommands(snapshot: status), ControlProtocol.Request(command: "reconnect_relay", bundle: "x"))
+        XCTAssertFalse(minimal.ok)
+        XCTAssertEqual(minimal.error, "This minirun serve has no relay connection.")
+    }
+
+    func testRequestWithoutBundleDecodes() throws {
+        // A request from an older app has no bundle key.
+        let request = try ControlProtocol.decode(ControlProtocol.Request.self, from: #"{"command":"reload_config"}"#)
+        XCTAssertNil(request.bundle)
     }
 
     func testEveryCommand() async throws {
@@ -105,7 +144,7 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Request(command: "cancel_job", id: "job_1")), #"{"command":"cancel_job","id":"job_1"}"#)
         let old = try ControlProtocol.decode(ControlProtocol.Response.self, from: #"{"ok":false,"error":"Unknown command doctor."}"#)
         XCTAssertNil(old.controlVersion)
-        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":5,"message":"hi","ok":true}"#)
+        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":\#(ControlProtocol.version),"message":"hi","ok":true}"#)
     }
 }
 

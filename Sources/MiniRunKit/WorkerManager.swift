@@ -11,14 +11,19 @@ public struct WorkerManager: Sendable {
     public var loadBundle: @Sendable () throws -> WorkerBundle
     /// Makes `minirun serve` pick up a new relay or token. Says what happened, or nil if it isn't installed.
     public var reloadServe: @Sendable () async -> String?
+    /// Makes `minirun serve` reconnect to the relay after the Worker's code changed, until it runs
+    /// this bundle hash. Says what happened, or nil if nothing answered.
+    public var reconnectServe: @Sendable (String) async -> String?
     /// Waits between checks that the new Worker answers.
     public var verifyDelays: [TimeInterval] = [0, 2, 4, 8, 15, 30]
 
     public init(transport: HTTPTransport, loadBundle: @escaping @Sendable () throws -> WorkerBundle,
-                reloadServe: @escaping @Sendable () async -> String?) {
+                reloadServe: @escaping @Sendable () async -> String?,
+                reconnectServe: @escaping @Sendable (String) async -> String? = { _ in nil }) {
         self.transport = transport
         self.loadBundle = loadBundle
         self.reloadServe = reloadServe
+        self.reconnectServe = reconnectServe
     }
 
     /// How to make a Cloudflare API token, for the CLI prompt and the setup window.
@@ -67,7 +72,9 @@ public struct WorkerManager: Sendable {
 
         progress("Checking that the Worker answers")
         let answering = await answers(URL(string: result.workerURL + "/login")!)
-        let serveMessage = relayChanged ? await reloadServe() : nil
+        // New relay settings make minirun serve reconnect anyway. Otherwise its connection outlives
+        // the deploy and still says the Worker runs the old code, so ask it to reconnect.
+        let serveMessage = relayChanged ? await reloadServe() : await reconnectServe(bundle.manifest.bundleHash)
         return Deployment(result: result, bundleHash: bundle.manifest.bundleHash, answering: answering, serveMessage: serveMessage)
     }
 
@@ -209,7 +216,8 @@ extension WorkerManager {
                 }
                 return try WorkerBundle(directory: bundleDirectory)
             },
-            reloadServe: { await WorkerCommand.reloadServe() }
+            reloadServe: { await WorkerCommand.reloadServe() },
+            reconnectServe: { await WorkerCommand.reconnectServe(expecting: $0) }
         )
     }
 }

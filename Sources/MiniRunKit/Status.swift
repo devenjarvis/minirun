@@ -291,13 +291,15 @@ public enum ControlProtocol {
     /// Goes up when commands are added, so the menu bar app can tell it's talking to an older
     /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest; 3 added
     /// shared media and recordings; 4 added the macOS app commands (request_mac_permissions,
-    /// quit_mac_app, activate_mac_app); 5 added forget_mac_app and forget_stopped_mac_apps.
-    public static let version = 5
+    /// quit_mac_app, activate_mac_app); 5 added forget_mac_app and forget_stopped_mac_apps; 6
+    /// added reconnect_relay.
+    public static let version = 6
 
     public struct Request: Codable, Equatable, Sendable {
         /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
         /// workspaces, delete_workspace, doctor, list_media, delete_media, delete_all_media,
-        /// stop_recording, request_mac_permissions, quit_mac_app, activate_mac_app.
+        /// stop_recording, request_mac_permissions, quit_mac_app, activate_mac_app, forget_mac_app,
+        /// forget_stopped_mac_apps, reconnect_relay.
         public var command: String
         /// The simulator for shutdown_simulator, release_simulator and stop_recording.
         public var udid: String?
@@ -306,12 +308,16 @@ public enum ControlProtocol {
         public var id: String?
         /// The checkout folder for delete_workspace.
         public var path: String?
+        /// For reconnect_relay: the Worker code just deployed (its bundle hash), to reconnect until
+        /// the relay runs it.
+        public var bundle: String?
 
-        public init(command: String, udid: String? = nil, id: String? = nil, path: String? = nil) {
+        public init(command: String, udid: String? = nil, id: String? = nil, path: String? = nil, bundle: String? = nil) {
             self.command = command
             self.udid = udid
             self.id = id
             self.path = path
+            self.bundle = bundle
         }
     }
 
@@ -410,6 +416,8 @@ public enum ControlProtocol {
                 return encode(Response(ok: true, message: try await commands.forgetMacApp(id: macAppID(required(request.id, "id")))))
             case "forget_stopped_mac_apps":
                 return encode(Response(ok: true, message: try await commands.forgetStoppedMacApps()))
+            case "reconnect_relay":
+                return encode(Response(ok: true, message: try await commands.reconnectRelay(expectingBundle: request.bundle)))
             default:
                 return encode(Response.failure("Unknown command \(request.command)."))
             }
@@ -463,6 +471,11 @@ public protocol ControlCommands: Sendable {
     func forgetMacApp(id: String) async throws -> String
     /// Drops every stopped Mac app from the list.
     func forgetStoppedMacApps() async throws -> String
+    /// Drops the relay connection and connects again, so the relay says which Worker code it
+    /// runs. After a Worker update the connection survives (the Worker's sockets hibernate), so
+    /// without this the menu goes on reporting the old code. With `expectingBundle`, keeps
+    /// reconnecting for a while until the relay runs that code. Returns at once.
+    func reconnectRelay(expectingBundle: String?) async throws -> String
 }
 
 extension ControlCommands {
@@ -471,4 +484,5 @@ extension ControlCommands {
     public func activateMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func forgetMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func forgetStoppedMacApps() async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
+    public func reconnectRelay(expectingBundle: String?) async throws -> String { throw ToolError("This minirun serve has no relay connection.") }
 }
