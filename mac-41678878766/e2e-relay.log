@@ -1,0 +1,92 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  40 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, list_mac_apps, list_windows, scroll, press_menu_item, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (sjc22-be107-0844d97f-e612-42c4-bb1b-76de35e154c7-763336711804).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  1 frames, 3107 bytes, avc1.640C1F
+• macOS app: build_and_run through the relay
+  mac-ee5639: Launched HelloMacApp (pid 29854).
+• macOS app: H.264 live view and live mouse
+  29 frames; screen HelloMacApp 900x450 pt, 900x450 px; in the picker: true
+  live click reached the app (count=1)
+E2E relay test passed.
+--- minirun status
+minirun 0.7.0 serving (pid 28301, up 37s)
+Relay: connected to 127.0.0.1 for 37s
+Live view: http://127.0.0.1:8787/
+
+Simulators:
+  minirun-smoke (iOS 26.5) 10AA06E9-83A2-48E6-9CE0-1B282BB1DB45 — not reserved, used just now
+
+Mac apps:
+  HelloMacApp mac-ee5639 (dev.minirun.HelloMacApp) — not running, for /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp, used just now
+
+Jobs (0 running):
+  job_c3be77a9 build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp: succeeded in 15s
+
+Shared media: 0 items, 0 bytes
+--- minirun ci
+minirun: swift test you/pkg@ci/main (job_6bf606b0) in /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683
+Making the mirror /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/.git-mirrors/you/pkg.git; later refs of this repo are checked out from it.
+bug/PkgPackageTests.derived/runner.swift
+[1/7] Write sources
+[4/7] Write swift-version-7974D3F7F03D5E95.txt
+[6/9] Compiling Pkg Pkg.swift
+[7/9] Emitting module Pkg
+[8/11] Emitting module PkgTests
+[9/11] Compiling PkgTests PkgTests.swift
+[10/13] Emitting module PkgPackageTests
+[11/13] Compiling PkgPackageTests runner.swift
+[11/13] Write Objects.LinkFileList
+[12/13] Linking PkgPackageTests
+Build complete! (19.17s)
+Test Suite 'Selected tests' started at 2026-11-03 17:10:12.354.
+Test Suite 'PkgPackageTests.xctest' started at 2026-11-03 17:10:12.359.
+Test Suite 'PkgTests' started at 2026-11-03 17:10:12.359.
+Test Case '-[PkgTests.PkgTests testFails]' started.
+/private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5: error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+::error file=Tests/PkgTests/PkgTests.swift,line=5::-[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+Test Case '-[PkgTests.PkgTests testFails]' failed (0.094 seconds).
+Test Case '-[PkgTests.PkgTests testPasses]' started.
+Test Case '-[PkgTests.PkgTests testPasses]' passed (0.000 seconds).
+Test Suite 'PkgTests' failed at 2026-11-03 17:10:12.454.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.094 (0.095) seconds
+Test Suite 'PkgPackageTests.xctest' failed at 2026-11-03 17:10:12.454.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.094 (0.095) seconds
+Test Suite 'Selected tests' failed at 2026-11-03 17:10:12.454.
+	 Executed 2 tests, with 1 failure (0 unexpected) in 0.094 (0.101) seconds
+◇ Test run started.
+↳ Testing Library Version: 1902
+↳ Target Platform: arm64e-apple-macos14.0
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+minirun: swift test you/pkg@ci/main failed
+Executed 2 tests, with 1 failure (0 unexpected) in 0.094 (0.101) seconds
+Test run with 0 tests in 0 suites passed after 0.001 seconds.
+
+✗ /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+::error title=Test failed::/private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose
+Package: /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683
+Log: /Users/runner/Library/Logs/minirun/jobs/2026-11-03T17-09-48Z-swift-test.log
+::error title=minirun failed::Executed 2 tests, with 1 failure (0 unexpected) in 0.094 (0.101) seconds%0ATest run with 0 tests in 0 suites passed after 0.001 seconds.%0A%0A✗ /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683/Tests/PkgTests/PkgTests.swift:5 error: -[PkgTests.PkgTests testFails] : XCTAssertEqual failed: ("2") is not equal to ("3") - on purpose%0APackage: /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces/you/pkg@ci-main-81d98683%0ALog: /Users/runner/Library/Logs/minirun/jobs/2026-11-03T17-09-48Z-swift-test.log
+--- minirun serve log
+2026-11-03T17:09:09Z minirun 0.7.0 starting
+2026-11-03T17:09:10Z Simulator support loaded
+2026-11-03T17:09:10Z Preventing idle sleep while running
+2026-11-03T17:09:10Z 39 tools ready; workspaces at /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/workspaces
+2026-11-03T17:09:10Z Shutting down simulators and quitting Mac apps after 30 idle minutes
+2026-11-03T17:09:10Z Answering control requests on /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.u5bzXT5sCZ/control.sock
+2026-11-03T17:09:10Z Connected to relay 127.0.0.1
+2026-11-03T17:09:10Z Relay round trip: 7ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
+2026-11-03T17:09:31Z Relay round trip: 1ms
+2026-11-03T17:09:48Z Started job_6bf606b0 swift test you/pkg@ci/main (from the control socket)
+2026-11-03T17:09:52Z Relay round trip: 1ms
+2026-11-03T17:10:13Z Started job_19ef0331 sync you/pkg@main (from the control socket)
