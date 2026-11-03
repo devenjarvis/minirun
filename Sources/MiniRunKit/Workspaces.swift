@@ -18,6 +18,38 @@ public enum WorkspaceNaming {
         return slug + "@" + ref
     }
 
+    /// Under the workspace root. A dot folder, so `WorkspaceInventory` doesn't list it as a checkout.
+    public static let mirrorsFolder = ".git-mirrors"
+
+    /// The bare mirror every checkout of a repository is a worktree of:
+    /// `<root>/.git-mirrors/<owner>/<name>.git`.
+    public static func mirror(root: String, slug: String) -> String {
+        var path = root
+        while path.count > 1, path.hasSuffix("/") { path.removeLast() }
+        return path + "/" + mirrorsFolder + "/" + slug + ".git"
+    }
+
+    /// A checkout's git folder: `<checkout>/.git` for a clone, or for a worktree, the folder its
+    /// `.git` file points to (`gitdir: <mirror>/worktrees/<id>`). `gitFile` is that file's text, nil
+    /// when `.git` is a folder.
+    public static func gitDirectory(checkout: String, gitFile: String?) -> String {
+        guard let gitFile else { return checkout + "/.git" }
+        for line in gitFile.split(whereSeparator: \.isNewline) where line.hasPrefix("gitdir:") {
+            let target = line.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespaces)
+            guard !target.isEmpty else { break }
+            return target.hasPrefix("/") ? target : URL(fileURLWithPath: checkout + "/" + target).standardizedFileURL.path
+        }
+        return checkout + "/.git"
+    }
+
+    /// `gitDirectory` read from disk.
+    public static func gitDirectory(checkout: String) -> String {
+        var isDirectory: ObjCBool = false
+        let dotGit = checkout + "/.git"
+        guard FileManager.default.fileExists(atPath: dotGit, isDirectory: &isDirectory), !isDirectory.boolValue else { return dotGit }
+        return gitDirectory(checkout: checkout, gitFile: try? String(contentsOfFile: dotGit, encoding: .utf8))
+    }
+
     static func fnv1a(_ text: String) -> String {
         var hash: UInt32 = 0x811C_9DC5
         for byte in text.utf8 {
@@ -126,7 +158,9 @@ public enum WorkspaceInventory {
         for owner in directories(in: rootPath) {
             for name in directories(in: rootPath + "/" + owner) {
                 let path = rootPath + "/" + owner + "/" + name
-                let times = [path, path + "/.minirun", path + "/.git/FETCH_HEAD", path + "/.git/HEAD"].compactMap {
+                // A worktree keeps FETCH_HEAD and HEAD in its folder under the mirror.
+                let git = WorkspaceNaming.gitDirectory(checkout: path)
+                let times = [path, path + "/.minirun", git + "/FETCH_HEAD", git + "/HEAD"].compactMap {
                     (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date
                 }
                 found.append(WorkspaceInfo(

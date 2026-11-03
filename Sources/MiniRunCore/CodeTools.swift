@@ -497,6 +497,7 @@ extension ToolRegistry {
         options.configuration = args.string("configuration") ?? "Debug"
         options.extraArgs = args.strings("extra_args")
         options.stallTimeout = Self.buildStallSeconds
+        if config.sharedBuildCache { options.sharedCacheRoot = config.workspaceRoot }
         if platform == nil {
             let key = try platformKey(args, forTesting: forTesting)
             let fingerprint = XcodeBuild.projectFingerprint(directory: dir, project: args.string("project"))

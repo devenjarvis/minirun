@@ -36,6 +36,10 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     public var githubMedia: Bool
     /// The branch a repo creates to opt in (see `mediaBranch`).
     public var githubMediaBranch: String
+    /// Builds of a repository's checkouts share Swift package checkouts (one folder per
+    /// Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. See
+    /// `BuildCache`. Off until it's measured on more projects.
+    public var sharedBuildCache: Bool
 
     public init(
         relayURL: String? = nil,
@@ -53,7 +57,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         maxRecordingSeconds: Int = 60,
         mediaInlineLimitMB: Int = 5,
         githubMedia: Bool = true,
-        githubMediaBranch: String = MiniRunConfig.defaultMediaBranch
+        githubMediaBranch: String = MiniRunConfig.defaultMediaBranch,
+        sharedBuildCache: Bool = false
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -71,6 +76,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.mediaInlineLimitMB = mediaInlineLimitMB
         self.githubMedia = githubMedia
         self.githubMediaBranch = githubMediaBranch
+        self.sharedBuildCache = sharedBuildCache
     }
 
     public init(from decoder: Decoder) throws {
@@ -91,6 +97,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         mediaInlineLimitMB = try c.decodeIfPresent(Int.self, forKey: .mediaInlineLimitMB) ?? 5
         githubMedia = try c.decodeIfPresent(Bool.self, forKey: .githubMedia) ?? true
         githubMediaBranch = try c.decodeIfPresent(String.self, forKey: .githubMediaBranch) ?? MiniRunConfig.defaultMediaBranch
+        sharedBuildCache = try c.decodeIfPresent(Bool.self, forKey: .sharedBuildCache) ?? false
     }
 
     public static let defaultMediaBranch = "pr-media"

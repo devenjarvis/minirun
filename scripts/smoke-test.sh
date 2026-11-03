@@ -15,6 +15,29 @@ expect() {
 "$BIN" doctor
 "$BIN" tools > /dev/null
 
+# Checkouts: two refs of one repo are worktrees of one mirror, each with its own commit, and a
+# deleted checkout comes back. A local origin and workspace root, so nothing touches the network.
+# pwd -P: /var is a link to /private/var on macOS, and git records the real path.
+SYNC=$(cd "$(mktemp -d)" && pwd -P)
+git init -q -b main "$SYNC/origin/you/app"
+(cd "$SYNC/origin/you/app" && git config uploadpack.allowFilter true &&
+  echo one > a.txt && git add . && git -c user.name=t -c user.email=t@t commit -qm one &&
+  git checkout -qb feature && echo two > b.txt && git add . && git -c user.name=t -c user.email=t@t commit -qm two &&
+  git checkout -q main)
+printf '{"workspaceRoot":"%s/root","gitURLTemplate":"file://%s/origin/{repo}"}' "$SYNC" "$SYNC" > "$SYNC/config.json"
+sync_call() { MINIRUN_CONFIG="$SYNC/config.json" run sync_repo "{\"repo\":\"you/app\",\"ref\":\"$1\"}"; }
+sync_call main | expect "“one”"
+sync_call feature | expect "“two”"
+sync_call main | expect "“one”"
+for ref in main feature; do
+  grep -q "gitdir: $SYNC/root/.git-mirrors/you/app.git/worktrees/" "$SYNC/root/you/app@$ref/.git" ||
+    { echo "FAILED: you/app@$ref isn't a worktree of the mirror" >&2; exit 1; }
+done
+[[ -f "$SYNC/root/you/app@feature/b.txt" && ! -e "$SYNC/root/you/app@main/b.txt" ]] || { echo "FAILED: the refs share files" >&2; exit 1; }
+rm -rf "$SYNC/root/you/app@feature"
+sync_call feature | expect "“two”"
+rm -rf "$SYNC"
+
 # A fresh simulator so the test doesn't depend on runner state. It's cloned from a template that has
 # already booted once (made here the first time; CI caches it), which skips the slow first boot.
 TEMPLATE=$("$ROOT/scripts/sim-template.sh" ensure)

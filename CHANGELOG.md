@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **New branches check out in seconds.** Each repository now has one bare, blobless git mirror
+  (`<workspaceRoot>/.git-mirrors/<owner>/<name>.git`), and every repo + ref checkout is a worktree
+  of it, so a new ref only downloads what the Mac doesn't already have. Checkouts keep their paths;
+  existing full clones keep working, and come back as worktrees if deleted. If the mirror can't be
+  made, sync falls back to a full clone.
+- **`sharedBuildCache` (experimental, off by default).** Builds of a repository's checkouts share
+  Swift package checkouts, in one folder per Package.resolved, and Xcode's compilation cache
+  (`COMPILATION_CACHE_ENABLE_CACHING`), under `<workspaceRoot>/.cache`. Arguments you pass in
+  `extra_args` win. See `docs/faster-ci-plan.md` for what to measure before turning it on.
+
 ## 0.6.1
 
 - **Updating the Worker clears "out of date".** After Update Worker (or `minirun worker deploy`)
