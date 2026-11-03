@@ -1,0 +1,47 @@
+Saved /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.tRFtQy2Poi/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  40 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, list_mac_apps, list_windows, scroll, press_menu_item, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (sjc22-bm211-603f20ca-6355-4260-bbd9-b4313075c223-BA2F3B6B2218).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  1 frames, 3012 bytes, avc1.640C1F
+• macOS app: build_and_run through the relay
+  mac-ee5639: Launched HelloMacApp (pid 46071).
+• macOS app: H.264 live view and live mouse
+  31 frames; screen HelloMacApp 900x450 pt, 900x450 px; in the picker: true
+  live click reached the app (count=1)
+E2E relay test passed.
+--- minirun status
+minirun 0.6.1 serving (pid 44149, up 61s)
+Relay: connected to 127.0.0.1 for 61s
+Live view: http://127.0.0.1:8787/
+
+Simulators:
+  minirun-smoke (iOS 26.5) 9AB7F364-538F-4576-AFE9-F2DC07F5782E — not reserved, used just now
+
+Mac apps:
+  HelloMacApp mac-ee5639 (dev.minirun.HelloMacApp) — not running, for /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp, used just now
+
+Jobs (0 running):
+  job_765b1401 build and run /Users/runner/work/minirun/minirun/Tests/Fixtures/HelloMacApp: succeeded in 30s
+
+Shared media: 0 items, 0 bytes
+--- minirun serve log
+2026-11-03T13:07:34Z minirun 0.6.1 starting
+2026-11-03T13:07:35Z Simulator support loaded
+2026-11-03T13:07:35Z Preventing idle sleep while running
+2026-11-03T13:07:35Z 39 tools ready; workspaces at /Users/runner/minirun/workspaces
+2026-11-03T13:07:35Z Shutting down simulators and quitting Mac apps after 30 idle minutes
+2026-11-03T13:07:35Z Answering control requests on /var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.tRFtQy2Poi/control.sock
+2026-11-03T13:07:35Z Connected to relay 127.0.0.1
+2026-11-03T13:07:35Z Relay round trip: 14ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
+2026-11-03T13:07:55Z Relay round trip: 3ms
+2026-11-03T13:08:15Z Relay round trip: 6ms
