@@ -292,32 +292,80 @@ public enum ControlProtocol {
     /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest; 3 added
     /// shared media and recordings; 4 added the macOS app commands (request_mac_permissions,
     /// quit_mac_app, activate_mac_app); 5 added forget_mac_app and forget_stopped_mac_apps; 6
-    /// added reconnect_relay.
-    public static let version = 6
+    /// added reconnect_relay; 7 added start_tool and job (`minirun ci`).
+    public static let version = 7
+    /// The first version with start_tool and job.
+    public static let startToolVersion = 7
+
+    /// The tools start_tool runs: work a CI job does, which runs as a job in the daemon.
+    public static let startableTools: Set<String> = ["sync_repo", "build", "run_tests", "swift_test"]
+
+    /// A job, as start_tool and job report it.
+    public struct JobReport: Codable, Equatable, Sendable {
+        public var id: String
+        public var title: String
+        /// running, succeeded, failed or cancelled.
+        public var status: String
+        public var logPath: String?
+        /// The result's text, once it has finished.
+        public var text: String?
+        /// The checkout the job builds in (from start_tool), for paths relative to the repository.
+        public var checkout: String?
+
+        public init(id: String, title: String, status: String, logPath: String? = nil, text: String? = nil, checkout: String? = nil) {
+            self.id = id
+            self.title = title
+            self.status = status
+            self.logPath = logPath
+            self.text = text
+            self.checkout = checkout
+        }
+
+        public init(_ job: JobStore.Job, checkout: String? = nil) {
+            self.init(id: job.id, title: job.title, status: job.status.rawValue, logPath: job.logPath,
+                      text: job.result.map { JobStore.text(of: $0) }, checkout: checkout)
+        }
+    }
+
+    /// The job id in a tool's result when it was started as a job: "[job_1a2b3c4d] …".
+    public static func jobID(in result: ToolResult) -> String? {
+        for case .text(let text) in result.content {
+            guard text.hasPrefix("[job_"), let end = text.firstIndex(of: "]") else { continue }
+            let id = text[text.index(after: text.startIndex)..<end]
+            if id.count == 12, id.dropFirst(4).allSatisfy(\.isHexDigit) { return String(id) }
+        }
+        return nil
+    }
 
     public struct Request: Codable, Equatable, Sendable {
         /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
         /// workspaces, delete_workspace, doctor, list_media, delete_media, delete_all_media,
         /// stop_recording, request_mac_permissions, quit_mac_app, activate_mac_app, forget_mac_app,
-        /// forget_stopped_mac_apps, reconnect_relay.
+        /// forget_stopped_mac_apps, reconnect_relay, start_tool, job.
         public var command: String
         /// The simulator for shutdown_simulator, release_simulator and stop_recording.
         public var udid: String?
-        /// The job for cancel_job, the item for delete_media, or the Mac app id (mac-…) for
-        /// quit_mac_app and activate_mac_app.
+        /// The job for cancel_job and job, the item for delete_media, or the Mac app id (mac-…)
+        /// for quit_mac_app and activate_mac_app.
         public var id: String?
         /// The checkout folder for delete_workspace.
         public var path: String?
         /// For reconnect_relay: the Worker code just deployed (its bundle hash), to reconnect until
         /// the relay runs it.
         public var bundle: String?
+        /// For start_tool: the tool (one of `startableTools`) and its arguments.
+        public var tool: String?
+        public var arguments: JSONValue?
 
-        public init(command: String, udid: String? = nil, id: String? = nil, path: String? = nil, bundle: String? = nil) {
+        public init(command: String, udid: String? = nil, id: String? = nil, path: String? = nil, bundle: String? = nil,
+                    tool: String? = nil, arguments: JSONValue? = nil) {
             self.command = command
             self.udid = udid
             self.id = id
             self.path = path
             self.bundle = bundle
+            self.tool = tool
+            self.arguments = arguments
         }
     }
 
@@ -334,10 +382,12 @@ public enum ControlProtocol {
         public var doctor: [DoctorCheck]?
         /// Shared media for list_media, newest first.
         public var media: [MediaItem]?
+        /// The job for start_tool and job.
+        public var job: JobReport?
 
         public init(ok: Bool, error: String? = nil, message: String? = nil, status: ServeStatus? = nil,
                     reload: ConfigReload? = nil, workspaces: [WorkspaceInfo]? = nil, doctor: [DoctorCheck]? = nil,
-                    media: [MediaItem]? = nil, controlVersion: Int? = ControlProtocol.version) {
+                    media: [MediaItem]? = nil, job: JobReport? = nil, controlVersion: Int? = ControlProtocol.version) {
             self.controlVersion = controlVersion
             self.ok = ok
             self.error = error
@@ -347,6 +397,7 @@ public enum ControlProtocol {
             self.workspaces = workspaces
             self.doctor = doctor
             self.media = media
+            self.job = job
         }
 
         public static func failure(_ message: String) -> Response { Response(ok: false, error: message) }
@@ -418,6 +469,15 @@ public enum ControlProtocol {
                 return encode(Response(ok: true, message: try await commands.forgetStoppedMacApps()))
             case "reconnect_relay":
                 return encode(Response(ok: true, message: try await commands.reconnectRelay(expectingBundle: request.bundle)))
+            case "start_tool":
+                let tool = try required(request.tool, "tool")
+                guard startableTools.contains(tool) else {
+                    throw ToolError("start_tool runs \(startableTools.sorted().joined(separator: ", ")), not \(tool).")
+                }
+                guard let arguments = request.arguments?.objectValue else { throw ToolError("start_tool needs arguments, a JSON object.") }
+                return encode(Response(ok: true, job: try await commands.startTool(tool, arguments: arguments)))
+            case "job":
+                return encode(Response(ok: true, job: try await commands.job(id: required(request.id, "id"))))
             default:
                 return encode(Response.failure("Unknown command \(request.command)."))
             }
@@ -476,6 +536,11 @@ public protocol ControlCommands: Sendable {
     /// without this the menu goes on reporting the old code. With `expectingBundle`, keeps
     /// reconnecting for a while until the relay runs that code. Returns at once.
     func reconnectRelay(expectingBundle: String?) async throws -> String
+    /// Starts a tool (one of `ControlProtocol.startableTools`) as a job, as if Claude had called
+    /// it, and returns at once. `minirun ci` follows it with `job`.
+    func startTool(_ name: String, arguments: [String: JSONValue]) async throws -> ControlProtocol.JobReport
+    /// A job's state, and its result once it has finished.
+    func job(id: String) async throws -> ControlProtocol.JobReport
 }
 
 extension ControlCommands {
@@ -485,4 +550,6 @@ extension ControlCommands {
     public func forgetMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func forgetStoppedMacApps() async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func reconnectRelay(expectingBundle: String?) async throws -> String { throw ToolError("This minirun serve has no relay connection.") }
+    public func startTool(_ name: String, arguments: [String: JSONValue]) async throws -> ControlProtocol.JobReport { throw ToolError("This minirun serve can't run tools.") }
+    public func job(id: String) async throws -> ControlProtocol.JobReport { throw ToolError("This minirun serve can't run tools.") }
 }

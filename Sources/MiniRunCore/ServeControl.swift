@@ -48,6 +48,25 @@ struct ServeControl: ControlCommands {
         return "Released \(sim.name) from \(label). It stays booted for whoever needs one next."
     }
 
+    func startTool(_ name: String, arguments: [String: JSONValue]) async throws -> ControlProtocol.JobReport {
+        var arguments = arguments
+        // Return as soon as the job has started; `minirun ci` follows it with `job`.
+        arguments["wait_seconds"] = .number(0)
+        let result = await registry.call(name, arguments: .object(arguments))
+        guard let id = ControlProtocol.jobID(in: result), let job = await registry.jobs.job(id) else {
+            // Refused before it started, e.g. a missing repo.
+            throw ToolError(result.content.compactMap { if case .text(let text) = $0 { return text } else { return nil } }.joined(separator: "\n"))
+        }
+        let checkout = try? registry.checkoutPath(ToolArguments(.object(arguments)))
+        log("Started \(job.id) \(job.title) (from the control socket)")
+        return ControlProtocol.JobReport(job, checkout: checkout)
+    }
+
+    func job(id: String) async throws -> ControlProtocol.JobReport {
+        guard let job = await registry.jobs.job(id) else { throw ToolError("No job with id \(id).") }
+        return ControlProtocol.JobReport(job)
+    }
+
     func cancelJob(id: String) async throws -> String {
         let job = try await registry.jobs.cancel(id)
         log("Cancelled \(job.id) \(job.title) (from the control socket)")

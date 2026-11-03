@@ -556,9 +556,33 @@ unless you pass `--allow-public`. If you do, first set the repository's Settings
 General → "Fork pull request workflows from outside collaborators" to "Require approval for all
 outside collaborators" (or stricter), and read fork PRs before approving their runs.
 
+**Build and test through minirun.** Instead of running `xcodebuild` in the runner's own folder,
+let the job hand its build or tests to `minirun serve` with the action in this repository:
+
+```yaml
+jobs:
+  test:
+    runs-on: [self-hosted, macOS, minirun]
+    steps:
+      - uses: devenjarvis/minirun/ci@main      # or pin a release tag
+        with:
+          command: test                        # build | test | swift-test | sync
+          scheme: App
+          # project: App.xcworkspace, platform: macos, only-testing: |, extra-args: |, timeout, stall …
+```
+
+No `actions/checkout` is needed: minirun checks out the commit itself. The job builds `GITHUB_SHA`
+in the checkout `ci/<branch>`, its own and the same one on every run of that branch, so its build
+folder stays warm and the next run is incremental. It gets its own simulator from minirun (counted
+against `maxBootedSimulators`), stall detection and cancellation like Claude's jobs, and shows up
+in `list_jobs` and the menu. The log streams into the step, compiler errors and test failures
+become annotations on the PR, the result goes in the job summary, and cancelling the workflow
+cancels the job on the Mac. `minirun ci --help` lists the same options for a plain `run:` step.
+
 **Sharing the Mac with Claude.** The runner takes one job at a time, but jobs run alongside
-Claude's sessions on the same simulators, Xcode and disk. Treat a CI job like any other session
-(see [Several sessions at once](#several-sessions-at-once)): get its own simulator with
+Claude's sessions on the same simulators, Xcode and disk. Jobs that go through the action above
+are kept apart from Claude's sessions by minirun. A job that runs its own `xcodebuild` should act
+like any other session (see [Several sessions at once](#several-sessions-at-once)): get its own simulator with
 `boot_simulator {label: "ci/<run id>"}` or `xcrun simctl create`, pass that UDID as `device` on
 every minirun call or `-destination id=<UDID>` to `xcodebuild`, and shut it down or delete it at the
 end. Don't rely on "the booted simulator", and don't run `simctl shutdown all` or `erase all`:

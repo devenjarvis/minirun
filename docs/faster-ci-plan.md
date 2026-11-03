@@ -18,7 +18,13 @@ The order: **2** and **3** first (they speed up Claude's own builds too, and are
 
 ---
 
-## 1. CI jobs go through minirun
+## 1. CI jobs go through minirun (implemented)
+
+Built as planned, with these differences: the control commands are `start_tool` (only `sync_repo`,
+`build`, `run_tests` and `swift_test`) and `job`; the action lives at `ci/action.yml`; and the
+checkout is `ci/<branch>` with a new `commit` argument, rather than one checkout per SHA, so a
+branch's CI build folder stays warm between runs and stays apart from Claude's checkout and
+simulator for the same branch. Job titles are the tools' own (`tests you/app@ci/main`).
 
 **Today:** a workflow targets `runs-on: [self-hosted, macOS, minirun]` and runs its own
 `xcodebuild`. The README asks it to reserve a simulator by hand and not touch "the booted
