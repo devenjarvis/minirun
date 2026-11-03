@@ -264,6 +264,7 @@ final class MacDoctorTests: XCTestCase {
         XCTAssertTrue(screen.contains("System Settings → Privacy & Security → Screen Recording"), screen)
         XCTAssertTrue(screen.contains("/Applications/minirun.app/Contents/Helpers/minirun"), screen)
         XCTAssertTrue(screen.contains("ad-hoc signed"), screen)
+        XCTAssertTrue(screen.contains("minirun local"), screen)
         XCTAssertTrue(screen.contains("Request Access"), screen)
         XCTAssertTrue(mac[1].fix?.contains("Privacy & Security → Accessibility") == true)
         XCTAssertTrue(mac[2].fix?.contains("HDMI dummy plug") == true)

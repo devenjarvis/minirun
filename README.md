@@ -126,9 +126,61 @@ A headless Mac mini needs a logged-in user (automatic login, System Settings →
 and a display: a monitor or an HDMI dummy plug.
 
 `minirun doctor` reports all three as `Screen Recording`, `Accessibility` and `Display`. They're
-optional and never fail the iOS checks. minirun's builds are ad-hoc signed, so macOS may treat an
-updated minirun as a different program and quietly stop honouring the grants: if macOS apps stop
+optional and never fail the iOS checks. minirun's releases are ad-hoc signed, so macOS may treat
+an updated minirun as a different program and quietly stop honouring the grants: if macOS apps stop
 working after an update, remove minirun from both lists, add it again and restart `minirun serve`.
+To stop that happening, see "Keep permissions across updates" below.
+
+#### Keep permissions across updates
+
+macOS ties the grants to a program's signature, and an ad-hoc signature names one exact build.
+Give the Mac its own code-signing certificate named `minirun local` and minirun is signed with it
+instead: `scripts/install.sh` and `scripts/install-app.sh` use it, and the menu bar app re-signs
+each update with it before installing. macOS then knows every build as the same program, and the
+grants stay. It's a self-signed certificate that lives only in your keychain. Once, on the Mac:
+
+```zsh
+mkdir -p ~/.minirun-signing && cd ~/.minirun-signing && umask 077
+cat > cert.cnf <<'CNF'
+[req]
+distinguished_name = dn
+x509_extensions = ext
+prompt = no
+[dn]
+CN = minirun local
+[ext]
+basicConstraints = critical,CA:false
+keyUsage = critical,digitalSignature
+extendedKeyUsage = critical,codeSigning
+CNF
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -config cert.cnf -keyout key.pem -out cert.pem
+/usr/bin/openssl rand -hex 24 > p12-password.txt
+/usr/bin/openssl pkcs12 -export -inkey key.pem -in cert.pem -name "minirun local" -out minirun-local.p12 -passout file:p12-password.txt
+security import minirun-local.p12 -k ~/Library/Keychains/login.keychain-db -P "$(cat p12-password.txt)" -T /usr/bin/codesign
+rm key.pem
+# Lets codesign use the key without a dialog. Asks for your login password.
+read -s "PW?Login password: "; echo
+security set-key-partition-list -S apple-tool:,apple: -s -k "$PW" ~/Library/Keychains/login.keychain-db >/dev/null; unset PW
+```
+
+Use `/usr/bin/openssl`: a Homebrew OpenSSL 3 writes a `.p12` that `security import` can't read.
+`security find-identity -p codesigning` lists the certificate as `CSSMERR_TP_NOT_TRUSTED`; that's
+expected and doesn't matter. Keep `minirun-local.p12` and `p12-password.txt` somewhere safe: the
+grants are tied to this certificate, so on a new Mac import the same one.
+
+Then sign the installed app with it once (installing from a checkout with `./scripts/install.sh`
+does this too) and restart `minirun serve`:
+
+```zsh
+/Applications/minirun.app/Contents/Resources/sign-app.sh /Applications/minirun.app
+launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+codesign -dr - /Applications/minirun.app/Contents/Helpers/minirun   # shows "certificate leaf", not "cdhash"
+```
+
+Grant Screen Recording and Accessibility one last time. First remove every old minirun entry from
+both lists with **−**: an entry left over from an ad-hoc build keeps its switch on but no longer
+matches, so it does nothing. Then use **Request Access**, or **+** with the path above, and restart
+`minirun serve`. To sign with a different identity, set `MINIRUN_SIGN_IDENTITY` for the scripts.
 
 ### The Worker
 
