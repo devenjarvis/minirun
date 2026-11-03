@@ -94,6 +94,18 @@ final class CIAnnotationTests: XCTestCase {
         )
     }
 
+    func testPathsThroughASymbolicLinkStillMatch() throws {
+        // As on macOS, where /var links to /private/var and tools print the real path.
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("minirun-link-\(UUID().uuidString.prefix(8))").path
+        defer { try? FileManager.default.removeItem(atPath: base) }
+        try FileManager.default.createDirectory(atPath: base + "/real/you/pkg", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: base + "/link", withDestinationPath: base + "/real")
+        var annotations = CIAnnotations(checkout: base + "/link/you/pkg")
+        let real = URL(fileURLWithPath: base + "/real/you/pkg").resolvingSymlinksInPath().path
+        XCTAssertEqual(annotations.annotate(logLine: real + "/Tests/T.swift:5: error: boom"), "::error file=Tests/T.swift,line=5::boom")
+        XCTAssertEqual(annotations.annotate(logLine: base + "/link/you/pkg/A.swift:1:2: error: too"), "::error file=A.swift,line=1,col=2::too")
+    }
+
     func testFileNamesWithColonsAndCommasAreEscaped() {
         var annotations = CIAnnotations(checkout: "/w")
         XCTAssertEqual(annotations.annotate(logLine: "/w/a:b,c.swift:3:4: error: no"), "::error file=a%3Ab%2Cc.swift,line=3,col=4::no")

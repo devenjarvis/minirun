@@ -61,7 +61,8 @@ SWIFT
   echo "$out"
   [[ $ci_status -eq 1 ]] || { echo "FAILED: minirun ci should exit 1 for a failing test, not $ci_status"; status=1; }
   [[ "$out" == *"minirun: swift test you/pkg@ci/main"* ]] || { echo "FAILED: minirun ci didn't name the job"; status=1; }
-  [[ "$out" == *"testFails"* && "$out" == *"::error"* ]] || { echo "FAILED: minirun ci didn't annotate the failing test"; status=1; }
+  [[ "$out" == *"::error file=Tests/PkgTests/PkgTests.swift,line=5::-[PkgTests.PkgTests testFails]"* ]] ||
+    { echo "FAILED: minirun ci didn't annotate the failing test with its file"; status=1; }
   [[ "$out" != *"cannot convert"* ]] || { echo "FAILED: minirun ci built the second commit, not --commit"; status=1; }
   "$BIN" status | grep -q "swift test you/pkg@ci/main" || { echo "FAILED: the job isn't in minirun serve's job list"; status=1; }
 

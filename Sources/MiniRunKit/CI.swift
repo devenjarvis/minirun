@@ -125,12 +125,16 @@ public enum CIRun {
 public struct CIAnnotations {
     /// The checkout the job builds in, so errors get paths relative to the repository.
     public var checkout: String?
+    /// `checkout` with symbolic links resolved: tools print real paths (/private/var/… for
+    /// /var/… on macOS), which may not start with the checkout as the daemon named it.
+    private var realCheckout: String?
     public var limit = 50
     private var emitted: Set<String> = []
     private var counts: [String: Int] = [:]
 
     public init(checkout: String?, limit: Int = 50) {
         self.checkout = checkout
+        self.realCheckout = checkout.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
         self.limit = limit
     }
 
@@ -160,10 +164,12 @@ public struct CIAnnotations {
 
     private func relative(_ file: String) -> String? {
         guard let checkout else { return file }
-        var root = checkout
-        while root.count > 1, root.hasSuffix("/") { root.removeLast() }
-        guard file.hasPrefix(root + "/") else { return nil }
-        return String(file.dropFirst(root.count + 1))
+        for candidate in [checkout, realCheckout].compactMap({ $0 }) {
+            var root = candidate
+            while root.count > 1, root.hasSuffix("/") { root.removeLast() }
+            if file.hasPrefix(root + "/") { return String(file.dropFirst(root.count + 1)) }
+        }
+        return nil
     }
 
     struct Issue: Equatable {
