@@ -142,6 +142,18 @@ struct ServeControl: ControlCommands {
         try await registry.activateMacApp(id: id)
     }
 
+    func forgetMacApp(id: String) async throws -> String {
+        let message = try await registry.forgetMacApp(id: id)
+        log("\(message) (from the control socket)")
+        return message
+    }
+
+    func forgetStoppedMacApps() async throws -> String {
+        let message = await registry.forgetStoppedMacApps()
+        log("\(message) (from the control socket)")
+        return message
+    }
+
     /// Folders in use by a sync, build or command, standardized like the checkout paths.
     private func busyFolders() async -> Set<String> {
         let held = await registry.checkouts.held

@@ -501,6 +501,21 @@ extension ToolRegistry {
         await refreshedMacApps().filter(\.isRunning).map(MacToolSupport.pickerEntry)
     }
 
+    // MARK: Forgetting stopped apps
+
+    /// Forgets stopped Mac apps that haven't been used for a day, and all but the most recent
+    /// few (see `StaleMacApps.plan`), so the list doesn't keep every branch an agent ever ran.
+    func forgetStaleMacAppsOnce(log: @Sendable (String) -> Void) async {
+        let sessions = await refreshedMacApps()
+        let busy = (await activity.busy).union(await recordings.recording)
+        let planned = StaleMacApps.plan(sessions, busy: busy)
+        guard !planned.isEmpty else { return }
+        let forgotten = await macApps.forgetStopped(planned)
+        guard !forgotten.isEmpty else { return }
+        let names = forgotten.compactMap { id in sessions.first { $0.id == id }.map { "\($0.name) (\(id))" } }
+        log("Forgot \(forgotten.count) stopped Mac app\(forgotten.count == 1 ? "" : "s"): \(names.joined(separator: ", "))")
+    }
+
     // MARK: Idle quitting
 
     /// Quits Mac apps minirun launched that nobody has used for `idleShutdownMinutes` (see

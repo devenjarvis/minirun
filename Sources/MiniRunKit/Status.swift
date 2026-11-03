@@ -291,8 +291,8 @@ public enum ControlProtocol {
     /// Goes up when commands are added, so the menu bar app can tell it's talking to an older
     /// daemon. 1 had only `status` and sent no `controlVersion`; 2 added the rest; 3 added
     /// shared media and recordings; 4 added the macOS app commands (request_mac_permissions,
-    /// quit_mac_app, activate_mac_app).
-    public static let version = 4
+    /// quit_mac_app, activate_mac_app); 5 added forget_mac_app and forget_stopped_mac_apps.
+    public static let version = 5
 
     public struct Request: Codable, Equatable, Sendable {
         /// One of: status, reload_config, shutdown_simulator, release_simulator, cancel_job,
@@ -406,6 +406,10 @@ public enum ControlProtocol {
                 return encode(Response(ok: true, message: try await commands.quitMacApp(id: macAppID(required(request.id, "id")))))
             case "activate_mac_app":
                 return encode(Response(ok: true, message: try await commands.activateMacApp(id: macAppID(required(request.id, "id")))))
+            case "forget_mac_app":
+                return encode(Response(ok: true, message: try await commands.forgetMacApp(id: macAppID(required(request.id, "id")))))
+            case "forget_stopped_mac_apps":
+                return encode(Response(ok: true, message: try await commands.forgetStoppedMacApps()))
             default:
                 return encode(Response.failure("Unknown command \(request.command)."))
             }
@@ -455,10 +459,16 @@ public protocol ControlCommands: Sendable {
     func quitMacApp(id: String) async throws -> String
     /// Brings a Mac app minirun launched to the front.
     func activateMacApp(id: String) async throws -> String
+    /// Drops a stopped Mac app from the list. Refuses a running one.
+    func forgetMacApp(id: String) async throws -> String
+    /// Drops every stopped Mac app from the list.
+    func forgetStoppedMacApps() async throws -> String
 }
 
 extension ControlCommands {
     public func requestMacPermissions() async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func quitMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
     public func activateMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
+    public func forgetMacApp(id: String) async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
+    public func forgetStoppedMacApps() async throws -> String { throw ToolError("This minirun serve can't run macOS apps.") }
 }

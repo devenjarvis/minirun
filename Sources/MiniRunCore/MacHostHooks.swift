@@ -65,4 +65,27 @@ extension ToolRegistry {
         await MacAppDriver.shared.bringToFront(pid: pid, window: window)
         return "Brought \(session.name) to the front."
     }
+
+    /// `forget_mac_app`: drops a stopped Mac app from the list. A running one has to be quit first.
+    func forgetMacApp(id: String) async throws -> String {
+        guard let session = await macApps.session(id) else { throw ToolError(MacToolSupport.unknownApp(id, known: await refreshedMacApps())) }
+        return try await macLaunches.withLock(session.id) { () async throws -> String in
+            let current = await refreshedMacApps().first { $0.id == session.id } ?? session
+            guard !current.isRunning else { throw ToolError("\(current.name) (\(current.id)) is running. Quit it first.") }
+            await macApps.forgetStopped([current.id])
+            return "Forgot \(current.name) (\(current.id))."
+        }
+    }
+
+    /// `forget_stopped_mac_apps`: drops every Mac app that isn't running from the list.
+    func forgetStoppedMacApps() async -> String {
+        let busy = (await activity.busy).union(await recordings.recording)
+        let stopped = await refreshedMacApps().filter { !$0.isRunning && !busy.contains($0.id) }.map(\.id)
+        let forgotten = await macApps.forgetStopped(stopped)
+        switch forgotten.count {
+        case 0: return "No stopped Mac apps to forget."
+        case 1: return "Forgot 1 stopped Mac app."
+        default: return "Forgot \(forgotten.count) stopped Mac apps."
+        }
+    }
 }

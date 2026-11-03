@@ -211,12 +211,14 @@ public final class ToolRegistry: @unchecked Sendable {
 
     /// Checks every minute for simulators nobody has used in `idleShutdownMinutes` and shuts them
     /// down (see `IdleSimulators.plan`), and quits idle Mac apps minirun launched. Runs until
-    /// cancelled. While `idleShutdownMinutes` is 0 it does nothing, but keeps checking in case a
-    /// reload turns it on.
+    /// cancelled. While `idleShutdownMinutes` is 0 it only forgets stale stopped Mac apps, but keeps
+    /// checking in case a reload turns idle shutdown on.
     public func shutDownIdleSimulators(log: @escaping @Sendable (String) -> Void) async {
         if config.idleShutdownMinutes > 0 { log("Shutting down simulators and quitting Mac apps after \(config.idleShutdownMinutes) idle minutes") }
         while !Task.isCancelled {
             try? await Task.sleep(nanoseconds: 60_000_000_000)
+            // Stopped Mac apps are forgotten after a while even with idle shutdown off.
+            await forgetStaleMacAppsOnce(log: log)
             guard config.idleShutdownMinutes > 0 else { continue }
             do {
                 try await shutDownIdleSimulatorsOnce(log: log)
@@ -228,9 +230,11 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     /// After `minirun serve` starts: forgets the pids of Mac apps that quit while it wasn't
-    /// running, or that now belong to another program, so it never signals a stranger.
-    public func reconcileMacApps() async {
+    /// running, or that now belong to another program, so it never signals a stranger. Then
+    /// forgets stopped apps that are long unused (see `StaleMacApps`).
+    public func reconcileMacApps(log: @Sendable (String) -> Void = { _ in }) async {
         await macApps.reconcile { session in MacAppDriver.isRunning(session) }
+        await forgetStaleMacAppsOnce(log: log)
     }
 
     func shutDownIdleSimulatorsOnce(log: @Sendable (String) -> Void) async throws {

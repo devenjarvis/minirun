@@ -211,6 +211,23 @@ public actor MacAppStore {
         }
     }
 
+    /// Drops the entries with these ids that aren't running, and returns the ones it dropped.
+    /// A running app (one relaunched since the caller looked) is never forgotten.
+    @discardableResult
+    public func forgetStopped(_ ids: [String]) -> [String] {
+        let ids = ids.map { $0.lowercased() }
+        var forgotten: [String] = []
+        update { sessions in
+            for id in ids where sessions[id] != nil && sessions[id]?.pid == nil {
+                sessions[id] = nil
+                unsavedTouches[id] = nil
+                forgotten.append(id)
+            }
+            return !forgotten.isEmpty
+        }
+        return forgotten
+    }
+
     public func remove(_ id: String) {
         let id = id.lowercased()
         unsavedTouches[id] = nil
@@ -306,5 +323,32 @@ public enum IdleMacApps {
             .filter { $0.pid != nil && !busy.contains($0.id) && now.timeIntervalSince($0.updatedAt) >= idleAfter }
             .sorted { ($0.updatedAt, $0.id) < ($1.updatedAt, $1.id) }
             .map(\.id)
+    }
+}
+
+/// Decides which stopped Mac apps to forget, so the list (and the menu) doesn't grow with every
+/// branch an agent ever ran. Pure logic so it can be unit tested anywhere.
+public enum StaleMacApps {
+    /// Stopped apps are remembered for a day, so their id and logs stay known for a while.
+    public static let keepFor: TimeInterval = 24 * 60 * 60
+    /// At most this many stopped apps are remembered, the most recently used ones.
+    public static let keepAtMost = 10
+
+    /// The stopped apps that aren't `busy` and either haven't been used for `keepFor` seconds or
+    /// fall outside the `keepAtMost` most recently used stopped apps. Running apps are never
+    /// forgotten.
+    public static func plan(_ sessions: [MacAppSession], busy: Set<String> = [], now: Date = Date(),
+                            keepFor: TimeInterval = StaleMacApps.keepFor, keepAtMost: Int = StaleMacApps.keepAtMost) -> [String] {
+        let stopped = sessions
+            .filter { $0.pid == nil && !busy.contains($0.id) }
+            .sorted { (lastUse($0), $1.id) > (lastUse($1), $0.id) }
+        return stopped.enumerated()
+            .filter { index, session in index >= max(keepAtMost, 0) || now.timeIntervalSince(lastUse(session)) >= keepFor }
+            .map { $0.element.id }
+    }
+
+    /// When it was last used or seen quitting, whichever is later.
+    static func lastUse(_ session: MacAppSession) -> Date {
+        max(session.updatedAt, session.exitedAt ?? .distantPast)
     }
 }
