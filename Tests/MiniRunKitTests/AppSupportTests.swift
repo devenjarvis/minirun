@@ -286,6 +286,11 @@ final class WorkerManagerTests: XCTestCase {
         let fake = CloudflareFixture.freshAccount()
         fake.on("GET /login") { _ in (200, JSONValue.null) }
         _ = try await manager(fake).deploy(apiToken: "cf", options: .init())
+        // The Worker now has both secrets, so the update keeps them and the relay settings.
+        let account = CloudflareFixture.account
+        fake.on("GET /accounts/\(account)/workers/scripts/minirun/secrets",
+                result: [["name": .string(WorkerDeployer.passwordSecret)], ["name": .string(WorkerDeployer.tokenSecret)]])
+        let before = MiniRunConfig.load()
 
         final class Calls: @unchecked Sendable { let lock = NSLock(); var reloads = 0; var bundles: [String] = [] }
         let calls = Calls()
@@ -295,6 +300,7 @@ final class WorkerManagerTests: XCTestCase {
         XCTAssertEqual(again.serveMessage, "reconnecting")
         XCTAssertEqual(calls.lock.withLock { calls.reloads }, 0, "the relay settings didn't change")
         XCTAssertEqual(calls.lock.withLock { calls.bundles }, [CloudflareFixture.manifest.bundleHash])
+        XCTAssertEqual(MiniRunConfig.load().agentToken, before.agentToken)
     }
 
     func testRotate() async throws {

@@ -144,7 +144,7 @@ final class ControlCommandTests: XCTestCase {
         XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Request(command: "cancel_job", id: "job_1")), #"{"command":"cancel_job","id":"job_1"}"#)
         let old = try ControlProtocol.decode(ControlProtocol.Response.self, from: #"{"ok":false,"error":"Unknown command doctor."}"#)
         XCTAssertNil(old.controlVersion)
-        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":5,"message":"hi","ok":true}"#)
+        XCTAssertEqual(ControlProtocol.encode(ControlProtocol.Response(ok: true, message: "hi")), #"{"controlVersion":\(ControlProtocol.version),"message":"hi","ok":true}"#)
     }
 }
 
