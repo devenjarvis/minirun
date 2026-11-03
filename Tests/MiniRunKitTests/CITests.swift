@@ -101,7 +101,7 @@ final class CIAnnotationTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: base + "/real/you/pkg", withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(atPath: base + "/link", withDestinationPath: base + "/real")
         var annotations = CIAnnotations(checkout: base + "/link/you/pkg")
-        let real = URL(fileURLWithPath: base + "/real/you/pkg").resolvingSymlinksInPath().path
+        let real = try XCTUnwrap(CIAnnotations.realPath(base + "/real/you/pkg"))
         XCTAssertEqual(annotations.annotate(logLine: real + "/Tests/T.swift:5: error: boom"), "::error file=Tests/T.swift,line=5::boom")
         XCTAssertEqual(annotations.annotate(logLine: base + "/link/you/pkg/A.swift:1:2: error: too"), "::error file=A.swift,line=1,col=2::too")
     }

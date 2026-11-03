@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 /// `minirun ci`: runs a build or test for a GitHub Actions job through the running `minirun
 /// serve`, so CI shares its checkouts, build folders, simulator reservations and limits instead
@@ -134,7 +139,7 @@ public struct CIAnnotations {
 
     public init(checkout: String?, limit: Int = 50) {
         self.checkout = checkout
-        self.realCheckout = checkout.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
+        self.realCheckout = checkout.flatMap(Self.realPath)
         self.limit = limit
     }
 
@@ -170,6 +175,14 @@ public struct CIAnnotations {
             if file.hasPrefix(root + "/") { return String(file.dropFirst(root.count + 1)) }
         }
         return nil
+    }
+
+    /// realpath(3). Not URL.resolvingSymlinksInPath, which on macOS turns /private/var into /var
+    /// rather than /var into /private/var.
+    static func realPath(_ path: String) -> String? {
+        guard let resolved = realpath(path, nil) else { return nil }
+        defer { free(resolved) }
+        return String(cString: resolved)
     }
 
     struct Issue: Equatable {
