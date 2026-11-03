@@ -123,6 +123,19 @@ public struct MenuSnapshot: Equatable, Sendable {
     public var simulatorError: String?
     /// macOS apps minirun launched: running ones first, then by last use.
     public var macApps: [MacAppRow] = []
+    /// The menu lists every running Mac app but only this many stopped ones; the rest go in a
+    /// "more" submenu, so a long history doesn't push the menu off the screen.
+    public static let stoppedMacAppsShown = 3
+
+    /// The Mac apps listed in the menu: every running one, then the most recent stopped ones.
+    public var shownMacApps: [MacAppRow] {
+        macApps.filter(\.isRunning) + macApps.filter { !$0.isRunning }.prefix(Self.stoppedMacAppsShown)
+    }
+
+    /// Stopped Mac apps beyond `stoppedMacAppsShown`, most recently used first.
+    public var moreStoppedMacApps: [MacAppRow] {
+        Array(macApps.filter { !$0.isRunning }.dropFirst(Self.stoppedMacAppsShown))
+    }
     /// What macOS lets the daemon do with macOS apps, when it says.
     public var macPermissions: MacPermissionReport?
     /// Running jobs, then the most recent finished ones.
@@ -294,6 +307,10 @@ public enum MenuAction: Equatable, Sendable {
     case activateMacApp(String)
     /// Quit a Mac app minirun launched.
     case quitMacApp(String)
+    /// Drop a stopped Mac app from the list.
+    case forgetMacApp(String)
+    /// Drop every stopped Mac app from the list.
+    case forgetStoppedMacApps
     /// Have the daemon ask macOS for Screen Recording and Accessibility.
     case requestMacPermissions
     case stopRecording(String)
@@ -445,6 +462,8 @@ public actor MenuModel {
         case .cancelJob(let id): request = ControlProtocol.Request(command: "cancel_job", id: id)
         case .activateMacApp(let id): request = ControlProtocol.Request(command: "activate_mac_app", id: id)
         case .quitMacApp(let id): request = ControlProtocol.Request(command: "quit_mac_app", id: id)
+        case .forgetMacApp(let id): request = ControlProtocol.Request(command: "forget_mac_app", id: id)
+        case .forgetStoppedMacApps: request = ControlProtocol.Request(command: "forget_stopped_mac_apps")
         case .requestMacPermissions: request = ControlProtocol.Request(command: "request_mac_permissions")
         case .stopRecording(let udid): request = ControlProtocol.Request(command: "stop_recording", udid: udid)
         case .deleteMedia(let id): request = ControlProtocol.Request(command: "delete_media", id: id)

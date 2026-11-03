@@ -129,8 +129,11 @@ struct MenuView: View {
 
     private var macApps: some View {
         Section {
-            ForEach(snapshot.macApps) { app in
+            ForEach(snapshot.shownMacApps) { app in
                 MacAppRowView(app: app, store: store, actionsEnabled: !snapshot.daemonOutdated)
+            }
+            if !snapshot.moreStoppedMacApps.isEmpty {
+                moreStoppedMacApps
             }
             if let missing = snapshot.macPermissions?.missing, !missing.isEmpty {
                 HStack(alignment: .firstTextBaseline) {
@@ -147,6 +150,32 @@ struct MenuView: View {
             }
         } header: {
             SectionTitle("Mac apps")
+        }
+    }
+
+    /// The stopped Mac apps that don't fit in the list, in a submenu.
+    private var moreStoppedMacApps: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Image(systemName: "clock.arrow.circlepath").foregroundStyle(.secondary)
+            Text("\(snapshot.moreStoppedMacApps.count) more not running").font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Menu {
+                ForEach(snapshot.moreStoppedMacApps) { app in
+                    Menu("\(app.name) · \(app.subtitle)") {
+                        Button("Forget") { store.perform(.forgetMacApp(app.id)) }
+                            .disabled(snapshot.daemonOutdated)
+                    }
+                }
+                Divider()
+                Button("Forget all not running") { store.perform(.forgetStoppedMacApps) }
+                    .disabled(snapshot.daemonOutdated)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Mac apps that aren't running. minirun forgets them after a day.")
         }
     }
 
@@ -350,8 +379,14 @@ struct MacAppRowView: View {
                         .disabled(!actionsEnabled)
                 }
                 Divider()
-                Button("Quit") { store.perform(.quitMacApp(app.id)) }
-                    .disabled(!actionsEnabled || !app.isRunning)
+                if app.isRunning {
+                    Button("Quit") { store.perform(.quitMacApp(app.id)) }
+                        .disabled(!actionsEnabled)
+                } else {
+                    Button("Forget") { store.perform(.forgetMacApp(app.id)) }
+                        .disabled(!actionsEnabled)
+                        .help("Remove it from this list")
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }

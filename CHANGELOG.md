@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Stopped Mac apps no longer pile up in the menu.** The menu lists every running Mac app but only
+  the three most recently used stopped ones; the rest go in a "N more not running" submenu. Stopped
+  apps now have Forget (and the submenu has Forget all not running), and `minirun serve` forgets
+  them by itself once they've been stopped for a day, keeping at most the 10 most recent. Relaunching
+  an app for the same repo and branch still gets the same id. Restart `minirun serve` after updating
+  so the menu's new actions work.
+
 - **Sharper, smoother recording GIFs.** GIFs are now made at 15 fps and 2x points (as sharp as a
   screenshot) instead of 10 fps and 320 px. A new encoder gives each frame its own palette and
   stores only the part of the screen that changed, so a typical clip is a few MB. Longer or busier

@@ -208,6 +208,39 @@ final class MacAppStoreTests: XCTestCase {
         XCTAssertEqual(IdleMacApps.plan(sessions, busy: [], idleAfter: 3600, now: now), ["mac-busy", "mac-older", "mac-old"])
         XCTAssertEqual(IdleMacApps.plan(sessions, busy: [], idleAfter: 0, now: now), [], "0 turns it off")
     }
+
+    func testStalePlan() {
+        var exitedRecently = session("mac-exited", pid: nil, used: 3 * 86400)
+        exitedRecently.exitedAt = now.addingTimeInterval(-60)
+        let sessions = [
+            session("mac-running", used: 9 * 86400),
+            session("mac-stale", pid: nil, used: 86400 + 1),
+            session("mac-busy", pid: nil, used: 9 * 86400),
+            session("mac-a", pid: nil, used: 60),
+            session("mac-b", pid: nil, used: 120),
+            session("mac-c", pid: nil, used: 180),
+            exitedRecently,
+        ]
+        XCTAssertEqual(StaleMacApps.plan(sessions, busy: ["mac-busy"], now: now), ["mac-stale"],
+                       "stopped for over a day; running and busy apps are kept, and quitting counts as use")
+        XCTAssertEqual(StaleMacApps.plan(sessions, busy: ["mac-busy"], now: now, keepAtMost: 2), ["mac-b", "mac-c", "mac-stale"],
+                       "beyond the most recent few, oldest last")
+        XCTAssertEqual(StaleMacApps.plan(sessions, busy: [], now: now, keepAtMost: 0).count, 6, "never a running one")
+    }
+
+    func testForgetStoppedKeepsRunningApps() async throws {
+        let url = temporaryURL()
+        let store = MacAppStore(url: url)
+        await store.upsert(session("mac-aaaaaa", pid: nil))
+        await store.upsert(session("mac-bbbbbb", pid: 200))
+        await store.upsert(session("mac-cccccc", pid: nil))
+        let forgotten = await store.forgetStopped(["MAC-AAAAAA", "mac-bbbbbb", "mac-000000"])
+        XCTAssertEqual(forgotten, ["mac-aaaaaa"], "a running app, or an unknown id, isn't forgotten")
+        let left = await store.all().map(\.id).sorted()
+        XCTAssertEqual(left, ["mac-bbbbbb", "mac-cccccc"])
+        let reopened = await MacAppStore(url: url).all().map(\.id).sorted()
+        XCTAssertEqual(reopened, ["mac-bbbbbb", "mac-cccccc"], "saved to the file")
+    }
 }
 
 final class MacDoctorTests: XCTestCase {
@@ -341,6 +374,8 @@ final class MacControlTests: XCTestCase {
         func requestMacPermissions() async throws -> String { calls.mutate { $0.append("request") }; return "Asked macOS." }
         func quitMacApp(id: String) async throws -> String { calls.mutate { $0.append("quit \(id)") }; return "Quit \(id)." }
         func activateMacApp(id: String) async throws -> String { calls.mutate { $0.append("activate \(id)") }; return "Brought \(id) to the front." }
+        func forgetMacApp(id: String) async throws -> String { calls.mutate { $0.append("forget \(id)") }; return "Forgot \(id)." }
+        func forgetStoppedMacApps() async throws -> String { calls.mutate { $0.append("forget stopped") }; return "Forgot 2 stopped Mac apps." }
     }
 
     func ask(_ commands: ControlCommands, _ request: ControlProtocol.Request) async throws -> ControlProtocol.Response {
@@ -363,6 +398,13 @@ final class MacControlTests: XCTestCase {
         let simulator = try await ask(commands, .init(command: "quit_mac_app", id: "A1B2-C3D4"))
         XCTAssertEqual(simulator.error, "A1B2-C3D4 isn't a Mac app id (they look like mac-3f9a2c).")
         XCTAssertEqual(commands.calls.value.count, 3, "bad ids never reach the daemon")
+
+        XCTAssertGreaterThanOrEqual(ControlProtocol.version, 5)
+        let forget = try await ask(commands, .init(command: "forget_mac_app", id: "MAC-CCCCCC"))
+        XCTAssertEqual(forget.message, "Forgot mac-cccccc.")
+        let forgetAll = try await ask(commands, .init(command: "forget_stopped_mac_apps"))
+        XCTAssertEqual(forgetAll.message, "Forgot 2 stopped Mac apps.")
+        XCTAssertEqual(commands.calls.value.suffix(2), ["forget mac-cccccc", "forget stopped"])
     }
 
     func testDaemonsWithoutMacSupportSaySo() async throws {
@@ -406,6 +448,23 @@ final class MacMenuTests: XCTestCase {
         XCTAssertEqual(shown.macApps.filter(\.recording).map(\.id), ["mac-idle"])
     }
 
+    func testOnlyAFewStoppedAppsAreListed() {
+        let stopped = (1...6).map { i in
+            ServeStatus.MacApp(id: "mac-stop\(i)", name: "App \(i)", running: false, lastUsed: now.addingTimeInterval(Double(-60 * i)))
+        }
+        let running = [ServeStatus.MacApp(id: "mac-run", name: "Live", pid: 9, running: true, lastUsed: now.addingTimeInterval(-86400))]
+        let status = ServeStatus(version: "0", pid: 1, startedAt: now, relay: .init(state: .connected, since: now), macApps: stopped + running)
+        let snapshot = MenuSnapshot.make(.answered(ControlProtocol.Response(ok: true, status: status)), connectorURL: nil, logTail: nil, canStart: true, now: now)
+        XCTAssertEqual(snapshot.shownMacApps.map(\.id), ["mac-run", "mac-stop1", "mac-stop2", "mac-stop3"],
+                       "every running app, then the most recent stopped ones")
+        XCTAssertEqual(snapshot.moreStoppedMacApps.map(\.id), ["mac-stop4", "mac-stop5", "mac-stop6"])
+
+        let few = ServeStatus(version: "0", pid: 1, startedAt: now, relay: .init(state: .connected, since: now), macApps: Array(stopped.prefix(2)))
+        let short = MenuSnapshot.make(.answered(ControlProtocol.Response(ok: true, status: few)), connectorURL: nil, logTail: nil, canStart: true, now: now)
+        XCTAssertEqual(short.shownMacApps.count, 2)
+        XCTAssertTrue(short.moreStoppedMacApps.isEmpty)
+    }
+
     func testActions() async {
         let daemon = MenuModelTests.FakeDaemon()
         let seen = Locked<[ControlProtocol.Request]>([])
@@ -425,11 +484,15 @@ final class MacMenuTests: XCTestCase {
         snapshot = await model.snapshot
         XCTAssertEqual(snapshot.notice, .init("mac-aaaaaa isn't running.", isError: true))
         await model.perform(.requestMacPermissions)
+        await model.perform(.forgetMacApp("mac-bbbbbb"))
+        await model.perform(.forgetStoppedMacApps)
         let sent = seen.value.filter { $0.command != "status" }
         XCTAssertEqual(sent, [
             .init(command: "activate_mac_app", id: "mac-aaaaaa"),
             .init(command: "quit_mac_app", id: "mac-aaaaaa"),
             .init(command: "request_mac_permissions"),
+            .init(command: "forget_mac_app", id: "mac-bbbbbb"),
+            .init(command: "forget_stopped_mac_apps"),
         ])
 
         // A daemon from before Mac apps answers with its version but doesn't know the command.
