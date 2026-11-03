@@ -1,0 +1,20 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
++ minirun call sync_repo {"repo":"you/app","ref":"main"} [load  8.09 20.11 11.49 , 72% free]
+FAILED: expected output to contain: “one”
+--- output was:
+[job_fdbbe149] sync you/app@main: succeeded in 1s
+you/app@main at 4e223caa7f “one
+”
+Path: /private/var/folders/n6/hn37q6pj7sj_9dmqqc2113800000gn/T/tmp.xU0TrYjxBd/root/you/app@main
