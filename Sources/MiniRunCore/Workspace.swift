@@ -66,7 +66,7 @@ enum Workspace {
         ensureIgnored(gitDirectory: isWorktree ? mirror : gitDir)
 
         let info = try await Shell.check("/usr/bin/git", ["log", "-1", "--format=%H%n%s"], cwd: dir, timeout: 30)
-        let lines = info.stdout.split(separator: "\n", maxSplits: 1).map(String.init)
+        let lines = info.stdout.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: "\n", maxSplits: 1).map(String.init)
         return Checkout(path: dir, slug: slug, ref: ref, commit: lines.first ?? "", subject: lines.count > 1 ? lines[1] : "")
     }
 
