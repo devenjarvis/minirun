@@ -167,8 +167,10 @@ public struct Doctor: Sendable {
         func grant(_ pane: String, _ use: String) -> String {
             "System Settings → Privacy & Security → \(pane): turn on minirun, or click + and add \(binary). "
                 + "Or use Set Up minirun… → macOS apps → Request Access in the menu bar app. "
-                + "minirun's builds are ad-hoc signed, so if \(use) stops working after updating minirun, "
-                + "remove minirun from the list and add it again, then restart minirun serve."
+                + "minirun's releases are ad-hoc signed, so if \(use) stops working after updating minirun, "
+                + "remove minirun from the list and add it again, then restart minirun serve. "
+                + "To keep the grants across updates, give this Mac a \"minirun local\" signing certificate "
+                + "(README: Keep permissions across updates)."
         }
         return [
             DoctorCheck(

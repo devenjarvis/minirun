@@ -3,10 +3,11 @@ import CryptoKit
 import MiniRunKit
 
 /// Installs a release from GitHub over /Applications/minirun.app: download the zip, check its
-/// SHA-256, unzip it, check it's the minirun app at the right version and that its helper runs,
-/// swap the bundles (keeping the old one to roll back to), restart `minirun serve` from the new
-/// helper, and relaunch. Releases are ad-hoc signed, so the checksum and the checks on the bundle
-/// are what stands between GitHub and this Mac.
+/// SHA-256, unzip it, check it's the minirun app at the right version, re-sign it with this Mac's
+/// own certificate if it has one, check its helper runs, swap the bundles (keeping the old one to
+/// roll back to), restart `minirun serve` from the new helper, and relaunch. Releases are ad-hoc
+/// signed, so the checksum and the checks on the bundle are what stands between GitHub and this
+/// Mac.
 enum AppUpdater {
     static var workDirectory: URL {
         FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/minirun/update")
@@ -46,8 +47,23 @@ enum AppUpdater {
             throw ToolError(problem)
         }
         try await Shell.check("/usr/bin/codesign", ["--verify", "--deep", app.path], timeout: 120, what: "Checking the update's signature")
+        try await resign(app)
         try await checkHelper(helper, version: release.version)
         return app
+    }
+
+    /// macOS grants Screen Recording and Accessibility by signature, and an ad-hoc signature names
+    /// the exact build, so each release would lose them. A Mac with its own "minirun local"
+    /// certificate re-signs the release with it, which keeps the grants (scripts/sign-app.sh).
+    /// Without one this changes nothing. A failure stops the update: the old app stays.
+    static func resign(_ app: URL) async throws {
+        let fm = FileManager.default
+        let script = [app, Bundle.main.bundleURL]
+            .map { $0.appendingPathComponent("Contents/Resources/sign-app.sh").path }
+            .first { fm.isExecutableFile(atPath: $0) }
+        guard let script else { return }
+        try await Shell.check("/bin/bash", [script, "--local-only", app.path], timeout: 300, what: "Signing the update with this Mac's certificate")
+        try await Shell.check("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path], timeout: 120, what: "Checking the re-signed update")
     }
 
     /// The new bundle's helper must start (it loads the bundled frameworks) and report the version.

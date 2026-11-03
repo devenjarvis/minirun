@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the menu bar app (App/), ad-hoc signs it and installs it as /Applications/minirun.app.
+# Builds the menu bar app (App/), signs it and installs it as /Applications/minirun.app.
 # scripts/install.sh runs this with --with-daemon, so the app carries minirun itself:
 #
 #   minirun.app/Contents/MacOS/minirun          the menu bar app (links MiniRunKit only)
@@ -8,6 +8,7 @@
 #   minirun.app/Contents/Frameworks/WebRTC.framework libwebrtc, for live view over WebRTC
 #   minirun.app/Contents/Resources/worker/      the prebuilt Worker that `minirun worker deploy` uploads
 #   minirun.app/Contents/Resources/github-runner.sh   what Settings → GitHub Runners runs
+#   minirun.app/Contents/Resources/sign-app.sh  re-signs updates with this Mac's certificate, if it has one
 #
 #   ./scripts/install-app.sh [--with-daemon BIN_DIR]   build, install and open
 #   ./scripts/install-app.sh --build-only [--with-daemon BIN_DIR]   just build (CI and releases use this)
@@ -16,8 +17,10 @@
 # BIN_DIR is `swift build --show-bin-path` after `swift build` (and scripts/build-frameworks.sh).
 # Without --with-daemon the app only watches a daemon installed some other way.
 #
-# There's no Apple Developer ID behind this, so the app is ad-hoc signed and not notarized. A copy
-# built on this Mac has no quarantine flag, so Gatekeeper doesn't stop it.
+# scripts/sign-app.sh signs it: with this Mac's "minirun local" certificate (or $MINIRUN_SIGN_IDENTITY)
+# if it has one, so Screen Recording and Accessibility survive updates, else ad-hoc, as in CI. There's
+# no Apple Developer ID behind this, so it isn't notarized. A copy built on this Mac has no
+# quarantine flag, so Gatekeeper doesn't stop it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="/Applications/minirun.app"
@@ -62,22 +65,22 @@ if [[ -n "$DAEMON_DIR" ]]; then
     [[ -d "$src" ]] || src="$ROOT/Vendor/XCFrameworks/$fw.xcframework/macos-arm64_x86_64/$fw.framework"
     [[ -d "$src" ]] || { echo "Missing $fw.framework. Run scripts/build-frameworks.sh first."; exit 1; }
     cp -R "$src" "$APP/Contents/Frameworks/"
-    codesign --force --sign - "$APP/Contents/Frameworks/$fw.framework" >/dev/null
   done
   # libwebrtc comes with the package (a binary target SwiftPM downloads), not from Vendor/.
   src="$DAEMON_DIR/WebRTC.framework"
   [[ -d "$src" ]] || src="$(ls -d "$ROOT"/.build/artifacts/*/WebRTC/WebRTC.xcframework/macos-*/WebRTC.framework 2>/dev/null | head -1)"
   [[ -d "$src" ]] || { echo "Missing WebRTC.framework. Run swift build first."; exit 1; }
   cp -R "$src" "$APP/Contents/Frameworks/"
-  codesign --force --sign - "$APP/Contents/Frameworks/WebRTC.framework" >/dev/null
   cp -R "$ROOT/worker/dist" "$APP/Contents/Resources/worker"
-  codesign --force --sign - "$APP/Contents/Helpers/minirun" >/dev/null
-  # Proves the helper finds its frameworks inside the bundle (dyld fails at launch otherwise).
-  "$APP/Contents/Helpers/minirun" version >/dev/null || { echo "The bundled minirun doesn't start; see the error above."; exit 1; }
 fi
 # Settings → GitHub Runners runs the same script as the command line.
 install -m 755 "$ROOT/scripts/github-runner.sh" "$APP/Contents/Resources/github-runner.sh"
-codesign --force --sign - "$APP"
+install -m 755 "$ROOT/scripts/sign-app.sh" "$APP/Contents/Resources/sign-app.sh"
+"$ROOT/scripts/sign-app.sh" "$APP"
+if [[ -n "$DAEMON_DIR" ]]; then
+  # Proves the helper finds its frameworks inside the bundle (dyld fails at launch otherwise).
+  "$APP/Contents/Helpers/minirun" version >/dev/null || { echo "The bundled minirun doesn't start; see the error above."; exit 1; }
+fi
 echo "Built $APP"
 $BUILD_ONLY && exit 0
 
