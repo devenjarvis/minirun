@@ -4,11 +4,11 @@ import Foundation
 public enum XcodeFiles {
     // MARK: Shared schemes
 
-    /// The shared schemes of an .xcodeproj or .xcworkspace, from its `.xcscheme` files, sorted:
-    /// what `xcodebuild -list` reports when every scheme is shared (always so for XcodeGen
-    /// projects). A workspace adds the shared schemes of the projects it references. Empty when
-    /// there are none, and the caller asks xcodebuild instead (it also makes schemes up for a
-    /// project that shares none).
+    /// The shared schemes of an .xcodeproj or .xcworkspace, from its `.xcscheme` files, sorted. A
+    /// workspace adds the shared schemes of the projects it references. `xcodebuild -list` reports
+    /// these and more: the schemes of local Swift packages, and made-up ones for a project that
+    /// shares none. So this answers "which scheme to build" when it can (a named scheme that's
+    /// shared, or a default among the shared ones), and xcodebuild is asked otherwise.
     ///
     /// Reading the files matters beyond speed: `xcodebuild -list` resolves Swift packages into
     /// `~/Library/Developer/Xcode/DerivedData/<Name>-<hash>` (it takes no `-derivedDataPath`),
@@ -32,13 +32,12 @@ public enum XcodeFiles {
     /// The .xcodeproj paths a workspace's `contents.xcworkspacedata` references.
     public static func workspaceProjects(_ xml: String, workspace: String) -> [String] {
         let folder = (workspace as NSString).deletingLastPathComponent
+        let pattern = try! NSRegularExpression(pattern: #"location\s*=\s*"([^"]*)""#)
+        let range = NSRange(xml.startIndex..., in: xml)
         var found: [String] = []
-        var rest = Substring(xml)
-        while let start = rest.range(of: "location = \"") ?? rest.range(of: "location=\"") {
-            rest = rest[start.upperBound...]
-            guard let end = rest.firstIndex(of: "\"") else { break }
-            let location = String(rest[..<end])
-            rest = rest[end...]
+        for match in pattern.matches(in: xml, range: range) {
+            guard let value = Range(match.range(at: 1), in: xml) else { continue }
+            let location = String(xml[value])
             guard let colon = location.firstIndex(of: ":") else { continue }
             let kind = location[..<colon], target = String(location[location.index(after: colon)...])
             guard target.hasSuffix(".xcodeproj") else { continue }

@@ -140,37 +140,47 @@ enum XcodeBuild {
         path.hasPrefix(dir + "/") ? String(path.dropFirst(dir.count + 1)) : path
     }
 
-    static func schemes(directory: String, project: String?, log: URL? = nil) async throws -> (Container, [String]) {
-        try await generateProject(in: directory, log: log)
+    static func schemes(directory: String, project: String?, log: URL? = nil, generate: Bool = true) async throws -> (Container, [String]) {
+        if generate { try await generateProject(in: directory, log: log) }
         let container = try container(in: directory, project: project)
-        // Shared .xcscheme files when there are any: see `XcodeFiles.sharedSchemes`.
-        if !container.isPackage, let path = container.flags.last {
-            let shared = XcodeFiles.sharedSchemes(container: path)
-            if !shared.isEmpty { return (container, shared) }
-        }
         let result = try await Shell.check("/usr/bin/xcrun", ["xcodebuild", "-list", "-json"] + container.flags, cwd: container.workingDirectory ?? directory, timeout: 180, what: "xcodebuild -list")
         return (container, XcodeParsing.parseSchemes(Data(result.stdout.utf8)))
     }
 
     static func resolveScheme(_ options: Options, forTesting: Bool = false) async throws -> (Container, String) {
         if let resolved = options.resolved { return resolved }
-        let (container, schemes) = try await schemes(directory: options.directory, project: options.project, log: options.log)
+        // The shared .xcscheme files answer most builds without `xcodebuild -list`, which leaves a
+        // folder in the global DerivedData for every checkout (see `XcodeFiles.sharedSchemes`).
+        try await generateProject(in: options.directory, log: options.log)
+        let found = try container(in: options.directory, project: options.project)
+        if !found.isPackage, let path = found.flags.last {
+            let shared = XcodeFiles.sharedSchemes(container: path)
+            if let scheme = options.scheme, shared.contains(scheme) { return (found, scheme) }
+            if options.scheme == nil, !shared.isEmpty { return (found, defaultScheme(shared, container: found, directory: options.directory, forTesting: forTesting)) }
+        }
+        let (container, schemes) = try await schemes(directory: options.directory, project: options.project, log: options.log, generate: false)
         if let scheme = options.scheme {
             guard schemes.isEmpty || schemes.contains(scheme) else {
                 throw ToolError("No scheme \"\(scheme)\". Available: \(schemes.joined(separator: ", "))")
             }
             return (container, scheme)
         }
-        guard let first = schemes.first else { throw ToolError("\(container.description) has no shared schemes. Pass `scheme`.") }
+        guard !schemes.isEmpty else { throw ToolError("\(container.description) has no shared schemes. Pass `scheme`.") }
+        return (container, defaultScheme(schemes, container: container, directory: options.directory, forTesting: forTesting))
+    }
+
+    /// The scheme to use when none was named, from a non-empty list.
+    static func defaultScheme(_ schemes: [String], container: Container, directory: String, forTesting: Bool) -> String {
+        let first = schemes[0]
         if schemes.count > 1 {
             // A package's "<Name>-Package" scheme runs all of its test targets.
-            if forTesting, container.isPackage, let all = schemes.first(where: { $0.hasSuffix("-Package") }) { return (container, all) }
+            if forTesting, container.isPackage, let all = schemes.first(where: { $0.hasSuffix("-Package") }) { return all }
             // Prefer a scheme named like the folder, else the first non-test scheme.
-            let folder = ((container.workingDirectory ?? options.directory) as NSString).lastPathComponent.lowercased()
-            if let match = schemes.first(where: { $0.lowercased() == folder }) { return (container, match) }
-            if let app = schemes.first(where: { !$0.lowercased().contains("test") && !$0.contains("-Package") }) { return (container, app) }
+            let folder = ((container.workingDirectory ?? directory) as NSString).lastPathComponent.lowercased()
+            if let match = schemes.first(where: { $0.lowercased() == folder }) { return match }
+            if let app = schemes.first(where: { !$0.lowercased().contains("test") && !$0.contains("-Package") }) { return app }
         }
-        return (container, first)
+        return first
     }
 
     /// The flags every build, test and settings call shares. Simulator and Mac products land in
