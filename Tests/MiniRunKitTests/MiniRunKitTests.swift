@@ -341,6 +341,8 @@ final class ConfigTests: XCTestCase {
         XCTAssertTrue(config.preventSleep)
         XCTAssertEqual(config.idleShutdownMinutes, 30)
         XCTAssertEqual(config.maxBootedSimulators, 4)
+        XCTAssertEqual(config.workspaceCleanupDays, 7)
+        XCTAssertEqual(config.minFreeDiskGB, 30)
     }
 }
 

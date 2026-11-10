@@ -38,6 +38,8 @@ public enum Server {
         await registry.reconcileMacApps(log: { Server.log($0) })
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }
+        let cleanup = Task { await registry.cleanUpWorkspaces(log: { Server.log($0) }) }
+        defer { cleanup.cancel() }
         let client = RelayClient(config: live, registry: registry, log: { Server.log($0) })
 
         let commands = ServeControl(registry: registry, client: client, startedAt: Date(), log: { Server.log($0) })

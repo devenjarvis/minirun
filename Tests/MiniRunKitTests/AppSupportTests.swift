@@ -86,6 +86,26 @@ final class SettingsFormTests: XCTestCase {
         XCTAssertEqual(WorkspaceInventory.stale(list, olderThanDays: 30, now: now).map(\.name), ["a/old"])
     }
 
+    func testWorkspaceCleanup() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        func info(_ name: String, ago: TimeInterval?, busy: Bool = false) -> WorkspaceInfo {
+            WorkspaceInfo(path: "/w/" + name, name: name, sizeBytes: 0, lastUsed: ago.map { now.addingTimeInterval(-$0) }, busy: busy)
+        }
+        let list = [
+            info("a/week", ago: 8 * 86400), info("a/busy", ago: 8 * 86400, busy: true), info("a/day", ago: 86400),
+            info("a/now", ago: 60), info("a/unknown", ago: nil), info("a/month", ago: 30 * 86400),
+        ]
+        XCTAssertEqual(WorkspaceCleanup.expired(list, olderThanDays: 7, now: now).map(\.name), ["a/week", "a/month"])
+        XCTAssertEqual(WorkspaceCleanup.expired(list, olderThanDays: 0, now: now), [], "0 keeps them")
+        // Least recently used first; never a busy one or one used in the last hour.
+        XCTAssertEqual(WorkspaceCleanup.spare(list, now: now).map(\.name), ["a/unknown", "a/month", "a/week", "a/day"])
+
+        XCTAssertTrue(WorkspaceCleanup.isLow(freeBytes: 10_000_000_000, minFreeGB: 30))
+        XCTAssertFalse(WorkspaceCleanup.isLow(freeBytes: 40_000_000_000, minFreeGB: 30))
+        XCTAssertFalse(WorkspaceCleanup.isLow(freeBytes: 1, minFreeGB: 0), "0 turns it off")
+        XCTAssertFalse(WorkspaceCleanup.isLow(freeBytes: nil, minFreeGB: 30), "unknown free space deletes nothing")
+    }
+
     func testDiagnosticsLeaveOutSecrets() {
         let config = MiniRunConfig(relayURL: "wss://h/agent", agentToken: "supersecret")
         let worker = WorkerSettings(accountID: "acc", workerURL: "https://h", ownerPassword: "pw-secret", apiToken: "cf-secret")

@@ -150,8 +150,9 @@ public struct WorkspaceInfo: Codable, Equatable, Sendable {
 /// Lists and deletes the checkouts under the workspace root (`<root>/<owner>/<name>[@ref]`).
 public enum WorkspaceInventory {
     /// Every checkout, most recently used first. `busy` holds folders jobs are using; a checkout
-    /// is busy if one of them is the checkout or inside it.
-    public static func list(root: String, busy: Set<String> = []) -> [WorkspaceInfo] {
+    /// is busy if one of them is the checkout or inside it. Adding up sizes reads every file, so
+    /// `sizes: false` leaves them 0 for callers that only need the dates.
+    public static func list(root: String, busy: Set<String> = [], sizes: Bool = true) -> [WorkspaceInfo] {
         let fm = FileManager.default
         let rootPath = standardized(root)
         var found: [WorkspaceInfo] = []
@@ -164,7 +165,7 @@ public enum WorkspaceInventory {
                     (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date
                 }
                 found.append(WorkspaceInfo(
-                    path: path, name: owner + "/" + name, sizeBytes: size(path), lastUsed: times.max(),
+                    path: path, name: owner + "/" + name, sizeBytes: sizes ? size(path) : 0, lastUsed: times.max(),
                     busy: isBusy(path, busy: busy)
                 ))
             }
@@ -196,6 +197,11 @@ public enum WorkspaceInventory {
         try fm.removeItem(atPath: checkout)
         let owner = (checkout as NSString).deletingLastPathComponent
         if (try? fm.contentsOfDirectory(atPath: owner))?.isEmpty == true { try? fm.removeItem(atPath: owner) }
+    }
+
+    /// Free space on the volume holding `path`, in bytes, as `df` reports it. Nil if it can't be read.
+    public static func freeBytes(at path: String) -> Int64? {
+        (try? FileManager.default.attributesOfFileSystem(forPath: path)[.systemFreeSize] as? NSNumber)?.int64Value
     }
 
     /// "1.2 GB"
@@ -231,5 +237,34 @@ public enum WorkspaceInventory {
             total += Int64(values.fileSize ?? 0)
         }
         return total
+    }
+}
+
+/// What `minirun serve` deletes by itself, so checkouts don't fill the Mac's disk. Every repo + ref
+/// gets its own checkout and build folder (often 1–3 GB), and agents and CI make a new ref for
+/// every branch, so without this they pile up.
+public enum WorkspaceCleanup {
+    /// A checkout used this recently is never deleted to free disk: a session is likely still on it.
+    public static let recentUse: TimeInterval = 3600
+
+    /// Checkouts nobody has used for `days` days and no job is using; none when `days` is 0.
+    public static func expired(_ list: [WorkspaceInfo], olderThanDays days: Int, now: Date = Date()) -> [WorkspaceInfo] {
+        guard days > 0 else { return [] }
+        return WorkspaceInventory.stale(list, olderThanDays: days, now: now)
+    }
+
+    /// What may go while the disk is low, least recently used first: checkouts no job is using and
+    /// nobody used in the last `recentUse`. A checkout whose last use is unknown goes first.
+    public static func spare(_ list: [WorkspaceInfo], now: Date = Date()) -> [WorkspaceInfo] {
+        let cutoff = now.addingTimeInterval(-recentUse)
+        return list
+            .filter { !$0.busy && ($0.lastUsed.map { $0 < cutoff } ?? true) }
+            .sorted { ($0.lastUsed ?? .distantPast, $0.name) < ($1.lastUsed ?? .distantPast, $1.name) }
+    }
+
+    /// Whether `free` bytes is under the `minFreeGB` floor; never when the floor is 0.
+    public static func isLow(freeBytes free: Int64?, minFreeGB: Int) -> Bool {
+        guard minFreeGB > 0, let free else { return false }
+        return free < Int64(minFreeGB) * 1_000_000_000
     }
 }

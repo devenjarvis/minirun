@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Old checkouts are deleted by themselves.** Every repo + ref keeps its own checkout and build
+  folder (often 1–3 GB), and agents and CI make a new ref for every branch, so they used to fill
+  the disk. `minirun serve` now deletes checkouts nobody has used for `workspaceCleanupDays` (7),
+  and while free disk is under `minFreeDiskGB` (30) deletes the least recently used ones, also
+  before making a new checkout. A checkout a job is using, or one used in the last hour, is never
+  deleted. Set either to 0 to turn it off.
+
 ## 0.7.0
 
 A minirun Mac becomes a faster CI machine: GitHub Actions jobs can hand their builds and tests to
