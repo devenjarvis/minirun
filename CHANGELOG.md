@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.8.0
+
+minirun stops filling the Mac's disk, and a full disk no longer leaves it broken. Old checkouts
+and the leftovers Xcode kept for them are deleted by themselves, and `minirun serve` keeps working
+(and its GitHub runner jobs with it) through a full disk. The Worker only changes its version
+number; update it from the menu when it asks.
+
 - **Old checkouts are deleted by themselves.** Every repo + ref keeps its own checkout and build
   folder (often 1–3 GB), and agents and CI make a new ref for every branch, so they used to fill
   the disk. `minirun serve` now deletes checkouts nobody has used for `workspaceCleanupDays` (3),
