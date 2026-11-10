@@ -4,7 +4,7 @@
 
 - **Old checkouts are deleted by themselves.** Every repo + ref keeps its own checkout and build
   folder (often 1–3 GB), and agents and CI make a new ref for every branch, so they used to fill
-  the disk. `minirun serve` now deletes checkouts nobody has used for `workspaceCleanupDays` (7),
+  the disk. `minirun serve` now deletes checkouts nobody has used for `workspaceCleanupDays` (3),
   and while free disk is under `minFreeDiskGB` (30) deletes the least recently used ones, also
   before making a new checkout. A checkout a job is using, or one used in the last hour, is never
   deleted. Set either to 0 to turn it off.

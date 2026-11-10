@@ -486,7 +486,7 @@ Gatekeeper prompts.
 | `mediaStorageLimitMB` | `500` | The oldest shared files are deleted to stay under this |
 | `maxRecordingSeconds` | `60` | Recordings stop by themselves after this |
 | `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR through the Worker (10 MB on a `pr-media` branch, or this if higher); bigger ones are shrunk |
-| `workspaceCleanupDays` | `7` | Deletes checkouts nobody has used for this many days; `0` keeps them |
+| `workspaceCleanupDays` | `3` | Deletes checkouts nobody has used for this many days; `0` keeps them |
 | `minFreeDiskGB` | `30` | While free disk is under this, deletes the least recently used checkouts (never one a job is using or that was used in the last hour), also before making a new one; `0` turns this off |
 | `sharedBuildCache` | `false` | Checkouts of one repository share Swift package checkouts (one folder per Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. Experimental: see [docs/faster-ci-plan.md](docs/faster-ci-plan.md) |
 

@@ -64,7 +64,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         githubMedia: Bool = true,
         githubMediaBranch: String = MiniRunConfig.defaultMediaBranch,
         sharedBuildCache: Bool = false,
-        workspaceCleanupDays: Int = 7,
+        workspaceCleanupDays: Int = 3,
         minFreeDiskGB: Int = 30
     ) {
         self.relayURL = relayURL
@@ -107,7 +107,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         githubMedia = try c.decodeIfPresent(Bool.self, forKey: .githubMedia) ?? true
         githubMediaBranch = try c.decodeIfPresent(String.self, forKey: .githubMediaBranch) ?? MiniRunConfig.defaultMediaBranch
         sharedBuildCache = try c.decodeIfPresent(Bool.self, forKey: .sharedBuildCache) ?? false
-        workspaceCleanupDays = try c.decodeIfPresent(Int.self, forKey: .workspaceCleanupDays) ?? 7
+        workspaceCleanupDays = try c.decodeIfPresent(Int.self, forKey: .workspaceCleanupDays) ?? 3
         minFreeDiskGB = try c.decodeIfPresent(Int.self, forKey: .minFreeDiskGB) ?? 30
     }
 
