@@ -73,5 +73,18 @@ extension ToolRegistry {
             log("Free disk is still under \(config.minFreeDiskGB) GB with no unused checkouts left to delete.")
         }
         if !deleted.isEmpty || !freed.isEmpty { await Workspace.pruneWorktrees(root: root) }
+        await deleteOrphanedDerivedData(root: root, log: log)
+    }
+
+    /// Deletes Xcode's global DerivedData folders for checkouts that are gone (see
+    /// `XcodeFiles.orphanedDerivedData`): builds use the checkout's own `.minirun/DerivedData`, but
+    /// other xcodebuild calls (and Xcode itself) may have made one there too.
+    func deleteOrphanedDerivedData(root: String, log: @Sendable (String) -> Void) async {
+        let orphans = await Task.detached { XcodeFiles.orphanedDerivedData(workspaceRoot: root) }.value
+        guard !orphans.isEmpty else { return }
+        let deleted = await Task.detached { orphans.filter { (try? FileManager.default.removeItem(atPath: $0)) != nil } }.value
+        if !deleted.isEmpty {
+            log("Deleted \(deleted.count) of Xcode's DerivedData folder\(deleted.count == 1 ? "" : "s") for checkouts that are gone")
+        }
     }
 }

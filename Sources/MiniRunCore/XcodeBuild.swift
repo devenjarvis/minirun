@@ -143,6 +143,11 @@ enum XcodeBuild {
     static func schemes(directory: String, project: String?, log: URL? = nil) async throws -> (Container, [String]) {
         try await generateProject(in: directory, log: log)
         let container = try container(in: directory, project: project)
+        // Shared .xcscheme files when there are any: see `XcodeFiles.sharedSchemes`.
+        if !container.isPackage, let path = container.flags.last {
+            let shared = XcodeFiles.sharedSchemes(container: path)
+            if !shared.isEmpty { return (container, shared) }
+        }
         let result = try await Shell.check("/usr/bin/xcrun", ["xcodebuild", "-list", "-json"] + container.flags, cwd: container.workingDirectory ?? directory, timeout: 180, what: "xcodebuild -list")
         return (container, XcodeParsing.parseSchemes(Data(result.stdout.utf8)))
     }
