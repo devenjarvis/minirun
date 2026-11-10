@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Old checkouts are deleted by themselves.** Every repo + ref keeps its own checkout and build
+  folder (often 1–3 GB), and agents and CI make a new ref for every branch, so they used to fill
+  the disk. `minirun serve` now deletes checkouts nobody has used for `workspaceCleanupDays` (3),
+  and while free disk is under `minFreeDiskGB` (30) deletes the least recently used ones, also
+  before making a new checkout. A checkout a job is using, or one used in the last hour, is never
+  deleted. Set either to 0 to turn it off.
+- **No more leftovers in Xcode's own DerivedData.** Finding a scheme with `xcodebuild -list`
+  resolved Swift packages into `~/Library/Developer/Xcode/DerivedData`, one folder per checkout,
+  that nothing deleted. Builds now take the scheme from the project's shared `.xcscheme` files
+  when they can, and the cleanup deletes Xcode's DerivedData folders whose checkout is gone.
+- **A full disk no longer takes `minirun serve` down for good.** Writing a log line on a full disk
+  raised an exception that crashed serve; it's now ignored. And when serve can't make its control
+  socket at start (the disk was full, say), it retries every 30 seconds instead of running without
+  one, which left `minirun status`, the menu bar app and every `minirun ci` job (exit 3) unable to
+  reach it until a restart.
+
 ## 0.7.0
 
 A minirun Mac becomes a faster CI machine: GitHub Actions jobs can hand their builds and tests to

@@ -38,20 +38,33 @@ public enum Server {
         await registry.reconcileMacApps(log: { Server.log($0) })
         let idleShutdown = Task { await registry.shutDownIdleSimulators(log: { Server.log($0) }) }
         defer { idleShutdown.cancel() }
+        let cleanup = Task { await registry.cleanUpWorkspaces(log: { Server.log($0) }) }
+        defer { cleanup.cancel() }
         let client = RelayClient(config: live, registry: registry, log: { Server.log($0) })
 
         let commands = ServeControl(registry: registry, client: client, startedAt: Date(), log: { Server.log($0) })
         let control = ControlServer(path: MiniRunConfig.controlSocketURL.path) { line in
             await ControlProtocol.respond(to: line, commands: commands)
         }
-        do {
-            try control.start()
-            log("Answering control requests on \(control.path)")
-        } catch {
-            // Not fatal: Claude can still reach the Mac; only `minirun status` and the menu bar app can't.
-            log("Warning: no control socket: \(error.localizedDescription)")
-        }
         defer { control.stop() }
+        // Not fatal: Claude can still reach the Mac. But `minirun status`, the menu bar app and
+        // `minirun ci` (every GitHub runner job) need the socket, so keep trying: a full disk, say,
+        // stops the bind only until space is freed.
+        let controlStart = Task {
+            var warned = false
+            while !Task.isCancelled {
+                do {
+                    try control.start()
+                    Server.log("Answering control requests on \(control.path)")
+                    return
+                } catch {
+                    if !warned { Server.log("Warning: no control socket: \(error.localizedDescription) Retrying every 30 seconds.") }
+                    warned = true
+                }
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+        }
+        defer { controlStart.cancel() }
 
         // `kill -HUP` re-reads config.json, for edits made by hand.
         signal(SIGHUP, SIG_IGN)
@@ -71,7 +84,8 @@ public enum Server {
 
     public static func log(_ message: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
-        FileHandle.standardError.write(Data("\(stamp) \(message)\n".utf8))
+        // launchd sends stderr to a file; a full disk must not crash serve (see OutputCollector).
+        try? FileHandle.standardError.write(contentsOf: Data("\(stamp) \(message)\n".utf8))
     }
 }
 

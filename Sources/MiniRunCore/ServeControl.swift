@@ -75,23 +75,14 @@ struct ServeControl: ControlCommands {
 
     func workspaces() async throws -> [WorkspaceInfo] {
         let root = registry.config.workspaceRoot
-        let busy = await busyFolders()
+        let busy = await registry.busyFolders()
         // Adding up sizes reads every file, so keep it off the shared thread pool.
         return await Task.detached { WorkspaceInventory.list(root: root, busy: busy) }.value
     }
 
     func deleteWorkspace(path: String) async throws -> String {
-        let root = registry.config.workspaceRoot
-        let checkout = try WorkspaceInventory.checkout(path, root: root)
-        let name = String(checkout.dropFirst(WorkspaceInventory.standardized(root).count + 1))
-        let refusal = ToolError("A job is using \(name). Wait for it to finish or cancel it, then delete it.")
-        guard !WorkspaceInventory.isBusy(checkout, busy: await busyFolders()) else { throw refusal }
-        // Holding the checkout's lock (the key builds use) keeps a sync from starting mid-delete.
-        let deleted: Void? = try await registry.checkouts.withLockIfFree(root + "/" + name) {
-            try await Task.detached { try WorkspaceInventory.delete(checkout) }.value
-        }
-        guard deleted != nil else { throw refusal }
-        log("Deleted the checkout \(checkout) (from the control socket)")
+        let name = try await registry.deleteCheckout(path)
+        log("Deleted the checkout \(name) (from the control socket)")
         return "Deleted \(name)."
     }
 
@@ -176,12 +167,5 @@ struct ServeControl: ControlCommands {
     func reconnectRelay(expectingBundle bundle: String?) async throws -> String {
         client.reconnect(expectingBundle: bundle)
         return "minirun serve is reconnecting to the updated Worker."
-    }
-
-    /// Folders in use by a sync, build or command, standardized like the checkout paths.
-    private func busyFolders() async -> Set<String> {
-        let held = await registry.checkouts.held
-        let commands = await registry.commandFolders.busy
-        return Set(held.union(commands).map { WorkspaceInventory.standardized($0) })
     }
 }

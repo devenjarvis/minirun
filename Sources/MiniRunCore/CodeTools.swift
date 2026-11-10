@@ -445,6 +445,12 @@ extension ToolRegistry {
         if let repo = args.string("repo") {
             let existing = Workspace.path(for: try config.resolveRepo(repo).slug, ref: args.string("ref"), config: config)
             guard args.string("ref") != nil || args.string("commit") != nil || !FileManager.default.fileExists(atPath: existing + "/.git") else { return existing }
+            // A new checkout can take gigabytes: make room first if the disk is low.
+            if !FileManager.default.fileExists(atPath: existing + "/.git"),
+               WorkspaceCleanup.isLow(freeBytes: WorkspaceInventory.freeBytes(at: config.workspaceRoot), minFreeGB: config.minFreeDiskGB) {
+                XcodeBuild.appendLog(log, "Free disk is under \(config.minFreeDiskGB) GB; deleting the least recently used checkouts first.\n")
+                await cleanUpWorkspacesOnce(sparing: existing, log: { XcodeBuild.appendLog(log, $0 + "\n") })
+            }
             let checkout = try await Workspace.sync(repo: repo, ref: args.string("ref"), commit: args.string("commit"), config: config, log: log)
             XcodeBuild.appendLog(log, "Checked out \(checkout.slug) at \(checkout.commit)\n")
             return checkout.path

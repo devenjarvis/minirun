@@ -40,6 +40,11 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     /// Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. See
     /// `BuildCache`. Off until it's measured on more projects.
     public var sharedBuildCache: Bool
+    /// Checkouts nobody has used for this many days are deleted (0 keeps them). See `WorkspaceCleanup`.
+    public var workspaceCleanupDays: Int
+    /// While free disk is under this many GB, the least recently used checkouts are deleted until
+    /// it isn't, sparing any used in the last hour (0 turns this off).
+    public var minFreeDiskGB: Int
 
     public init(
         relayURL: String? = nil,
@@ -58,7 +63,9 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         mediaInlineLimitMB: Int = 5,
         githubMedia: Bool = true,
         githubMediaBranch: String = MiniRunConfig.defaultMediaBranch,
-        sharedBuildCache: Bool = false
+        sharedBuildCache: Bool = false,
+        workspaceCleanupDays: Int = 3,
+        minFreeDiskGB: Int = 30
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -77,6 +84,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.githubMedia = githubMedia
         self.githubMediaBranch = githubMediaBranch
         self.sharedBuildCache = sharedBuildCache
+        self.workspaceCleanupDays = workspaceCleanupDays
+        self.minFreeDiskGB = minFreeDiskGB
     }
 
     public init(from decoder: Decoder) throws {
@@ -98,6 +107,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         githubMedia = try c.decodeIfPresent(Bool.self, forKey: .githubMedia) ?? true
         githubMediaBranch = try c.decodeIfPresent(String.self, forKey: .githubMediaBranch) ?? MiniRunConfig.defaultMediaBranch
         sharedBuildCache = try c.decodeIfPresent(Bool.self, forKey: .sharedBuildCache) ?? false
+        workspaceCleanupDays = try c.decodeIfPresent(Int.self, forKey: .workspaceCleanupDays) ?? 3
+        minFreeDiskGB = try c.decodeIfPresent(Int.self, forKey: .minFreeDiskGB) ?? 30
     }
 
     public static let defaultMediaBranch = "pr-media"

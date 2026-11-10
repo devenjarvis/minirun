@@ -246,7 +246,9 @@ final class OutputCollector: @unchecked Sendable {
         let cap = 8 * 1024 * 1024
         if stdout.count > cap { stdout = stdout.suffix(cap / 2) }
         if stderr.count > cap { stderr = stderr.suffix(cap / 2) }
-        logHandle?.write(data)
+        // The throwing write: the old `write(_:)` raises an Objective-C exception when the disk
+        // is full, which nothing can catch and which takes all of minirun serve down.
+        try? logHandle?.write(contentsOf: data)
     }
 
     /// When the program last wrote anything (or started, if it hasn't yet).

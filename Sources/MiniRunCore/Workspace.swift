@@ -93,6 +93,19 @@ enum Workspace {
         try await git(["worktree", "add", "--detach", "--no-checkout", dir], cwd: mirror, log: log)
     }
 
+    /// Forgets the worktrees of every mirror whose checkout folders were deleted, so their
+    /// records under `<mirror>/worktrees` don't pile up.
+    static func pruneWorktrees(root: String) async {
+        let base = root + "/" + WorkspaceNaming.mirrorsFolder
+        let fm = FileManager.default
+        for owner in (try? fm.contentsOfDirectory(atPath: base)) ?? [] {
+            for name in (try? fm.contentsOfDirectory(atPath: base + "/" + owner)) ?? [] where name.hasSuffix(".git") {
+                let mirror = base + "/" + owner + "/" + name
+                _ = try? await mirrors.withLock(mirror) { try await git(["worktree", "prune"], cwd: mirror, log: nil) }
+            }
+        }
+    }
+
     @discardableResult
     static func git(_ args: [String], cwd: String?, log: URL?, timeout: TimeInterval = 300) async throws -> ShellResult {
         let result = try await Shell.run(
