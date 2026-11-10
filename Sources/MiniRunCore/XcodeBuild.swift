@@ -424,6 +424,6 @@ enum XcodeBuild {
         guard let handle = try? FileHandle(forWritingTo: url) else { return }
         defer { try? handle.close() }
         _ = try? handle.seekToEnd()
-        handle.write(Data(text.utf8))
+        try? handle.write(contentsOf: Data(text.utf8))
     }
 }

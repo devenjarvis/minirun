@@ -308,7 +308,7 @@ public struct CIFollower {
             let summary = "### minirun: \(job.title) \(job.status)\n\n```\n\(text)\n```\n"
             if let handle = FileHandle(forWritingAtPath: stepSummary) {
                 _ = try? handle.seekToEnd()
-                handle.write(Data(summary.utf8))
+                try? handle.write(contentsOf: Data(summary.utf8))
                 try? handle.close()
             } else {
                 try? summary.write(toFile: stepSummary, atomically: true, encoding: .utf8)

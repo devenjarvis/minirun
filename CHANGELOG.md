@@ -12,6 +12,11 @@
   resolved Swift packages into `~/Library/Developer/Xcode/DerivedData`, one folder per checkout,
   that nothing deleted. Builds now take the scheme from the project's shared `.xcscheme` files
   when they can, and the cleanup deletes Xcode's DerivedData folders whose checkout is gone.
+- **A full disk no longer takes `minirun serve` down for good.** Writing a log line on a full disk
+  raised an exception that crashed serve; it's now ignored. And when serve can't make its control
+  socket at start (the disk was full, say), it retries every 30 seconds instead of running without
+  one, which left `minirun status`, the menu bar app and every `minirun ci` job (exit 3) unable to
+  reach it until a restart.
 
 ## 0.7.0
 
