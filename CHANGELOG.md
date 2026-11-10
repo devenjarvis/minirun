@@ -8,6 +8,10 @@
   and while free disk is under `minFreeDiskGB` (30) deletes the least recently used ones, also
   before making a new checkout. A checkout a job is using, or one used in the last hour, is never
   deleted. Set either to 0 to turn it off.
+- **No more leftovers in Xcode's own DerivedData.** Finding a scheme with `xcodebuild -list`
+  resolved Swift packages into `~/Library/Developer/Xcode/DerivedData`, one folder per checkout,
+  that nothing deleted. Builds now take the scheme from the project's shared `.xcscheme` files
+  when they can, and the cleanup deletes Xcode's DerivedData folders whose checkout is gone.
 
 ## 0.7.0
 
