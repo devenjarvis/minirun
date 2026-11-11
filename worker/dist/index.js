@@ -5219,6 +5219,43 @@ var OAuthHelpersImpl = class {
   }
 };
 
+// src/app.ts
+var ICON_180 = "iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAIAAACyr5FlAAAFIklEQVR4nOzd30/VdRzH8Td64JxABXRoCRgoaCukuaScOucyq0XN8qb1e9nauvCiyyy3cs3solbrpouytVq1GrlGBYk20ZhYUChuKAFyPLAkTOA4RAHZ6dvcWhe9ukiB8z57Pnb+gPfF8/v5fs/n+90+oaxZ2Qb8mxkGCMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSCFLRemRrJLV95eseWDOgsLwrJzgF7mmB29fGo6PDg8Fv3hfrOvw152NNeMXhy3lpKXSceWh8HWL77h36brNxRUbQ+GITZXLo5e6m+raD+45daR2YnzUUkXqxJG3pHzNU9uLb7/bps+pH/ce/mjn2a5WSwmpEMfcRctWP/lScBNJS0uz6ZZIJDoaqhs/fm0g1m7OzczImLrldzJEZufet2130W0bkqGMQDDGvBtvyisu6zpSe3n0onnme+XILSh9aOeX2QsWWfIZOhPds21TvO+0ueX4r2xG5uxNr3yWnGUEcm4oevDVqozMOeaW1zhmzAxVvvhhbkGJJbG5haXBLc+S4373P3h95rhz65vL1m+2pJebvySUHokdrTeHXK4cBeVryyufNicqHn4+GNgcchnHqsdfMFfcDXyFvziCq7DQ24UYDOxx8fAXx/LKLeaQx7GdxTEjlF688i5zqHjlhmB4c8VZHIW3rgtnudw5CGdlB8ObK87iCF7Em1vuhnf2PUfe4uXmlrvhncUR9vwmyN3wzuLIzJ1vbhHHJJqZHo64XjmyiGPSeP8CL5QRNlf4+hwScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQiAMScUAiDkjEAYk4IBEHJOKARByQnMVxYbDf3HI3vLM4RgZ/N7fcDe9t5RhwvHLE+2LmirM4znYdN7cGezrMFWdxRH/eb251Nn5jrjiL48yJn0YvxM2hYOy+k83mirM4JsbHeo41mEPdzd+bN/72OVq+etccOv7tB+aNvzh6Wxui3q7CYOBgbPPG5Q7pD7tfNlcOvbfdHHJ5pMbIUH8oPZJftso8aPr87fb6KnPI63krsWMHFyxdkZuf1IfxBLqb9tW9tdV8cvviLZGoff3ZgZ5fLYkN9HTU7HomGNV8cvxWdmzkfPWOx5J22yMYrHrHI8GQ5pbvV/aDvR3vP1F2uqXekkzs6KFgsMHeTvPM/bmywbbYiQNfhNLD+bcky/Npc9U7373x3MSY+3PL3cfxl0Qi1lIfbd6fs3Dx9J4k2tPaULNrS1vdJ36fM/4pdc6yv6KgfO3NGx8trrgnM2eeTZWRoXPdTXvb9n3qcafrP6RaHH/LW1K+aMX6uQWl2QuLsq8vmjO/0K6d8/098b5o/LfoudjJ2C8H/oi2WSpK2Thw9fjAGBJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIAxJxQCIOSMQBiTggEQck4oBEHJCIA9KfAAAA///E/iCzAAAABklEQVQDAJZGGqgyfvVlAAAAAElFTkSuQmCC";
+var ICON_512 = "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";
+var ICONS = {
+  "/icon-180.png": ICON_180,
+  // iOS asks for this one by itself when the page doesn't name one.
+  "/apple-touch-icon.png": ICON_180,
+  "/icon-512.png": ICON_512
+};
+function manifest() {
+  return JSON.stringify({
+    name: "minirun",
+    short_name: "minirun",
+    description: "Watch and control your Mac's simulators.",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#0b0c0f",
+    theme_color: "#0b0c0f",
+    icons: [
+      { src: "/icon-180.png", sizes: "180x180", type: "image/png" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+    ]
+  });
+}
+__name(manifest, "manifest");
+function appAsset(pathname) {
+  const cache = "public, max-age=86400";
+  if (pathname === "/manifest.webmanifest") {
+    return new Response(manifest(), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": cache } });
+  }
+  const icon = ICONS[pathname];
+  if (!icon) return null;
+  return new Response(Uint8Array.from(atob(icon), (c) => c.charCodeAt(0)), { headers: { "Content-Type": "image/png", "Cache-Control": cache } });
+}
+__name(appAsset, "appAsset");
+
 // src/auth.ts
 var encoder = new TextEncoder();
 var SESSION_COOKIE = "minirun_session";
@@ -6532,10 +6569,16 @@ function viewerPage() {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b0c0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="minirun">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <title>minirun</title>
 <style>
 ${baseStyles}
-body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
 header { display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; border-bottom: 1px solid var(--line); }
 header .mark { margin: 0; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; }
@@ -6547,7 +6590,7 @@ header .mark { margin: 0; }
 .sim[hidden], .device[hidden] { display: none; }
 main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
 .screen { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ratio, 0.46); height: 100%; border-radius: 28px; overflow: hidden;
-  background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
+  background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .screen img, .screen canvas, .screen video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
 .screen img[hidden], .screen canvas[hidden], .screen video[hidden] { display: none; }
 .screen:focus { outline: none; }
@@ -6570,6 +6613,47 @@ footer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; b
 .readout[hidden] { display: none; }
 .stats-toggle { flex: 0 0 auto; padding: 3px 8px; font-size: 11px; border-radius: 999px; }
 .stats-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* Phones: the stream fills the screen (below the status bar, whose safe area the page keeps), and the
+   header and footer open over it from a floating button. */
+.fab { display: none; position: fixed; z-index: 6; width: 44px; height: 44px; padding: 0; border-radius: 50%; place-items: center; touch-action: none; -webkit-tap-highlight-color: transparent;
+  background: rgba(29,32,39,.72); border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.fab i { width: 12px; height: 12px; border-radius: 4px; background: #5b6170; transition: background .2s; }
+.fab.live i { background: var(--accent); }
+.fab.offline i { background: var(--danger); }
+body.controls .fab { border-color: var(--accent); }
+/* The phone layout's device button, and the list it opens. */
+.device-pick { display: none; flex: 1; min-width: 0; margin-left: 4px; padding: 6px 10px; text-align: left; font-weight: 400; line-height: 1.25; }
+.device-pick b, .device-pick small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-pick b { font-size: 14px; font-weight: 600; }
+.device-pick small, .device-row small { font-size: 12px; color: var(--muted); }
+.device-pick b::after { content: " \u25BE"; color: var(--muted); font-weight: 400; }
+.device-list { position: fixed; inset: 0; z-index: 7; display: flex; flex-direction: column; background: rgba(11,12,15,.97);
+  padding: calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 14px) calc(env(safe-area-inset-left) + 14px); }
+.device-list[hidden] { display: none; }
+.device-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.device-list-head h2 { margin: 0; font-size: 17px; }
+.device-list-head button { flex: 0 0 auto; padding: 8px 14px; }
+.device-rows { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.device-rows h3 { margin: 8px 2px 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.device-row { flex: 0 0 auto; display: block; width: 100%; padding: 12px 14px; text-align: left; font-weight: 400; }
+.device-row b { display: block; font-size: 15px; }
+.device-row small { display: block; overflow-wrap: anywhere; }
+.device-row[aria-selected="true"] { border-color: var(--accent); }
+.device-row[aria-selected="true"] b::after { content: " \u2713"; color: var(--accent); }
+.install-tip { display: none; flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+body.compact { height: 100dvh; }
+body.compact .fab { display: grid; }
+body.compact main { padding: env(safe-area-inset-top) 0 0; }
+body.compact .readout { top: calc(env(safe-area-inset-top) + 8px); }
+body.compact header, body.compact footer { position: fixed; left: 0; right: 0; z-index: 5; background: rgba(11,12,15,.9); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+body.compact header { top: 0; }
+body.compact header .mark, body.compact header .device, body.compact header .sim { display: none; }
+body.compact header .device-pick { display: block; }
+body.compact footer { bottom: 0; flex-wrap: wrap; }
+body.compact footer form { order: -1; flex-basis: 100%; }
+body.compact footer #home { flex: 1; }
+body.compact.installable .install-tip { display: block; }
+body.compact:not(.controls) header, body.compact:not(.controls) footer { display: none; }
 select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); background: #1d2027; color: var(--text); font-size: 14px; }
 </style>
 </head>
@@ -6580,6 +6664,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   <button id="statsToggle" class="stats-toggle" type="button" title="Latency readout" aria-pressed="false">ms</button>
   <span id="device" class="device"></span>
   <select id="sim" class="sim" title="Simulator or Mac app" hidden></select>
+  <button id="devicePick" class="device-pick" type="button" aria-haspopup="listbox" aria-controls="deviceList"><b id="devicePickName">Connecting\u2026</b><small id="devicePickInfo"></small></button>
 </header>
 <main>
   <div id="screen" class="screen" tabindex="0">
@@ -6593,7 +6678,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 <footer>
   <button id="home" type="button" title="Home">Home</button>
   <form id="typing" autocomplete="off">
-    <input id="text" placeholder="Type into the app\u2026" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input id="text" placeholder="Type into the app\u2026" enterkeyhint="enter" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
     <button type="button" id="backspace" title="Delete">\u232B</button>
     <button type="button" id="enter" title="Return">\u23CE</button>
   </form>
@@ -6602,7 +6687,13 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     <option value="smooth">Smooth</option>
     <option value="sharp">Sharp</option>
   </select>
+  <p id="installTip" class="install-tip">For a bigger screen: Share \u2192 Add to Home Screen, then open minirun from there.</p>
 </footer>
+<div id="deviceList" class="device-list" role="dialog" aria-label="Devices" hidden>
+  <div class="device-list-head"><h2>Simulators and apps</h2><button id="deviceListClose" type="button">Done</button></div>
+  <div id="deviceRows" class="device-rows" role="listbox"></div>
+</div>
+<button id="fab" class="fab" type="button" title="Controls" aria-label="Controls" aria-expanded="false"><i></i></button>
 <script>
 (() => {
   const presets = {
@@ -6620,6 +6711,11 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   let simulators = [];
   // The simulator or Mac app this page shows: ?device=UDID or ?device=mac-\u2026, or "" for whichever simulator is booted.
   let wanted = new URLSearchParams(location.search).get("device") || "";
+  // Without ?device (as when opened from the Home Screen), the page goes back to the device it
+  // last showed, if that one is still running. Tried once, on the first device list.
+  // Only a device that was asked for (a link or the picker) is remembered, not the default stream.
+  let restoreDevice = !wanted;
+  function rememberDevice() { if (wanted) store.set("minirun.device", wanted); }
   let currentURL = null, decoding = false, pendingFrame = null;
   // "h264" once we know this browser can decode it (?codec=jpeg forces JPEG).
   let codec = "jpeg";
@@ -6627,11 +6723,96 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
   $("quality").value = store.get("minirun.quality") || "smooth";
+  rememberDevice();
 
   function setStatus(kind, text) {
     statusEl.className = "pill " + kind;
     statusEl.lastElementChild.textContent = text;
+    fab.className = "fab " + kind;
+    fab.title = "Controls \xB7 " + text;
+    if (kind === "live") keepAwake(); else releaseAwake();
   }
+
+  // Keep the screen on while the stream is live: a phone going to sleep hides the page, which
+  // stops the stream.
+  let wakeLock = null, wakeLockPending = false;
+  async function keepAwake() {
+    if (wakeLock || wakeLockPending || document.hidden || !navigator.wakeLock) return;
+    wakeLockPending = true;
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    } catch {} finally { wakeLockPending = false; }
+  }
+  function releaseAwake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+
+  // The phone layout: the stream fills the screen, and the header and footer ("the controls")
+  // open over it from a floating button the user can drag up and down either side.
+  const params = new URLSearchParams(location.search);
+  const layoutParam = params.get("layout");
+  const compactQuery = matchMedia("(pointer: coarse) and (max-width: 600px), (pointer: coarse) and (max-height: 500px)");
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const fab = $("fab");
+  let compact = false;
+  function applyLayout() {
+    compact = layoutParam === "compact" ? true : layoutParam === "classic" ? false : compactQuery.matches;
+    document.body.classList.toggle("compact", compact);
+    // Only Safari on an iPhone or iPad needs telling how; other browsers offer to install by themselves.
+    document.body.classList.toggle("installable", !standalone && /iPhone|iPad|iPod/.test(navigator.userAgent));
+    if (!compact) setControls(false);
+    placeFab();
+  }
+  function setControls(open) {
+    document.body.classList.toggle("controls", open);
+    fab.setAttribute("aria-expanded", String(open));
+  }
+  // Which side the button sits on, and its centre as a fraction of the window's height. Remembered.
+  let fabSpot = { side: "right", y: 0.72 };
+  try {
+    const saved = JSON.parse(store.get("minirun.fab") || "null");
+    if (saved && (saved.side === "left" || saved.side === "right") && typeof saved.y === "number") fabSpot = saved;
+  } catch {}
+  const FAB_SIZE = 44, FAB_MARGIN = 10;
+  function placeFab() {
+    const y = Math.max(FAB_MARGIN, Math.min(innerHeight - FAB_SIZE - FAB_MARGIN, fabSpot.y * innerHeight - FAB_SIZE / 2));
+    fab.style.top = y + "px";
+    fab.style.left = fabSpot.side === "left"
+      ? "calc(env(safe-area-inset-left) + " + FAB_MARGIN + "px)"
+      : "calc(100% - env(safe-area-inset-right) - " + (FAB_SIZE + FAB_MARGIN) + "px)";
+  }
+  let fabDrag = null, fabDragged = false;
+  fab.addEventListener("pointerdown", (e) => {
+    fab.setPointerCapture(e.pointerId);
+    fabDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, moving: false };
+    fabDragged = false;
+  });
+  fab.addEventListener("pointermove", (e) => {
+    if (!fabDrag || e.pointerId !== fabDrag.id) return;
+    if (!fabDrag.moving && Math.hypot(e.clientX - fabDrag.x, e.clientY - fabDrag.y) < 8) return;
+    fabDrag.moving = true;
+    fab.style.left = e.clientX - FAB_SIZE / 2 + "px";
+    fab.style.top = e.clientY - FAB_SIZE / 2 + "px";
+  });
+  const endFabDrag = (e) => {
+    if (!fabDrag || e.pointerId !== fabDrag.id) return;
+    if (fabDrag.moving) {
+      // Let go: it goes to the nearer side, at that height.
+      fabSpot = { side: e.clientX < innerWidth / 2 ? "left" : "right", y: Math.max(0, Math.min(1, e.clientY / innerHeight)) };
+      store.set("minirun.fab", JSON.stringify(fabSpot));
+      placeFab();
+      fabDragged = true;
+    }
+    fabDrag = null;
+  };
+  fab.addEventListener("pointerup", endFabDrag);
+  fab.addEventListener("pointercancel", endFabDrag);
+  fab.addEventListener("click", () => {
+    if (fabDragged) { fabDragged = false; return; }
+    setControls(!document.body.classList.contains("controls"));
+  });
+  addEventListener("resize", placeFab);
+  if (compactQuery.addEventListener) compactQuery.addEventListener("change", applyLayout);
+  applyLayout();
   function showOverlay(text) { overlay.textContent = text; overlay.hidden = !text; }
 
   // The latency readout (?stats=1, or the "ms" button; remembered). It shows whatever it's given
@@ -6956,6 +7137,48 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     $("text").placeholder = mac ? "Type into the app (or click its window and type)\u2026" : "Type into the app\u2026";
   }
 
+  // What a device is running and who it's for, e.g. "MyApp \xB7 you/app@feature-a". A simulator's
+  // last_app is the bundle id of the app minirun last launched there; its last part is enough.
+  function deviceInfo(d) {
+    const app = d.kind !== "mac" && d.last_app ? String(d.last_app).split(".").pop() : "";
+    return [app, d.reserved_for || ""].filter(Boolean).join(" \xB7 ");
+  }
+
+  // The phone layout's device list: one row per simulator and Mac app, with what each is running.
+  const deviceListEl = $("deviceList"), deviceRowsEl = $("deviceRows");
+  let deviceChoices = [];
+  function openDeviceList(open) {
+    deviceListEl.hidden = !open;
+    $("devicePick").setAttribute("aria-expanded", String(open));
+    if (open) renderDeviceRows();
+  }
+  function renderDeviceRows() {
+    const current = screen ? screen.udid : wanted;
+    const sims = deviceChoices.filter((d) => d.kind !== "mac"), apps = deviceChoices.filter((d) => d.kind === "mac");
+    const row = (d) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "device-row";
+      element.setAttribute("role", "option");
+      element.setAttribute("aria-selected", String(d.udid === current));
+      const name = document.createElement("b"), info = document.createElement("small");
+      name.textContent = d.name;
+      info.textContent = deviceInfo(d) || (d.kind === "mac" ? "Mac app" : "Not reserved");
+      element.append(name, info);
+      element.onclick = () => { openDeviceList(false); setControls(false); watch(d.udid); };
+      return element;
+    };
+    const heading = (text) => { const element = document.createElement("h3"); element.textContent = text; return element; };
+    const children = [];
+    if (sims.length && apps.length) children.push(heading("Simulators"), ...sims.map(row), heading("Mac apps"), ...apps.map(row));
+    else children.push(...deviceChoices.map(row));
+    if (!children.length) { const none = document.createElement("p"); none.textContent = "No simulator is booted and no Mac app is running."; children.push(none); }
+    deviceRowsEl.replaceChildren(...children);
+  }
+  $("devicePick").onclick = () => openDeviceList(true);
+  $("deviceListClose").onclick = () => openDeviceList(false);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !deviceListEl.hidden) openDeviceList(false); });
+
   function renderSimulators() {
     const current = screen ? screen.udid : wanted;
     const list = simulators.slice();
@@ -6964,11 +7187,17 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     }
     simEl.hidden = list.length < 2;
     deviceEl.hidden = !simEl.hidden;
+    deviceChoices = list;
+    const shown = list.find((d) => d.udid === current);
+    $("devicePickName").textContent = shown ? shown.name : screen ? screen.name : deviceEl.textContent || "Choose a device";
+    $("devicePickInfo").textContent = shown ? deviceInfo(shown) : "";
+    if (!deviceListEl.hidden) renderDeviceRows();
     const sims = list.filter((d) => d.kind !== "mac"), apps = list.filter((d) => d.kind === "mac");
     const option = (d) => {
       const element = document.createElement("option");
       element.value = d.udid;
-      element.textContent = d.name + (d.kind === "mac" && !sims.length ? " (Mac app)" : "") + (d.reserved_for ? " \u2014 " + d.reserved_for : "");
+      const info = deviceInfo(d);
+      element.textContent = d.name + (d.kind === "mac" && !sims.length ? " (Mac app)" : "") + (info ? " \u2014 " + info : "");
       return element;
     };
     const group = (label, devices) => {
@@ -6986,6 +7215,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function watch(udid) {
     if (udid === wanted) return;
     wanted = udid;
+    rememberDevice();
     const url = new URL(location.href);
     if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
     history.replaceState(null, "", url);
@@ -7027,6 +7257,11 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       simulators = Array.isArray(m.devices) ? m.devices : [];
       applyMode();
       renderSimulators();
+      if (restoreDevice) {
+        restoreDevice = false;
+        const last = store.get("minirun.device");
+        if (!wanted && last && (!screen || screen.udid !== last) && simulators.some((d) => d.udid === last)) { watch(last); return; }
+      }
       // Only Mac apps and no simulator booted: open the first app rather than wait for a simulator.
       if (!wanted && simulators.length && simulators.every((d) => d.kind === "mac")) watch(simulators[0].udid);
     } else if (m.type === "screen") {
@@ -7345,11 +7580,39 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   $("home").onclick = () => input("press_button", { button: "home" });
   $("enter").onclick = () => input("press_key", { key: "return" });
   $("backspace").onclick = () => input("press_key", { key: "delete" });
+  // Keep the keyboard up when \u232B or \u23CE is tapped: a press on them doesn't take focus from the field.
+  for (const id of ["backspace", "enter"]) $(id).addEventListener("pointerdown", (e) => e.preventDefault());
+
+  // The text field types live: each character goes to the app as it's typed (a burst together, as
+  // one type_text), and backspace deletes there. While it has focus it holds one zero-width
+  // space, so a backspace always has something to delete and shows up as an input event, also on
+  // phone keyboards that send no key events.
+  const field = $("text"), SENTINEL = "\u200B";
+  let composing = false;
+  function resetField() {
+    field.value = SENTINEL;
+    try { field.setSelectionRange(1, 1); } catch {}
+  }
+  function takeTyped() {
+    const value = field.value, text = value.split(SENTINEL).join("");
+    if (text) {
+      typed += text;
+      if (!typedTimer) typedTimer = setTimeout(flushText, 60);
+    } else if (!value.includes(SENTINEL)) {
+      input("press_key", { key: "delete" });
+    }
+    resetField();
+  }
+  field.addEventListener("focus", () => { if (!field.value) resetField(); });
+  field.addEventListener("blur", () => { if (field.value === SENTINEL) field.value = ""; });
+  // An input method (Japanese, Chinese\u2026) builds a word first; it goes when it's chosen.
+  field.addEventListener("compositionstart", () => { composing = true; });
+  field.addEventListener("compositionend", () => { composing = false; takeTyped(); });
+  field.addEventListener("input", (e) => { if (!composing && !e.isComposing) takeTyped(); });
   $("typing").onsubmit = (e) => {
     e.preventDefault();
-    const field = $("text");
-    if (field.value) input("type_text", { text: field.value });
-    field.value = "";
+    if (field.value.split(SENTINEL).join("")) takeTyped();
+    input("press_key", { key: "return" });
   };
   $("quality").onchange = () => {
     store.set("minirun.quality", $("quality").value);
@@ -7360,6 +7623,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     // Stop streaming in background tabs to save the Mac and your data plan.
     if (document.hidden && ws) ws.close(1000);
     else if (!document.hidden && (!ws || ws.readyState > 1)) connect();
+    // The screen lock is let go while the page is hidden; take it again if still live.
+    if (!document.hidden && live) keepAwake();
   });
 
   showReadout(store.get("minirun.stats") === "1");
@@ -7377,6 +7642,8 @@ async function handleDefault(request, env) {
   const secure = url.protocol === "https:";
   const media = await handleMedia(request, env);
   if (media) return media;
+  const asset = appAsset(url.pathname);
+  if (asset) return asset;
   switch (url.pathname) {
     case "/agent": {
       const token = bearer(request);

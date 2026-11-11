@@ -217,6 +217,22 @@ describe("minirun worker", () => {
     third.close();
   });
 
+  it("serves the manifest and icons for Add to Home Screen without a login", async () => {
+    const manifest = await SELF.fetch(`${ORIGIN}/manifest.webmanifest`);
+    expect(manifest.status).toBe(200);
+    expect(manifest.headers.get("Content-Type")).toBe("application/manifest+json");
+    const body = (await manifest.json()) as { display: string; start_url: string; icons: { src: string }[] };
+    expect(body.display).toBe("standalone");
+    expect(body.start_url).toBe("/");
+    for (const path of [...body.icons.map((icon) => icon.src), "/apple-touch-icon.png"]) {
+      const icon = await SELF.fetch(`${ORIGIN}${path}`);
+      expect(icon.status).toBe(200);
+      expect(icon.headers.get("Content-Type")).toBe("image/png");
+      // The PNG signature.
+      expect([...new Uint8Array(await icon.arrayBuffer()).slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    }
+  });
+
   it("serves the viewer only after login, and relays frames and input", async () => {
     const anonymous = await SELF.fetch(`${ORIGIN}/`, { redirect: "manual" });
     expect(anonymous.status).toBe(302);
@@ -234,7 +250,10 @@ describe("minirun worker", () => {
     const cookie = login.headers.get("Set-Cookie")!.split(";")[0]!;
 
     const page = await SELF.fetch(`${ORIGIN}/`, { headers: { Cookie: cookie } });
-    expect(await page.text()).toContain("Type into the app");
+    const pageText = await page.text();
+    expect(pageText).toContain("Type into the app");
+    expect(pageText).toContain('<link rel="manifest" href="/manifest.webmanifest">');
+    expect(pageText).toContain('<link rel="apple-touch-icon" href="/icon-180.png">');
 
     const agent = (await connectAgent()) as WebSocket;
     agent.send(JSON.stringify({ type: "hello", version: 1, host: { name: "Test Mac" }, tools: [] }));

@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+The live view is built for phones. Only the Worker changes; update it from the menu.
+
+- **The stream fills a phone's screen.** On a touch screen that's small in one direction, the
+  header and footer give way to the stream, and open over it from a floating button you can drag
+  to either side. On an iPhone in Safari the simulator goes from about 60% of its real size to
+  about 75%. `?layout=compact` or `?layout=classic` picks a layout on any device.
+- **Add to Home Screen.** The viewer has a web app manifest and icons, so added to the Home Screen
+  it opens without the browser's bars: about 90% of the simulator's real size on an iPhone.
+- **Live typing.** The text box sends each character as it's typed, and backspace deletes in the
+  app, instead of sending the box's text when you press return. Tapping ⌫ or ⏎ keeps the phone's
+  keyboard up.
+- **Quick device switching on a phone.** The top of the controls is a device button showing the
+  device, the app minirun last launched on it and the branch it's for. It opens a full-width list
+  of every booted simulator and running Mac app. The desktop picker shows the app too.
+- **Back to the last device.** Opened without `?device` (from the Home Screen, say), the viewer
+  goes back to the device you last picked or opened a link to, if it's still running.
+- **The screen stays on** while the stream is live (Screen Wake Lock), so a phone doesn't sleep
+  and drop the stream in the middle of a review.
+
+See [docs/mobile-viewer-plan.md](docs/mobile-viewer-plan.md) for what comes next.
+
 ## 0.8.0
 
 minirun stops filling the Mac's disk, and a full disk no longer leaves it broken. Old checkouts

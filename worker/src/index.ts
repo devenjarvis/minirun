@@ -1,4 +1,5 @@
 import { OAuthProvider, type AuthRequest } from "@cloudflare/workers-oauth-provider";
+import { appAsset } from "./app";
 import { bearer, checkPassword, clearSessionCookie, createSession, isLoggedIn, safeEqual, sessionCookie } from "./auth";
 import { relayStub, type Env } from "./env";
 import { handleMcp } from "./mcp";
@@ -15,6 +16,10 @@ async function handleDefault(request: Request, env: Env): Promise<Response> {
 
   const media = await handleMedia(request, env);
   if (media) return media;
+
+  // The manifest and icons for Add to Home Screen; browsers fetch these without cookies.
+  const asset = appAsset(url.pathname);
+  if (asset) return asset;
 
   switch (url.pathname) {
     case "/agent": {
