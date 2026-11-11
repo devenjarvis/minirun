@@ -89,7 +89,9 @@ final class MenuStore {
     private var updateLoop: Task<Void, Never>?
     /// A version that failed to install; tried again only at the next check.
     private var failedVersion: String?
-    private var triedWorkerUpdate = false
+    /// Failed Worker updates, and when to try again.
+    private(set) var workerRetry = WorkerUpdateRetry()
+    private var updatingWorker = false
 
     static let autoUpdateKey = "autoUpdate"
     /// Install new releases (and update the Worker) without asking. On unless turned off.
@@ -197,23 +199,47 @@ final class MenuStore {
         }
     }
 
-    /// Updates the Worker with the saved API token when it runs older code than this app, once
-    /// per launch, so a new release reaches the Worker without anyone opening Settings.
+    /// Updates the Worker with the saved API token when it runs older code than this app, so a
+    /// new release reaches the Worker without anyone opening Settings. A failed update is tried
+    /// again later (`WorkerUpdateRetry`), and every attempt goes in minirun.log.
     func updateWorkerIfNeeded() async {
-        guard !triedWorkerUpdate,
-              Updater.shouldUpdateWorker(automatic: autoUpdate, outdated: workerOutdated, hasToken: WorkerSettings.load().apiToken != nil),
+        guard !updatingWorker else { return }
+        guard workerOutdated else {
+            // Up to date (by this app or by hand): nothing to retry. Not while the relay is
+            // reconnecting, when it's unknown, or every reconnect would start the retries over.
+            if let running = snapshot.relay?.workerBundle, running == AppPaths.bundledWorkerHash { workerRetry.reset() }
+            return
+        }
+        guard let bundle = AppPaths.bundledWorkerHash, workerRetry.due(bundle: bundle, now: Date()),
+              Updater.shouldUpdateWorker(automatic: autoUpdate, outdated: true, hasToken: WorkerSettings.load().apiToken != nil),
               let token = WorkerSettings.load().apiToken else { return }
-        triedWorkerUpdate = true
+        updatingWorker = true
+        defer { updatingWorker = false }
+        let version = String(bundle.prefix(12))
+        AppLog.append("Updating the Worker to \(version)")
         do {
             let deployment = try await AppPaths.worker.deploy(apiToken: token, options: .init())
+            workerRetry.reset()
+            AppLog.append("Updated the Worker to \(version)")
             show("Updated the Worker to match this app.")
             AppNotifications.post(AppNotification(id: "worker-updated", title: "Worker updated",
                                                   body: "\(deployment.result.workerURL) now runs the code this app carries."))
             await model.refresh()
         } catch {
-            AppNotifications.post(AppNotification(id: "worker-update-failed", title: "The Worker didn't update",
-                                                  body: "\(error.localizedDescription) Use Settings → Cloudflare → Update Worker."))
+            let delay = workerRetry.failed(bundle: bundle, error: error.localizedDescription, now: Date())
+            AppLog.append("Couldn't update the Worker to \(version): \(error.localizedDescription) Trying again in \(Int(delay / 60)) min.")
+            // Once per version, not at every retry.
+            if workerRetry.failures == 1 {
+                AppNotifications.post(AppNotification(id: "worker-update-failed", title: "The Worker didn't update",
+                                                      body: "\(error.localizedDescription) minirun will try again; or use Settings → Cloudflare → Update Worker."))
+            }
         }
+    }
+
+    /// Why an out-of-date Worker isn't updating by itself, for the menu.
+    var workerProblem: String? {
+        Updater.workerProblem(automatic: autoUpdate, hasToken: WorkerSettings.load().apiToken != nil,
+                              retry: workerRetry, bundle: AppPaths.bundledWorkerHash, now: Date())
     }
 
     /// Re-reads config.json, after setup or a settings change.

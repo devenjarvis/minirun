@@ -428,4 +428,59 @@ final class UpdaterTests: XCTestCase {
         XCTAssertFalse(Updater.shouldUpdateWorker(automatic: true, outdated: true, hasToken: false))
         XCTAssertFalse(Updater.shouldUpdateWorker(automatic: false, outdated: true, hasToken: true))
     }
+
+    func testWorkerUpdateRetry() {
+        let start = Date(timeIntervalSince1970: 1_000_000)
+        var retry = WorkerUpdateRetry()
+        XCTAssertTrue(retry.due(bundle: "new", now: start), "nothing tried yet")
+
+        // 15 minutes, then twice as long each time, up to 6 hours.
+        XCTAssertEqual(retry.failed(bundle: "new", error: "boom", now: start), 15 * 60)
+        XCTAssertFalse(retry.due(bundle: "new", now: start.addingTimeInterval(14 * 60)))
+        XCTAssertTrue(retry.due(bundle: "new", now: start.addingTimeInterval(15 * 60)))
+        XCTAssertEqual(retry.failed(bundle: "new", error: "boom", now: start), 30 * 60)
+        XCTAssertEqual(retry.failed(bundle: "new", error: "boom", now: start), 60 * 60)
+        for _ in 0..<20 { retry.failed(bundle: "new", error: "boom", now: start) }
+        XCTAssertEqual(retry.nextAttempt, start.addingTimeInterval(WorkerUpdateRetry.maxDelay))
+        XCTAssertEqual(retry.failures, 23)
+
+        // A new app version's bundle is tried straight away and counts from the start.
+        XCTAssertTrue(retry.due(bundle: "newer", now: start))
+        XCTAssertNil(retry.error(for: "newer"))
+        XCTAssertEqual(retry.failed(bundle: "newer", error: "again", now: start), 15 * 60)
+        XCTAssertEqual(retry.failures, 1)
+
+        retry.reset()
+        XCTAssertEqual(retry, WorkerUpdateRetry())
+    }
+
+    func testWorkerProblem() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        var retry = WorkerUpdateRetry()
+        XCTAssertEqual(Updater.workerProblem(automatic: false, hasToken: true, retry: retry, bundle: "b", now: now), "Automatic updates are off.")
+        XCTAssertEqual(Updater.workerProblem(automatic: true, hasToken: false, retry: retry, bundle: "b", now: now),
+                       "No Cloudflare API token is saved, so it can't update itself.")
+        XCTAssertNil(Updater.workerProblem(automatic: true, hasToken: true, retry: retry, bundle: "b", now: now), "about to try")
+
+        retry.failed(bundle: "b", error: "The API token was rejected", now: now)
+        XCTAssertEqual(Updater.workerProblem(automatic: true, hasToken: true, retry: retry, bundle: "b", now: now),
+                       "Updating it failed: The API token was rejected. Trying again in 15 min.")
+        XCTAssertEqual(Updater.workerProblem(automatic: true, hasToken: true, retry: retry, bundle: "b", now: now.addingTimeInterval(20 * 60)),
+                       "Updating it failed: The API token was rejected. Trying again now.")
+        for _ in 0..<5 { retry.failed(bundle: "b", error: "Timed out.", now: now) }
+        XCTAssertEqual(Updater.workerProblem(automatic: true, hasToken: true, retry: retry, bundle: "b", now: now),
+                       "Updating it failed: Timed out. Trying again in 6 h.")
+        XCTAssertNil(Updater.workerProblem(automatic: true, hasToken: true, retry: retry, bundle: "other", now: now), "failures were for another version")
+    }
+
+    func testAppLogAppends() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let path = dir.appendingPathComponent("Logs/minirun.log").path
+        let now = Date(timeIntervalSince1970: 0)
+        AppLog.append("first", to: path, now: now)
+        AppLog.append("second", to: path, now: now)
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8),
+                       "1970-01-01T00:00:00Z app: first\n1970-01-01T00:00:00Z app: second\n")
+    }
 }

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **A failed Worker update is tried again.** The menu bar app tried to update the Worker once per
+  launch, so a single failure (a network blip while the app restarted into a new version, say)
+  left it on the old version until the next restart. It now tries again 15 minutes later, then
+  twice as long each time, up to 6 hours, and notifies you once per version rather than at every
+  try.
+- **The menu says why the Worker is behind:** automatic updates are off, no API token is saved,
+  or the last update failed (with the error, and when it tries again).
+- **The app's Worker updates are in `minirun.log`**, as `app:` lines among serve's own, so a
+  failure can be read afterwards.
+
 ## 0.9.0
 
 The live view is built for phones: the simulator fills the screen, the viewer can be added to the
