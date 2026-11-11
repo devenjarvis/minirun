@@ -1,0 +1,389 @@
+Downloading binary artifact https://github.com/stasel/WebRTC/releases/download/156.0.0/WebRTC-M156.xcframework.zip
+[41027/46241967] Downloading https://github.com/stasel/WebRTC/releases/download/156.0.0/WebRTC-M156.xcframework.zip
+Downloaded https://github.com/stasel/WebRTC/releases/download/156.0.0/WebRTC-M156.xcframework.zip (3.29s)
+Building for debugging...
+[0/15] Write sources
+[0/15] Write minirun-entitlement.plist
+[0/15] Write sources
+[6/15] Copying XCTestBootstrap.framework
+[7/15] Copying WebRTC.framework
+[8/15] Copying FBSimulatorControl.framework
+[9/15] Copying FBDeviceControl.framework
+[10/15] Copying FBControlCore.framework
+[11/15] Write swift-version-7974D3F7F03D5E95.txt
+[13/44] Emitting module MiniRunKit
+[14/57] Compiling MiniRunKit Shell.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[15/57] Compiling MiniRunKit Simulators.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[16/57] Compiling MiniRunKit Status.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[17/57] Compiling MiniRunKit SwiftTestReport.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[18/57] Compiling MiniRunKit Tools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[19/57] Compiling MiniRunKit Version.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[20/57] Compiling MiniRunKit WorkerCommand.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[21/57] Compiling MiniRunKit WorkerDeploy.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[22/57] Compiling MiniRunKit WorkerManager.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[23/57] Compiling MiniRunKit Workspaces.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[24/57] Compiling MiniRunKit XcodeFiles.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[25/57] Compiling MiniRunKit XcodeParsing+Mac.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[26/57] Compiling MiniRunKit XcodeParsing.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/Users/runner/work/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[27/57] Compiling MiniRunKit AppSettings.swift
+[28/57] Compiling MiniRunKit BuildCache.swift
+[29/57] Compiling MiniRunKit BuildPlatform.swift
+[30/57] Compiling MiniRunKit CI.swift
+[31/57] Compiling MiniRunKit CallLedger.swift
+[32/57] Compiling MiniRunKit ChildProcesses.swift
+[33/57] Compiling MiniRunKit Cloudflare.swift
+[34/57] Compiling MiniRunKit Config.swift
+[35/57] Compiling MiniRunKit ControlSocket.swift
+[36/57] Compiling MiniRunKit Doctor.swift
+[37/57] Compiling MiniRunKit GIFEncoder.swift
+[38/57] Compiling MiniRunKit GitHubMedia.swift
+[39/57] Compiling MiniRunKit GitHubRunners.swift
+[40/57] Compiling MiniRunKit H264.swift
+[41/57] Compiling MiniRunKit H264Session.swift
+[42/57] Compiling MiniRunKit JSONValue.swift
+[43/57] Compiling MiniRunKit Jobs.swift
+[44/57] Compiling MiniRunKit LatencyStats.swift
+[45/57] Compiling MiniRunKit LaunchAgent.swift
+[46/57] Compiling MiniRunKit LiveConfig.swift
+[47/57] Compiling MiniRunKit MacAppStore.swift
+[48/57] Compiling MiniRunKit MacGeometry.swift
+[49/57] Compiling MiniRunKit MacKeys.swift
+[50/57] Compiling MiniRunKit MacToolSupport.swift
+[51/57] Compiling MiniRunKit Media.swift
+[52/57] Compiling MiniRunKit MenuModel.swift
+[53/57] Compiling MiniRunKit RTCSignaling.swift
+[54/57] Compiling MiniRunKit RelayProtocol.swift
+[55/82] Emitting module MiniRunSim
+[56/90] Compiling MiniRunSim AccessibilityElement.swift
+[57/90] Compiling MiniRunSim AccessibilityFetcher.swift
+[58/90] Compiling MiniRunSim AccessibilityPoller.swift
+[59/90] Compiling MiniRunSim AccessibilityTargetResolver.swift
+[60/90] Compiling MiniRunSim AxeLogger.swift
+[61/90] Compiling MiniRunSim CoordinateHelpers.swift
+[62/90] Compiling MiniRunSim Errors.swift
+[63/90] Compiling MiniRunSim EventReporter.swift
+[64/90] Compiling MiniRunSim GlobalSetup.swift
+[67/92] Compiling MiniRunSim StandardError.swift
+[68/92] Compiling MiniRunSim TapStyle.swift
+[69/92] Compiling MiniRunSim TextToHIDEvents.swift
+[70/92] Compiling MiniRunSim OrientationCoordinateMath.swift
+[71/92] Compiling MiniRunSim MainDisplays.swift
+[72/92] Compiling MiniRunSim ScreenCapture.swift
+[73/92] Compiling MiniRunSim ScreenEncoder.swift
+[74/92] Compiling MiniRunSim SimulatorDriver.swift
+[75/92] Compiling MiniRunMac MacWindowEncoder.swift
+[76/92] Compiling MiniRunMac MacWindowRecorder.swift
+[77/92] Compiling MiniRunSim HIDBroker+Connection.swift
+[78/92] Compiling MiniRunSim HIDBroker.swift
+[79/92] Compiling MiniRunSim HIDBrokerReadiness.swift
+[80/92] Compiling MiniRunSim HIDInteractor.swift
+[81/92] Compiling MiniRunSim KeyCode.swift
+[82/92] Compiling MiniRunSim OrientationAwareCoordinates.swift
+[83/92] Compiling MiniRunSim Setup.swift
+[84/92] Compiling MiniRunSim SimulatorOrientationReader.swift
+[85/92] Compiling MiniRunSim SimulatorUtilities.swift
+[86/92] Emitting module MiniRunMac
+[90/105] Compiling MiniRunCore MediaTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[91/105] Compiling MiniRunCore RelayClient.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[92/105] Compiling MiniRunCore ScreenRecordings.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[93/105] Compiling MiniRunCore ServeControl.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[94/105] Compiling MiniRunCore Server.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[95/105] Compiling MiniRunCore Simctl.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/ScreenRecordings.swift:89:19: warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 87 |             try? await Task.sleep(nanoseconds: UInt64(maxSeconds) * 1_000_000_000)
+ 88 |             guard !Task.isCancelled else { return }
+ 89 |             await halt(key, reason: "it reached the \(maxSeconds) s limit", onlyID: id)
+    |                   `- warning: result of call to 'halt(_:reason:onlyID:)' is unused [#no-usage]
+ 90 |         }
+ 91 |         active[key] = Active(id: id, recorder: recorder, file: file, startedAt: Date(), pointWidth: pointWidth, timer: timer)
+[96/111] Emitting module MiniRunCore
+[97/111] Compiling MiniRunCore AppTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[98/111] Compiling MiniRunCore CodeTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[99/111] Compiling MiniRunCore FrameStreamer.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[100/111] Compiling MiniRunCore GIFMaker.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[101/111] Compiling MiniRunCore MacHostHooks.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[102/111] Compiling MiniRunCore MacTools.swift
+/Users/runner/work/minirun/minirun/Sources/MiniRunCore/FrameStreamer.swift:90:16: warning: no 'async' operations occur within 'await' expression
+ 88 |             try? await Task.sleep(nanoseconds: 5_000_000_000)
+ 89 |             // Still the same stream: it's live, the overlay can go.
+ 90 |             if await self.isStreaming(stream, key: key) { await sendText(RelayProtocol.streamStatus("live", key: key)) }
+    |                `- warning: no 'async' operations occur within 'await' expression
+ 91 |         }
+ 92 |     }
+[103/111] Compiling MiniRunCore SimulatorTools.swift
+[104/111] Compiling MiniRunCore ToolRegistry.swift
+[105/111] Compiling MiniRunCore WebRTCSessions.swift
+[106/111] Compiling MiniRunCore Workspace.swift
+[107/111] Compiling MiniRunCore WorkspaceCleaner.swift
+[108/111] Compiling MiniRunCore XcodeBuild.swift
+[109/113] Compiling minirun main.swift
+[110/113] Emitting module minirun
+[110/113] Write Objects.LinkFileList
+[111/113] Linking minirun
+[112/113] Applying minirun
+Build complete! (43.57s)
