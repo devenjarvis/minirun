@@ -6,6 +6,10 @@ import { baseStyles } from "./pages";
  * When the Mac can (protocol 6), video and input go over a WebRTC peer connection straight to the
  * Mac, with the relay only carrying the signaling. Otherwise, or if that doesn't connect, browsers
  * with WebCodecs get H.264 over the WebSocket (decoded onto a canvas) and others get JPEG frames.
+ *
+ * On a phone (a touch screen that's small in one direction, or ?layout=compact) the stream fills
+ * the screen and the controls open from a floating button. Added to the Home Screen, it runs
+ * without the browser's bars (see app.ts).
  */
 export function viewerPage(): string {
   return `<!doctype html>
@@ -14,10 +18,16 @@ export function viewerPage(): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b0c0f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="minirun">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <title>minirun</title>
 <style>
 ${baseStyles}
-body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; overscroll-behavior: none; }
 header { display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; border-bottom: 1px solid var(--line); }
 header .mark { margin: 0; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; }
@@ -29,7 +39,7 @@ header .mark { margin: 0; }
 .sim[hidden], .device[hidden] { display: none; }
 main { flex: 1; min-height: 0; display: grid; place-items: center; padding: 14px; position: relative; }
 .screen { position: relative; max-width: 100%; max-height: 100%; aspect-ratio: var(--ratio, 0.46); height: 100%; border-radius: 28px; overflow: hidden;
-  background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; }
+  background: #000; box-shadow: 0 0 0 1px var(--line), 0 20px 60px rgba(0,0,0,.5); touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .screen img, .screen canvas, .screen video { width: 100%; height: 100%; display: block; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
 .screen img[hidden], .screen canvas[hidden], .screen video[hidden] { display: none; }
 .screen:focus { outline: none; }
@@ -52,6 +62,27 @@ footer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; b
 .readout[hidden] { display: none; }
 .stats-toggle { flex: 0 0 auto; padding: 3px 8px; font-size: 11px; border-radius: 999px; }
 .stats-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+/* Phones: the stream fills the screen (below the status bar, whose safe area the page keeps), and the
+   header and footer open over it from a floating button. */
+.fab { display: none; position: fixed; z-index: 6; width: 44px; height: 44px; padding: 0; border-radius: 50%; place-items: center; touch-action: none;
+  background: rgba(29,32,39,.72); border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.fab i { width: 12px; height: 12px; border-radius: 4px; background: #5b6170; transition: background .2s; }
+.fab.live i { background: var(--accent); }
+.fab.offline i { background: var(--danger); }
+body.controls .fab { border-color: var(--accent); }
+.install-tip { display: none; flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
+body.compact { height: 100dvh; }
+body.compact .fab { display: grid; }
+body.compact main { padding: env(safe-area-inset-top) 0 0; }
+body.compact .readout { top: calc(env(safe-area-inset-top) + 8px); }
+body.compact header, body.compact footer { position: fixed; left: 0; right: 0; z-index: 5; background: rgba(11,12,15,.9); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+body.compact header { top: 0; }
+body.compact header .mark { display: none; }
+body.compact footer { bottom: 0; flex-wrap: wrap; }
+body.compact footer form { order: -1; flex-basis: 100%; }
+body.compact footer #home { flex: 1; }
+body.compact.installable .install-tip { display: block; }
+body.compact:not(.controls) header, body.compact:not(.controls) footer { display: none; }
 select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); background: #1d2027; color: var(--text); font-size: 14px; }
 </style>
 </head>
@@ -75,7 +106,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 <footer>
   <button id="home" type="button" title="Home">Home</button>
   <form id="typing" autocomplete="off">
-    <input id="text" placeholder="Type into the app…" enterkeyhint="send" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <input id="text" placeholder="Type into the app…" enterkeyhint="enter" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false">
     <button type="button" id="backspace" title="Delete">⌫</button>
     <button type="button" id="enter" title="Return">⏎</button>
   </form>
@@ -84,7 +115,9 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     <option value="smooth">Smooth</option>
     <option value="sharp">Sharp</option>
   </select>
+  <p id="installTip" class="install-tip">For a bigger screen: Share → Add to Home Screen, then open minirun from there.</p>
 </footer>
+<button id="fab" class="fab" type="button" title="Controls" aria-label="Controls" aria-expanded="false"><i></i></button>
 <script>
 (() => {
   const presets = {
@@ -113,7 +146,91 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function setStatus(kind, text) {
     statusEl.className = "pill " + kind;
     statusEl.lastElementChild.textContent = text;
+    fab.className = "fab " + kind;
+    fab.title = "Controls · " + text;
+    if (kind === "live") keepAwake(); else releaseAwake();
   }
+
+  // Keep the screen on while the stream is live: a phone going to sleep hides the page, which
+  // stops the stream.
+  let wakeLock = null, wakeLockPending = false;
+  async function keepAwake() {
+    if (wakeLock || wakeLockPending || document.hidden || !navigator.wakeLock) return;
+    wakeLockPending = true;
+    try {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+    } catch {} finally { wakeLockPending = false; }
+  }
+  function releaseAwake() { if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; } }
+
+  // The phone layout: the stream fills the screen, and the header and footer ("the controls")
+  // open over it from a floating button the user can drag up and down either side.
+  const params = new URLSearchParams(location.search);
+  const layoutParam = params.get("layout");
+  const compactQuery = matchMedia("(pointer: coarse) and (max-width: 600px), (pointer: coarse) and (max-height: 500px)");
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const fab = $("fab");
+  let compact = false;
+  function applyLayout() {
+    compact = layoutParam === "compact" ? true : layoutParam === "classic" ? false : compactQuery.matches;
+    document.body.classList.toggle("compact", compact);
+    // Only Safari on an iPhone or iPad needs telling how; other browsers offer to install by themselves.
+    document.body.classList.toggle("installable", !standalone && /iPhone|iPad|iPod/.test(navigator.userAgent));
+    if (!compact) setControls(false);
+    placeFab();
+  }
+  function setControls(open) {
+    document.body.classList.toggle("controls", open);
+    fab.setAttribute("aria-expanded", String(open));
+  }
+  // Which side the button sits on, and its centre as a fraction of the window's height. Remembered.
+  let fabSpot = { side: "right", y: 0.72 };
+  try {
+    const saved = JSON.parse(store.get("minirun.fab") || "null");
+    if (saved && (saved.side === "left" || saved.side === "right") && typeof saved.y === "number") fabSpot = saved;
+  } catch {}
+  const FAB_SIZE = 44, FAB_MARGIN = 10;
+  function placeFab() {
+    const y = Math.max(FAB_MARGIN, Math.min(innerHeight - FAB_SIZE - FAB_MARGIN, fabSpot.y * innerHeight - FAB_SIZE / 2));
+    fab.style.top = y + "px";
+    fab.style.left = fabSpot.side === "left"
+      ? "calc(env(safe-area-inset-left) + " + FAB_MARGIN + "px)"
+      : "calc(100% - env(safe-area-inset-right) - " + (FAB_SIZE + FAB_MARGIN) + "px)";
+  }
+  let fabDrag = null, fabDragged = false;
+  fab.addEventListener("pointerdown", (e) => {
+    fab.setPointerCapture(e.pointerId);
+    fabDrag = { id: e.pointerId, x: e.clientX, y: e.clientY, moving: false };
+    fabDragged = false;
+  });
+  fab.addEventListener("pointermove", (e) => {
+    if (!fabDrag || e.pointerId !== fabDrag.id) return;
+    if (!fabDrag.moving && Math.hypot(e.clientX - fabDrag.x, e.clientY - fabDrag.y) < 8) return;
+    fabDrag.moving = true;
+    fab.style.left = e.clientX - FAB_SIZE / 2 + "px";
+    fab.style.top = e.clientY - FAB_SIZE / 2 + "px";
+  });
+  const endFabDrag = (e) => {
+    if (!fabDrag || e.pointerId !== fabDrag.id) return;
+    if (fabDrag.moving) {
+      // Let go: it goes to the nearer side, at that height.
+      fabSpot = { side: e.clientX < innerWidth / 2 ? "left" : "right", y: Math.max(0, Math.min(1, e.clientY / innerHeight)) };
+      store.set("minirun.fab", JSON.stringify(fabSpot));
+      placeFab();
+      fabDragged = true;
+    }
+    fabDrag = null;
+  };
+  fab.addEventListener("pointerup", endFabDrag);
+  fab.addEventListener("pointercancel", endFabDrag);
+  fab.addEventListener("click", () => {
+    if (fabDragged) { fabDragged = false; return; }
+    setControls(!document.body.classList.contains("controls"));
+  });
+  addEventListener("resize", placeFab);
+  if (compactQuery.addEventListener) compactQuery.addEventListener("change", applyLayout);
+  applyLayout();
   function showOverlay(text) { overlay.textContent = text; overlay.hidden = !text; }
 
   // The latency readout (?stats=1, or the "ms" button; remembered). It shows whatever it's given
@@ -827,11 +944,39 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   $("home").onclick = () => input("press_button", { button: "home" });
   $("enter").onclick = () => input("press_key", { key: "return" });
   $("backspace").onclick = () => input("press_key", { key: "delete" });
+  // Keep the keyboard up when ⌫ or ⏎ is tapped: a press on them doesn't take focus from the field.
+  for (const id of ["backspace", "enter"]) $(id).addEventListener("pointerdown", (e) => e.preventDefault());
+
+  // The text field types live: each character goes to the app as it's typed (a burst together, as
+  // one type_text), and backspace deletes there. While it has focus it holds one zero-width
+  // space, so a backspace always has something to delete and shows up as an input event, also on
+  // phone keyboards that send no key events.
+  const field = $("text"), SENTINEL = "\u200B";
+  let composing = false;
+  function resetField() {
+    field.value = SENTINEL;
+    try { field.setSelectionRange(1, 1); } catch {}
+  }
+  function takeTyped() {
+    const value = field.value, text = value.split(SENTINEL).join("");
+    if (text) {
+      typed += text;
+      if (!typedTimer) typedTimer = setTimeout(flushText, 60);
+    } else if (!value.includes(SENTINEL)) {
+      input("press_key", { key: "delete" });
+    }
+    resetField();
+  }
+  field.addEventListener("focus", () => { if (!field.value) resetField(); });
+  field.addEventListener("blur", () => { if (field.value === SENTINEL) field.value = ""; });
+  // An input method (Japanese, Chinese…) builds a word first; it goes when it's chosen.
+  field.addEventListener("compositionstart", () => { composing = true; });
+  field.addEventListener("compositionend", () => { composing = false; takeTyped(); });
+  field.addEventListener("input", (e) => { if (!composing && !e.isComposing) takeTyped(); });
   $("typing").onsubmit = (e) => {
     e.preventDefault();
-    const field = $("text");
-    if (field.value) input("type_text", { text: field.value });
-    field.value = "";
+    if (field.value.split(SENTINEL).join("")) takeTyped();
+    input("press_key", { key: "return" });
   };
   $("quality").onchange = () => {
     store.set("minirun.quality", $("quality").value);
@@ -842,6 +987,8 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     // Stop streaming in background tabs to save the Mac and your data plan.
     if (document.hidden && ws) ws.close(1000);
     else if (!document.hidden && (!ws || ws.readyState > 1)) connect();
+    // The screen lock is let go while the page is hidden; take it again if still live.
+    if (!document.hidden && live) keepAwake();
   });
 
   showReadout(store.get("minirun.stats") === "1");
