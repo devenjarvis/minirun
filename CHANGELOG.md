@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-The live view is built for phones. Only the Worker changes; update it from the menu.
+## 0.9.0
+
+The live view is built for phones: the simulator fills the screen, the viewer can be added to the
+Home Screen to run without Safari's bars, switching devices takes a tap, and typing goes to the
+app as you type. Only the Worker changes; update it from the menu when it asks.
 
 - **The stream fills a phone's screen.** On a touch screen that's small in one direction, the
   header and footer give way to the stream, and open over it from a floating button you can drag
