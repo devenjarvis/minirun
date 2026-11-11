@@ -6615,12 +6615,31 @@ footer input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; b
 .stats-toggle[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
 /* Phones: the stream fills the screen (below the status bar, whose safe area the page keeps), and the
    header and footer open over it from a floating button. */
-.fab { display: none; position: fixed; z-index: 6; width: 44px; height: 44px; padding: 0; border-radius: 50%; place-items: center; touch-action: none;
+.fab { display: none; position: fixed; z-index: 6; width: 44px; height: 44px; padding: 0; border-radius: 50%; place-items: center; touch-action: none; -webkit-tap-highlight-color: transparent;
   background: rgba(29,32,39,.72); border: 1px solid rgba(255,255,255,.16); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .fab i { width: 12px; height: 12px; border-radius: 4px; background: #5b6170; transition: background .2s; }
 .fab.live i { background: var(--accent); }
 .fab.offline i { background: var(--danger); }
 body.controls .fab { border-color: var(--accent); }
+/* The phone layout's device button, and the list it opens. */
+.device-pick { display: none; flex: 1; min-width: 0; margin-left: 4px; padding: 6px 10px; text-align: left; font-weight: 400; line-height: 1.25; }
+.device-pick b, .device-pick small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.device-pick b { font-size: 14px; font-weight: 600; }
+.device-pick small, .device-row small { font-size: 12px; color: var(--muted); }
+.device-pick b::after { content: " \u25BE"; color: var(--muted); font-weight: 400; }
+.device-list { position: fixed; inset: 0; z-index: 7; display: flex; flex-direction: column; background: rgba(11,12,15,.97);
+  padding: calc(env(safe-area-inset-top) + 10px) calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 14px) calc(env(safe-area-inset-left) + 14px); }
+.device-list[hidden] { display: none; }
+.device-list-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.device-list-head h2 { margin: 0; font-size: 17px; }
+.device-list-head button { flex: 0 0 auto; padding: 8px 14px; }
+.device-rows { overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.device-rows h3 { margin: 8px 2px 0; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.device-row { flex: 0 0 auto; display: block; width: 100%; padding: 12px 14px; text-align: left; font-weight: 400; }
+.device-row b { display: block; font-size: 15px; }
+.device-row small { display: block; overflow-wrap: anywhere; }
+.device-row[aria-selected="true"] { border-color: var(--accent); }
+.device-row[aria-selected="true"] b::after { content: " \u2713"; color: var(--accent); }
 .install-tip { display: none; flex-basis: 100%; margin: 0; font-size: 12px; color: var(--muted); }
 body.compact { height: 100dvh; }
 body.compact .fab { display: grid; }
@@ -6628,7 +6647,8 @@ body.compact main { padding: env(safe-area-inset-top) 0 0; }
 body.compact .readout { top: calc(env(safe-area-inset-top) + 8px); }
 body.compact header, body.compact footer { position: fixed; left: 0; right: 0; z-index: 5; background: rgba(11,12,15,.9); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 body.compact header { top: 0; }
-body.compact header .mark { display: none; }
+body.compact header .mark, body.compact header .device, body.compact header .sim { display: none; }
+body.compact header .device-pick { display: block; }
 body.compact footer { bottom: 0; flex-wrap: wrap; }
 body.compact footer form { order: -1; flex-basis: 100%; }
 body.compact footer #home { flex: 1; }
@@ -6644,6 +6664,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   <button id="statsToggle" class="stats-toggle" type="button" title="Latency readout" aria-pressed="false">ms</button>
   <span id="device" class="device"></span>
   <select id="sim" class="sim" title="Simulator or Mac app" hidden></select>
+  <button id="devicePick" class="device-pick" type="button" aria-haspopup="listbox" aria-controls="deviceList"><b id="devicePickName">Connecting\u2026</b><small id="devicePickInfo"></small></button>
 </header>
 <main>
   <div id="screen" class="screen" tabindex="0">
@@ -6668,6 +6689,10 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   </select>
   <p id="installTip" class="install-tip">For a bigger screen: Share \u2192 Add to Home Screen, then open minirun from there.</p>
 </footer>
+<div id="deviceList" class="device-list" role="dialog" aria-label="Devices" hidden>
+  <div class="device-list-head"><h2>Simulators and apps</h2><button id="deviceListClose" type="button">Done</button></div>
+  <div id="deviceRows" class="device-rows" role="listbox"></div>
+</div>
 <button id="fab" class="fab" type="button" title="Controls" aria-label="Controls" aria-expanded="false"><i></i></button>
 <script>
 (() => {
@@ -6686,6 +6711,11 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   let simulators = [];
   // The simulator or Mac app this page shows: ?device=UDID or ?device=mac-\u2026, or "" for whichever simulator is booted.
   let wanted = new URLSearchParams(location.search).get("device") || "";
+  // Without ?device (as when opened from the Home Screen), the page goes back to the device it
+  // last showed, if that one is still running. Tried once, on the first device list.
+  // Only a device that was asked for (a link or the picker) is remembered, not the default stream.
+  let restoreDevice = !wanted;
+  function rememberDevice() { if (wanted) store.set("minirun.device", wanted); }
   let currentURL = null, decoding = false, pendingFrame = null;
   // "h264" once we know this browser can decode it (?codec=jpeg forces JPEG).
   let codec = "jpeg";
@@ -6693,6 +6723,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
 
   const store = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
   $("quality").value = store.get("minirun.quality") || "smooth";
+  rememberDevice();
 
   function setStatus(kind, text) {
     statusEl.className = "pill " + kind;
@@ -7106,6 +7137,48 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     $("text").placeholder = mac ? "Type into the app (or click its window and type)\u2026" : "Type into the app\u2026";
   }
 
+  // What a device is running and who it's for, e.g. "MyApp \xB7 you/app@feature-a". A simulator's
+  // last_app is the bundle id of the app minirun last launched there; its last part is enough.
+  function deviceInfo(d) {
+    const app = d.kind !== "mac" && d.last_app ? String(d.last_app).split(".").pop() : "";
+    return [app, d.reserved_for || ""].filter(Boolean).join(" \xB7 ");
+  }
+
+  // The phone layout's device list: one row per simulator and Mac app, with what each is running.
+  const deviceListEl = $("deviceList"), deviceRowsEl = $("deviceRows");
+  let deviceChoices = [];
+  function openDeviceList(open) {
+    deviceListEl.hidden = !open;
+    $("devicePick").setAttribute("aria-expanded", String(open));
+    if (open) renderDeviceRows();
+  }
+  function renderDeviceRows() {
+    const current = screen ? screen.udid : wanted;
+    const sims = deviceChoices.filter((d) => d.kind !== "mac"), apps = deviceChoices.filter((d) => d.kind === "mac");
+    const row = (d) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "device-row";
+      element.setAttribute("role", "option");
+      element.setAttribute("aria-selected", String(d.udid === current));
+      const name = document.createElement("b"), info = document.createElement("small");
+      name.textContent = d.name;
+      info.textContent = deviceInfo(d) || (d.kind === "mac" ? "Mac app" : "Not reserved");
+      element.append(name, info);
+      element.onclick = () => { openDeviceList(false); setControls(false); watch(d.udid); };
+      return element;
+    };
+    const heading = (text) => { const element = document.createElement("h3"); element.textContent = text; return element; };
+    const children = [];
+    if (sims.length && apps.length) children.push(heading("Simulators"), ...sims.map(row), heading("Mac apps"), ...apps.map(row));
+    else children.push(...deviceChoices.map(row));
+    if (!children.length) { const none = document.createElement("p"); none.textContent = "No simulator is booted and no Mac app is running."; children.push(none); }
+    deviceRowsEl.replaceChildren(...children);
+  }
+  $("devicePick").onclick = () => openDeviceList(true);
+  $("deviceListClose").onclick = () => openDeviceList(false);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !deviceListEl.hidden) openDeviceList(false); });
+
   function renderSimulators() {
     const current = screen ? screen.udid : wanted;
     const list = simulators.slice();
@@ -7114,11 +7187,17 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
     }
     simEl.hidden = list.length < 2;
     deviceEl.hidden = !simEl.hidden;
+    deviceChoices = list;
+    const shown = list.find((d) => d.udid === current);
+    $("devicePickName").textContent = shown ? shown.name : screen ? screen.name : deviceEl.textContent || "Choose a device";
+    $("devicePickInfo").textContent = shown ? deviceInfo(shown) : "";
+    if (!deviceListEl.hidden) renderDeviceRows();
     const sims = list.filter((d) => d.kind !== "mac"), apps = list.filter((d) => d.kind === "mac");
     const option = (d) => {
       const element = document.createElement("option");
       element.value = d.udid;
-      element.textContent = d.name + (d.kind === "mac" && !sims.length ? " (Mac app)" : "") + (d.reserved_for ? " \u2014 " + d.reserved_for : "");
+      const info = deviceInfo(d);
+      element.textContent = d.name + (d.kind === "mac" && !sims.length ? " (Mac app)" : "") + (info ? " \u2014 " + info : "");
       return element;
     };
     const group = (label, devices) => {
@@ -7136,6 +7215,7 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
   function watch(udid) {
     if (udid === wanted) return;
     wanted = udid;
+    rememberDevice();
     const url = new URL(location.href);
     if (udid) url.searchParams.set("device", udid); else url.searchParams.delete("device");
     history.replaceState(null, "", url);
@@ -7177,6 +7257,11 @@ select { padding: 10px 8px; border-radius: 10px; border: 1px solid var(--line); 
       simulators = Array.isArray(m.devices) ? m.devices : [];
       applyMode();
       renderSimulators();
+      if (restoreDevice) {
+        restoreDevice = false;
+        const last = store.get("minirun.device");
+        if (!wanted && last && (!screen || screen.udid !== last) && simulators.some((d) => d.udid === last)) { watch(last); return; }
+      }
       // Only Mac apps and no simulator booted: open the first app rather than wait for a simulator.
       if (!wanted && simulators.length && simulators.every((d) => d.kind === "mac")) watch(simulators[0].udid);
     } else if (m.type === "screen") {

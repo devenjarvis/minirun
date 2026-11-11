@@ -100,6 +100,9 @@ Then:
 
    **On a phone**, the stream fills the screen and the controls open from a floating button
    (drag it up or down either side). Text typed in the controls' box goes to the app as you type.
+   The device button at the top of the controls lists every booted simulator and running Mac app,
+   with the app on it and the branch it's for; tap one to switch. Opened without `?device` (as
+   from the Home Screen), the viewer goes back to the device you last picked, if it's running.
    For the biggest picture, add the viewer to your Home Screen (Safari: Share → Add to Home
    Screen) and open it from there: it runs without Safari's bars, and the simulator shows at about
    90% of its real size instead of about 75%. You log in once more there, because a Home Screen app

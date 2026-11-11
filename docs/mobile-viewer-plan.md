@@ -1,7 +1,7 @@
 # Plan: the live view as a phone test bench
 
-> **Status:** step 1 is done (the phone layout, Add to Home Screen, live typing and the screen wake
-> lock; see the CHANGELOG). Steps 2–4 are planned. Each step should fit in its own PR.
+> **Status:** step 1 is done (the phone layout, device switching, Add to Home Screen, live typing
+> and the screen wake lock; see the CHANGELOG). Steps 2–4 are planned. Each step should fit in its own PR.
 
 ## Why
 
@@ -39,6 +39,12 @@ Worker only (`worker/src/viewer.ts`, `worker/src/app.ts`); no change to the Mac 
   60 ms) and turns backspace into `press_key delete`. While it has focus it holds a zero-width
   space, so a backspace on an empty box still shows up as an input event on phone keyboards that
   send no key events. ⌫ and ⏎ don't take focus from the box, so the keyboard stays up.
+- **Device switching.** In the compact layout the header's picker gives way to a device button
+  (device name, the app on it from `last_app`, and `reserved_for`), which opens a full-width list
+  of every booted simulator and running Mac app. The classic dropdown shows the app too. A
+  device asked for by a link or the picker is remembered (`minirun.device` in localStorage); a
+  page opened without `?device` switches to it once the device list arrives, if it's still
+  running. The default stream (no device asked for) is never remembered.
 - **Screen Wake Lock** while the stream is live. A sleeping phone hides the page, and a hidden
   page stops its stream.
 - `overscroll-behavior: none` and `-webkit-touch-callout: none`, so pull-to-refresh and the
@@ -69,9 +75,6 @@ the viewer only shows buttons the Mac takes.
 | Lock, Siri | `press_button` | Already allowed. |
 | Save screenshot | none | Done in the browser: draw the current `<video>`/canvas/img to a canvas, `toBlob`, then `navigator.share({files})` (or a download on desktop). Note it's at the stream's scale (Sharp is 0.8). |
 | Record a clip | none | `MediaRecorder` on the WebRTC stream (or `canvas.captureStream()` for the WebSocket path), then share. |
-
-Also show what's being tested: the header (and the floating button's title) can show
-`reserved_for` (`owner/repo@branch`) and `last_app` instead of only the device name.
 
 Tests: relay tests that a viewer's `configure_simulator` with `permission` or `status_bar` is
 dropped and that `terminate_app` for another bundle id is refused; Swift tests for
