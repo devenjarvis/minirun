@@ -70,7 +70,13 @@ struct MenuView: View {
             }
             if store.workerOutdated {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("The Worker runs an older version than this app.").font(.callout).foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("The Worker runs an older version than this app.").font(.callout).foregroundStyle(.orange)
+                        if let problem = store.workerProblem {
+                            Text(problem).font(.caption).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                     Spacer()
                     SettingsLink { Text("Update…") }
                         .buttonStyle(.borderless)

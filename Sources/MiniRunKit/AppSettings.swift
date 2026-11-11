@@ -298,6 +298,78 @@ public enum Updater {
     public static func shouldUpdateWorker(automatic: Bool, outdated: Bool, hasToken: Bool) -> Bool {
         automatic && outdated && hasToken
     }
+
+    /// Why an out-of-date Worker hasn't been updated by itself, for the menu, or nil when it's
+    /// about to be (or nothing has been tried yet).
+    public static func workerProblem(automatic: Bool, hasToken: Bool, retry: WorkerUpdateRetry, bundle: String?, now: Date) -> String? {
+        guard automatic else { return "Automatic updates are off." }
+        guard hasToken else { return "No Cloudflare API token is saved, so it can't update itself." }
+        guard let bundle, let error = retry.error(for: bundle), let next = retry.nextAttempt else { return nil }
+        let minutes = max(1, Int((next.timeIntervalSince(now) / 60).rounded(.up)))
+        let when = next <= now ? "now" : minutes < 60 ? "in \(minutes) min" : "in \((minutes + 59) / 60) h"
+        let reason = error.hasSuffix(".") ? error : error + "."
+        return "Updating it failed: \(reason) Trying again \(when)."
+    }
+}
+
+/// When the app tries a failed Worker update again: 15 minutes after the first failure, then
+/// twice as long each time, up to 6 hours. A new bundle (a new app version) starts over.
+public struct WorkerUpdateRetry: Equatable, Sendable {
+    public static let firstDelay: TimeInterval = 15 * 60
+    public static let maxDelay: TimeInterval = 6 * 3600
+
+    /// The bundle hash the failures were for.
+    public private(set) var bundle: String?
+    public private(set) var failures = 0
+    public private(set) var lastError: String?
+    public private(set) var nextAttempt: Date?
+
+    public init() {}
+
+    /// Whether to try deploying `bundle` now.
+    public func due(bundle: String, now: Date) -> Bool {
+        guard bundle == self.bundle, let nextAttempt else { return true }
+        return now >= nextAttempt
+    }
+
+    /// The last error for `bundle`, if trying it failed.
+    public func error(for bundle: String) -> String? {
+        bundle == self.bundle ? lastError : nil
+    }
+
+    /// Records a failed attempt and returns how long until the next one.
+    @discardableResult
+    public mutating func failed(bundle: String, error: String, now: Date) -> TimeInterval {
+        if bundle != self.bundle { self = WorkerUpdateRetry(); self.bundle = bundle }
+        failures += 1
+        lastError = error
+        let delay = min(Self.firstDelay * Double(1 << min(failures - 1, 10)), Self.maxDelay)
+        nextAttempt = now.addingTimeInterval(delay)
+        return delay
+    }
+
+    /// The Worker is up to date (updated here or by hand): forget the failures.
+    public mutating func reset() { self = WorkerUpdateRetry() }
+}
+
+/// Lines the menu bar app adds to minirun.log, among serve's own, so what it did by itself (or
+/// failed to do) can be read afterwards. Never throws: a full disk mustn't stop the app.
+public enum AppLog {
+    public static func line(_ message: String, now: Date = Date()) -> String {
+        "\(ISO8601DateFormatter().string(from: now)) app: \(message)\n"
+    }
+
+    public static func append(_ message: String, to path: String = LaunchAgent.logPath, now: Date = Date()) {
+        let manager = FileManager.default
+        if !manager.fileExists(atPath: path) {
+            try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            manager.createFile(atPath: path, contents: nil)
+        }
+        guard let handle = FileHandle(forWritingAtPath: path) else { return }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: Data(line(message, now: now).utf8))
+    }
 }
 
 /// A notification the menu bar app posts.

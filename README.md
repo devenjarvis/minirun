@@ -460,7 +460,9 @@ downloads `minirun-<version>.zip`, checks it against the SHA-256 GitHub reports 
 signature, and that its `minirun` starts. Then it swaps `/Applications/minirun.app`, restarts
 `minirun serve` from the new copy and relaunches. If the new copy doesn't start, the old one is
 put back. Next it updates the Worker with the saved Cloudflare API token, if the Worker runs
-older code. The app turns on Open at login the first time it runs, so it comes back after a
+older code. If that fails, it tries again 15 minutes later, then twice as long each time (up to
+6 hours); the menu says why the Worker is behind, and each attempt is written to `minirun.log`
+(lines starting `app:`). The app turns on Open at login the first time it runs, so it comes back after a
 restart. Turn automatic updates off in Settings → General; the menu then offers Install instead.
 Releases aren't signed, so you're trusting whoever can push tags to this repository's GitHub
 releases.
