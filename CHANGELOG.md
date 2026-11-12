@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Tests say at once when the Mac is at the login window.** When the logged-in user isn't on the
+  Mac's screen (switched away from, or a Screen Sharing session that ended at the login window),
+  macOS won't start Xcode's test runner. xcodebuild built the app, then printed nothing until it
+  was stopped as hung 5 minutes later, blamed on "a stuck simulator". `run_tests` now fails before
+  building and says to log in on the Mac, and `host_info` and `minirun doctor` have a
+  "Logged in on screen (for tests)" check.
 - **A failed Worker update is tried again.** The menu bar app tried to update the Worker once per
   launch, so a single failure (a network blip while the app restarted into a new version, say)
   left it on the old version until the next restart. It now tries again 15 minutes later, then

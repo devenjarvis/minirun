@@ -151,6 +151,10 @@ public struct Doctor: Sendable {
             fix: gh?.succeeded == true ? nil : "gh auth login && gh auth setup-git", optional: true
         ))
 
+        if let console = ConsoleSession.check(owner: await ConsoleSession.owner(run: run), user: NSUserName()) {
+            checks.append(console)
+        }
+
         if let macPermissions, let report = await macPermissions() {
             checks += Self.macChecks(report)
         }
