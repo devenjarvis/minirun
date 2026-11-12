@@ -1,44 +1,83 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
-/// Whose session has the Mac's screen. Xcode only runs tests (iOS simulator or macOS) for the
-/// user on the screen: while the Mac shows the login window, testmanagerd logs "Disallowing
-/// automation at loginwindow" and exits, and xcodebuild waits for it forever after the build.
-/// That happens when the logged-in user is switched away from (fast user switching, or a Screen
-/// Sharing session that ended at the login window), even though builds keep working.
+/// Whether Xcode can start tests while the user isn't on the Mac's screen.
+///
+/// Tests (iOS simulator or macOS) go through the user's testmanagerd. A testmanagerd that starts
+/// while the Mac shows the login window logs "Disallowing automation at loginwindow" and exits;
+/// launchd starts another 10 s later, and xcodebuild waits for one forever after the build. One
+/// that started while the user was on the screen keeps working after a switch to the login window
+/// (Fast User Switching, so others can use the Mac), until it quits on its own after a quiet spell.
+/// So tests work with the user switched away only while that testmanagerd lives.
 public enum ConsoleSession {
-    /// Who owns /dev/console: the user on the screen, or root at the login window. Nil when it
-    /// can't be told.
-    public static func owner(run: Doctor.Runner = Doctor.shell) async -> String? {
-        guard let result = await run("/usr/bin/stat", ["-f", "%Su", "/dev/console"], 10), result.succeeded else { return nil }
-        let owner = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
-        return owner.isEmpty ? nil : owner
-    }
+    public struct State: Equatable, Sendable {
+        /// Who owns /dev/console: the user on the screen, or root at the login window.
+        public var owner: String
+        /// The user minirun runs as.
+        public var user: String
+        /// The user's testmanagerd is running. Nil when it can't be told.
+        public var testmanagerdRunning: Bool?
 
-    /// Why tests can't run for `user` while `owner` has the screen, or nil when they can (or
-    /// when the owner isn't known, so a check that can't run never blocks anything).
-    public static func problem(owner: String?, user: String) -> String? {
-        guard let owner, owner != user else { return nil }
-        let screen = owner == "root"
-            ? "The Mac is at the login window (\(user) is logged in, but not on the screen)"
-            : "\(owner) has the Mac's screen, not \(user) (fast user switching)"
-        return screen + ", so macOS won't let Xcode start the test runner: testmanagerd refuses "
-            + "(\"Disallowing automation at loginwindow\") and xcodebuild waits forever after the build. "
-            + "Builds, swift_test and run_command still work."
-    }
-
-    /// What to do about `problem`.
-    public static func fix(user: String) -> String {
-        "Log in as \(user) at the Mac, or through Screen Sharing, so \(user)'s desktop is on the screen. "
-            + "Keep automatic login on (System Settings → Users & Groups) so a restart comes back to it, "
-            + "and don't end Screen Sharing with Log Out or Switch User."
-    }
-
-    /// The doctor check, or nil when the owner isn't known.
-    public static func check(owner: String?, user: String) -> DoctorCheck? {
-        guard let owner else { return nil }
-        if let problem = problem(owner: owner, user: user) {
-            return DoctorCheck(id: "console", title: "Logged in on screen (for tests)", ok: false, detail: problem, fix: fix(user: user))
+        public init(owner: String, user: String, testmanagerdRunning: Bool?) {
+            self.owner = owner
+            self.user = user
+            self.testmanagerdRunning = testmanagerdRunning
         }
-        return DoctorCheck(id: "console", title: "Logged in on screen (for tests)", ok: true, detail: "\(user)")
+
+        public var onScreen: Bool { owner == user }
+
+        /// Why tests can't start, or nil when they can (or it can't be told, so a check that
+        /// can't run never blocks anything).
+        public var problem: String? {
+            guard !onScreen, testmanagerdRunning == false else { return nil }
+            let screen = owner == "root" ? "The Mac is at the login window" : "\(owner) has the Mac's screen"
+            return screen + " and Xcode's test daemon (testmanagerd) isn't running. macOS only starts it for the user "
+                + "on the screen: started now it refuses (\"Disallowing automation at loginwindow\") and xcodebuild "
+                + "would wait forever after the build. One started while \(user) was on the screen keeps working after "
+                + "switching users, until it quits after a quiet spell. Builds, swift_test and run_command still work."
+        }
+
+        /// What to do about `problem`.
+        public var fix: String {
+            "Switch back to \(user) on the Mac (or through Screen Sharing), run any tests so testmanagerd starts, "
+                + "then switch users again. Tests keep working until testmanagerd quits after a quiet spell."
+        }
+
+        /// The doctor row.
+        public var check: DoctorCheck {
+            let title = "Test daemon (for tests)"
+            if let problem {
+                return DoctorCheck(id: "console", title: title, ok: false, detail: problem, fix: fix)
+            }
+            if onScreen {
+                return DoctorCheck(id: "console", title: title, ok: true, detail: "\(user) is on the screen")
+            }
+            let screen = owner == "root" ? "the Mac is at the login window" : "\(owner) has the screen"
+            return DoctorCheck(id: "console", title: title, ok: true,
+                               detail: "\(screen), but testmanagerd is running, so tests work until it quits after a quiet spell")
+        }
+    }
+
+    /// Reads the state, or nil when the console owner can't be read.
+    public static func state(run: Doctor.Runner = Doctor.shell, user: String = NSUserName()) async -> State? {
+        guard let stat = await run("/usr/bin/stat", ["-f", "%Su", "/dev/console"], 10), stat.succeeded else { return nil }
+        let owner = stat.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !owner.isEmpty else { return nil }
+        guard owner != user else { return State(owner: owner, user: user, testmanagerdRunning: nil) }
+        let service = await run("/bin/launchctl", ["print", "gui/\(getuid())/com.apple.testmanagerd"], 10)
+        return State(owner: owner, user: user, testmanagerdRunning: service.flatMap { $0.succeeded ? serviceRunning($0.stdout) : nil })
+    }
+
+    /// Whether `launchctl print` output says the service is running: its own `state = running`,
+    /// a single tab in (nested blocks have their own `state` lines).
+    static func serviceRunning(_ output: String) -> Bool? {
+        for line in output.split(separator: "\n", omittingEmptySubsequences: false) where line.hasPrefix("\tstate = ") {
+            return line.dropFirst("\tstate = ".count).trimmingCharacters(in: .whitespaces) == "running"
+        }
+        return nil
     }
 }
