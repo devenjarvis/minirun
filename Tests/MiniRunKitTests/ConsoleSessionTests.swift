@@ -2,48 +2,73 @@ import XCTest
 @testable import MiniRunKit
 
 final class ConsoleSessionTests: XCTestCase {
-    func testLoginWindowIsAProblemWithAFix() {
-        let problem = ConsoleSession.problem(owner: "root", user: "deven") ?? ""
-        XCTAssertTrue(problem.contains("login window"), problem)
+    func testSwitchedAwayBlocksOnlyWithoutATestDaemon() {
+        let stopped = ConsoleSession.State(owner: "root", user: "deven", testmanagerdRunning: false)
+        let problem = stopped.problem ?? ""
+        XCTAssertTrue(problem.hasPrefix("The Mac is at the login window and Xcode's test daemon"), problem)
         XCTAssertTrue(problem.contains("Disallowing automation at loginwindow"), problem)
-        XCTAssertTrue(ConsoleSession.fix(user: "deven").contains("Log in as deven"))
+        XCTAssertTrue(stopped.fix.contains("Switch back to deven"), stopped.fix)
+        XCTAssertEqual(stopped.check.ok, false)
+        XCTAssertEqual(stopped.check.optional, false, "iOS tests need it")
 
-        let other = ConsoleSession.problem(owner: "guest", user: "deven") ?? ""
-        XCTAssertTrue(other.hasPrefix("guest has the Mac's screen"), other)
+        let running = ConsoleSession.State(owner: "root", user: "deven", testmanagerdRunning: true)
+        XCTAssertNil(running.problem, "a testmanagerd started earlier keeps working after switching users")
+        XCTAssertEqual(running.check.ok, true)
+        XCTAssertTrue(running.check.detail.contains("testmanagerd is running"), running.check.detail)
+
+        XCTAssertNil(ConsoleSession.State(owner: "root", user: "deven", testmanagerdRunning: nil).problem, "unknown never blocks")
+        let other = ConsoleSession.State(owner: "chloe", user: "deven", testmanagerdRunning: false)
+        XCTAssertTrue(other.problem?.hasPrefix("chloe has the Mac's screen") == true)
     }
 
-    func testOnScreenOrUnknownIsFine() {
-        XCTAssertNil(ConsoleSession.problem(owner: "deven", user: "deven"))
-        XCTAssertNil(ConsoleSession.problem(owner: nil, user: "deven"), "a check that can't run never blocks tests")
-        XCTAssertNil(ConsoleSession.check(owner: nil, user: "deven"))
+    func testOnScreenIsFine() {
+        let state = ConsoleSession.State(owner: "deven", user: "deven", testmanagerdRunning: false)
+        XCTAssertNil(state.problem)
+        XCTAssertEqual(state.check.ok, true)
     }
 
-    func testOwnerFromStat() async {
-        let owner = await ConsoleSession.owner(run: { executable, arguments, _ in
-            XCTAssertEqual(executable, "/usr/bin/stat")
-            XCTAssertEqual(arguments, ["-f", "%Su", "/dev/console"])
-            return ShellResult(exitCode: 0, stdout: "root\n")
-        })
-        XCTAssertEqual(owner, "root")
-        let failed = await ConsoleSession.owner(run: { _, _, _ in ShellResult(exitCode: 1, stdout: "") })
+    func testServiceRunningReadsTheTopLevelState() {
+        let refusing = "gui/502/com.apple.testmanagerd = {\n\tactive count = 0\n\tstate = spawn scheduled\n\n\tprogram = /usr/libexec/testmanagerd\n\tendpoints = {\n\t\t\"com.apple.testmanagerd\" = {\n\t\t\tstate = active\n\t\t}\n\t}\n}"
+        XCTAssertEqual(ConsoleSession.serviceRunning(refusing), false)
+        XCTAssertEqual(ConsoleSession.serviceRunning("x = {\n\tstate = running\n\tpid = 19607\n}"), true)
+        XCTAssertNil(ConsoleSession.serviceRunning("nothing here"))
+    }
+
+    func testStateFromTheMac() async {
+        let state = await ConsoleSession.state(run: { executable, arguments, _ in
+            switch executable {
+            case "/usr/bin/stat":
+                XCTAssertEqual(arguments, ["-f", "%Su", "/dev/console"])
+                return ShellResult(exitCode: 0, stdout: "root\n")
+            case "/bin/launchctl":
+                XCTAssertTrue(arguments.last?.hasSuffix("/com.apple.testmanagerd") == true)
+                return ShellResult(exitCode: 0, stdout: "x = {\n\tstate = spawn scheduled\n}")
+            default:
+                return nil
+            }
+        }, user: "deven")
+        XCTAssertEqual(state, ConsoleSession.State(owner: "root", user: "deven", testmanagerdRunning: false))
+
+        let failed = await ConsoleSession.state(run: { _, _, _ in ShellResult(exitCode: 1, stdout: "") }, user: "deven")
         XCTAssertNil(failed)
+        let noLaunchctl = await ConsoleSession.state(run: { executable, _, _ in
+            executable == "/usr/bin/stat" ? ShellResult(exitCode: 0, stdout: "root\n") : nil
+        }, user: "deven")
+        XCTAssertNil(noLaunchctl?.problem)
     }
 
-    func testDoctorReportsTheLoginWindow() async {
+    func testDoctorReportsAStoppedTestDaemon() async {
         // Linux CI runs as root, so the login window's owner would be this user there.
         let away = NSUserName() == "root" ? "guest" : "root"
         let doctor = Doctor(run: { executable, _, _ in
-            executable == "/usr/bin/stat" ? ShellResult(exitCode: 0, stdout: away + "\n") : nil
+            switch executable {
+            case "/usr/bin/stat": return ShellResult(exitCode: 0, stdout: away + "\n")
+            case "/bin/launchctl": return ShellResult(exitCode: 0, stdout: "x = {\n\tstate = spawn scheduled\n}")
+            default: return nil
+            }
         }, loadFrameworks: { nil })
-        let checks = await doctor.checks(config: MiniRunConfig())
-        let console = checks.first { $0.id == "console" }
+        let console = await doctor.checks(config: MiniRunConfig()).first { $0.id == "console" }
         XCTAssertEqual(console?.ok, false)
-        XCTAssertEqual(console?.optional, false, "iOS tests need it")
-        XCTAssertTrue(console?.fix?.contains("automatic login") == true)
-
-        let fine = await Doctor(run: { executable, _, _ in
-            executable == "/usr/bin/stat" ? ShellResult(exitCode: 0, stdout: NSUserName() + "\n") : nil
-        }, loadFrameworks: { nil }).checks(config: MiniRunConfig())
-        XCTAssertEqual(fine.first { $0.id == "console" }?.ok, true)
+        XCTAssertTrue(console?.fix?.contains("Switch back to") == true)
     }
 }
