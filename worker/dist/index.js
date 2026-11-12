@@ -5962,7 +5962,7 @@ function clamp(value, min, max) {
 __name(clamp, "clamp");
 
 // src/version.ts
-var VERSION = "0.9.0";
+var VERSION = "0.9.1";
 function compareVersions(a, b) {
   const pa = a.split(".").map((n) => parseInt(n, 10) || 0);
   const pb = b.split(".").map((n) => parseInt(n, 10) || 0);
