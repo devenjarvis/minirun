@@ -30,8 +30,10 @@ final class ConsoleSessionTests: XCTestCase {
     }
 
     func testDoctorReportsTheLoginWindow() async {
+        // Linux CI runs as root, so the login window's owner would be this user there.
+        let away = NSUserName() == "root" ? "guest" : "root"
         let doctor = Doctor(run: { executable, _, _ in
-            executable == "/usr/bin/stat" ? ShellResult(exitCode: 0, stdout: "root\n") : nil
+            executable == "/usr/bin/stat" ? ShellResult(exitCode: 0, stdout: away + "\n") : nil
         }, loadFrameworks: { nil })
         let checks = await doctor.checks(config: MiniRunConfig())
         let console = checks.first { $0.id == "console" }
