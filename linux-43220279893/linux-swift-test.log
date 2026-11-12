@@ -1,0 +1,1337 @@
+Building for debugging...
+[0/13] Write sources
+[2/13] Write swift-version-24593BA9C3E375BF.txt
+[4/46] Emitting module MiniRunKit
+[5/56] Compiling MiniRunKit SwiftTestReport.swift
+[6/56] Compiling MiniRunKit Tools.swift
+[7/56] Compiling MiniRunKit Version.swift
+[8/56] Compiling MiniRunKit WorkerCommand.swift
+[9/56] Compiling MiniRunKit WorkerDeploy.swift
+[10/56] Compiling MiniRunKit WorkerManager.swift
+[11/56] Compiling MiniRunKit Workspaces.swift
+[12/56] Compiling MiniRunKit XcodeFiles.swift
+[13/56] Compiling MiniRunKit XcodeParsing+Mac.swift
+[14/56] Compiling MiniRunKit XcodeParsing.swift
+[15/56] Compiling MiniRunKit AppSettings.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[16/56] Compiling MiniRunKit BuildCache.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[17/56] Compiling MiniRunKit BuildPlatform.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[18/56] Compiling MiniRunKit CI.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[19/56] Compiling MiniRunKit CallLedger.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[20/56] Compiling MiniRunKit ChildProcesses.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[21/56] Compiling MiniRunKit Cloudflare.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[22/56] Compiling MiniRunKit Config.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[23/56] Compiling MiniRunKit ConsoleSession.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[24/56] Compiling MiniRunKit ControlSocket.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[25/56] Compiling MiniRunKit Doctor.swift
+/__w/minirun/minirun/Sources/MiniRunKit/AppSettings.swift:366:21: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+364 |         if !manager.fileExists(atPath: path) {
+365 |             try? manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+366 |             manager.createFile(atPath: path, contents: nil)
+    |                     `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+367 |         }
+368 |         guard let handle = FileHandle(forWritingAtPath: path) else { return }
+[26/56] Compiling MiniRunKit GIFEncoder.swift
+[27/56] Compiling MiniRunKit GitHubMedia.swift
+[28/56] Compiling MiniRunKit GitHubRunners.swift
+[29/56] Compiling MiniRunKit H264.swift
+[30/56] Compiling MiniRunKit H264Session.swift
+[31/56] Compiling MiniRunKit JSONValue.swift
+[32/56] Compiling MiniRunKit Jobs.swift
+[33/56] Compiling MiniRunKit LatencyStats.swift
+[34/56] Compiling MiniRunKit LaunchAgent.swift
+[35/56] Compiling MiniRunKit LiveConfig.swift
+[36/56] Compiling MiniRunKit MacAppStore.swift
+[37/56] Compiling MiniRunKit MacGeometry.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[38/56] Compiling MiniRunKit MacKeys.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[39/56] Compiling MiniRunKit MacToolSupport.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[40/56] Compiling MiniRunKit Media.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[41/56] Compiling MiniRunKit MenuModel.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[42/56] Compiling MiniRunKit RTCSignaling.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[43/56] Compiling MiniRunKit RelayProtocol.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[44/56] Compiling MiniRunKit Shell.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[45/56] Compiling MiniRunKit Simulators.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[46/56] Compiling MiniRunKit Status.swift
+/__w/minirun/minirun/Sources/MiniRunKit/Shell.swift:232:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+230 |     init(logURL: URL?) {
+231 |         if let logURL {
+232 |             FileManager.default.createFile(atPath: logURL.path, contents: nil)
+    |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+233 |             logHandle = try? FileHandle(forWritingTo: logURL)
+234 |             _ = try? logHandle?.seekToEnd()
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:343:17: warning: no 'async' operations occur within 'await' expression
+341 |                 try await work()
+342 |             } catch {
+343 |                 await self.finished(udid)
+    |                 `- warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+
+/__w/minirun/minirun/Sources/MiniRunKit/Simulators.swift:346:13: warning: no 'async' operations occur within 'await' expression
+344 |                 throw error
+345 |             }
+346 |             await self.finished(udid)
+    |             `- warning: no 'async' operations occur within 'await' expression
+347 |         }
+348 |         running[udid] = task
+[47/57] Wrapping AST for MiniRunKit for debugging
+[49/73] Emitting module MiniRunKitTests
+[50/78] Compiling MiniRunKitTests MacHostTests.swift
+[51/78] Compiling MiniRunKitTests MacInputTests.swift
+[52/78] Compiling MiniRunKitTests MacToolsTests.swift
+[53/78] Compiling MiniRunKitTests MediaMenuTests.swift
+[54/78] Compiling MiniRunKitTests MediaTests.swift
+[55/78] Compiling MiniRunKitTests AppSupportTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/BuildCacheTests.swift:97:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 95 |         let old = Date(timeIntervalSince1970: 1_000_000), fetched = Date(timeIntervalSince1970: 2_000_000_000)
+ 96 |         try fm.setAttributes([.modificationDate: old], ofItemAtPath: checkout)
+ 97 |         fm.createFile(atPath: gitDir + "/FETCH_HEAD", contents: Data("x".utf8), attributes: [.modificationDate: fetched])
+    |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 98 |         try fm.setAttributes([.modificationDate: fetched], ofItemAtPath: gitDir + "/FETCH_HEAD")
+ 99 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/ControlTests.swift:321:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+319 |         // A workspace root under a file can never be created.
+320 |         let file = NSTemporaryDirectory() + "minirun-doctor-\(UUID().uuidString)"
+321 |         FileManager.default.createFile(atPath: file, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+322 |         defer { try? FileManager.default.removeItem(atPath: file) }
+323 |         let checks = await doctor.checks(config: MiniRunConfig(workspaceRoot: file + "/workspaces"))
+[56/78] Compiling MiniRunKitTests BuildCacheTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/BuildCacheTests.swift:97:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 95 |         let old = Date(timeIntervalSince1970: 1_000_000), fetched = Date(timeIntervalSince1970: 2_000_000_000)
+ 96 |         try fm.setAttributes([.modificationDate: old], ofItemAtPath: checkout)
+ 97 |         fm.createFile(atPath: gitDir + "/FETCH_HEAD", contents: Data("x".utf8), attributes: [.modificationDate: fetched])
+    |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 98 |         try fm.setAttributes([.modificationDate: fetched], ofItemAtPath: gitDir + "/FETCH_HEAD")
+ 99 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/ControlTests.swift:321:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+319 |         // A workspace root under a file can never be created.
+320 |         let file = NSTemporaryDirectory() + "minirun-doctor-\(UUID().uuidString)"
+321 |         FileManager.default.createFile(atPath: file, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+322 |         defer { try? FileManager.default.removeItem(atPath: file) }
+323 |         let checks = await doctor.checks(config: MiniRunConfig(workspaceRoot: file + "/workspaces"))
+[57/78] Compiling MiniRunKitTests CITests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/BuildCacheTests.swift:97:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 95 |         let old = Date(timeIntervalSince1970: 1_000_000), fetched = Date(timeIntervalSince1970: 2_000_000_000)
+ 96 |         try fm.setAttributes([.modificationDate: old], ofItemAtPath: checkout)
+ 97 |         fm.createFile(atPath: gitDir + "/FETCH_HEAD", contents: Data("x".utf8), attributes: [.modificationDate: fetched])
+    |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 98 |         try fm.setAttributes([.modificationDate: fetched], ofItemAtPath: gitDir + "/FETCH_HEAD")
+ 99 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/ControlTests.swift:321:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+319 |         // A workspace root under a file can never be created.
+320 |         let file = NSTemporaryDirectory() + "minirun-doctor-\(UUID().uuidString)"
+321 |         FileManager.default.createFile(atPath: file, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+322 |         defer { try? FileManager.default.removeItem(atPath: file) }
+323 |         let checks = await doctor.checks(config: MiniRunConfig(workspaceRoot: file + "/workspaces"))
+[58/78] Compiling MiniRunKitTests ConsoleSessionTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/BuildCacheTests.swift:97:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 95 |         let old = Date(timeIntervalSince1970: 1_000_000), fetched = Date(timeIntervalSince1970: 2_000_000_000)
+ 96 |         try fm.setAttributes([.modificationDate: old], ofItemAtPath: checkout)
+ 97 |         fm.createFile(atPath: gitDir + "/FETCH_HEAD", contents: Data("x".utf8), attributes: [.modificationDate: fetched])
+    |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 98 |         try fm.setAttributes([.modificationDate: fetched], ofItemAtPath: gitDir + "/FETCH_HEAD")
+ 99 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/ControlTests.swift:321:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+319 |         // A workspace root under a file can never be created.
+320 |         let file = NSTemporaryDirectory() + "minirun-doctor-\(UUID().uuidString)"
+321 |         FileManager.default.createFile(atPath: file, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+322 |         defer { try? FileManager.default.removeItem(atPath: file) }
+323 |         let checks = await doctor.checks(config: MiniRunConfig(workspaceRoot: file + "/workspaces"))
+[59/78] Compiling MiniRunKitTests ControlTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/BuildCacheTests.swift:97:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 95 |         let old = Date(timeIntervalSince1970: 1_000_000), fetched = Date(timeIntervalSince1970: 2_000_000_000)
+ 96 |         try fm.setAttributes([.modificationDate: old], ofItemAtPath: checkout)
+ 97 |         fm.createFile(atPath: gitDir + "/FETCH_HEAD", contents: Data("x".utf8), attributes: [.modificationDate: fetched])
+    |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+ 98 |         try fm.setAttributes([.modificationDate: fetched], ofItemAtPath: gitDir + "/FETCH_HEAD")
+ 99 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/ControlTests.swift:321:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+319 |         // A workspace root under a file can never be created.
+320 |         let file = NSTemporaryDirectory() + "minirun-doctor-\(UUID().uuidString)"
+321 |         FileManager.default.createFile(atPath: file, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+322 |         defer { try? FileManager.default.removeItem(atPath: file) }
+323 |         let checks = await doctor.checks(config: MiniRunConfig(workspaceRoot: file + "/workspaces"))
+[60/78] Compiling MiniRunKitTests MenuModelTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:867:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+865 |         let path = directory + "/control.sock"
+866 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+867 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+868 |         let first = ControlServer(path: path) { _ in "first" }
+869 |         try first.start()
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/XcodeFilesTests.swift:60:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+58 |             guard let project else { return }
+59 |             let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": project], format: .xml, options: 0)
+60 |             FileManager.default.createFile(atPath: dir + "/DD/\(name)/info.plist", contents: plist)
+   |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+61 |         }
+62 |         try folder("App-gone", project: root + "/me/app@gone/App.xcodeproj")
+[61/78] Compiling MiniRunKitTests MiniRunKitTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:867:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+865 |         let path = directory + "/control.sock"
+866 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+867 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+868 |         let first = ControlServer(path: path) { _ in "first" }
+869 |         try first.start()
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/XcodeFilesTests.swift:60:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+58 |             guard let project else { return }
+59 |             let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": project], format: .xml, options: 0)
+60 |             FileManager.default.createFile(atPath: dir + "/DD/\(name)/info.plist", contents: plist)
+   |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+61 |         }
+62 |         try folder("App-gone", project: root + "/me/app@gone/App.xcodeproj")
+[62/78] Compiling MiniRunKitTests RTCSignalingTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:867:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+865 |         let path = directory + "/control.sock"
+866 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+867 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+868 |         let first = ControlServer(path: path) { _ in "first" }
+869 |         try first.start()
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/XcodeFilesTests.swift:60:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+58 |             guard let project else { return }
+59 |             let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": project], format: .xml, options: 0)
+60 |             FileManager.default.createFile(atPath: dir + "/DD/\(name)/info.plist", contents: plist)
+   |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+61 |         }
+62 |         try folder("App-gone", project: root + "/me/app@gone/App.xcodeproj")
+[63/78] Compiling MiniRunKitTests WorkerDeployTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:867:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+865 |         let path = directory + "/control.sock"
+866 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+867 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+868 |         let first = ControlServer(path: path) { _ in "first" }
+869 |         try first.start()
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/XcodeFilesTests.swift:60:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+58 |             guard let project else { return }
+59 |             let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": project], format: .xml, options: 0)
+60 |             FileManager.default.createFile(atPath: dir + "/DD/\(name)/info.plist", contents: plist)
+   |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+61 |         }
+62 |         try folder("App-gone", project: root + "/me/app@gone/App.xcodeproj")
+[64/78] Compiling MiniRunKitTests XcodeFilesTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/MiniRunKitTests.swift:867:29: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+865 |         let path = directory + "/control.sock"
+866 |         // A regular file where the socket goes, as if a crashed daemon left something behind.
+867 |         FileManager.default.createFile(atPath: path, contents: Data())
+    |                             `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+868 |         let first = ControlServer(path: path) { _ in "first" }
+869 |         try first.start()
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/XcodeFilesTests.swift:60:33: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+58 |             guard let project else { return }
+59 |             let plist = try PropertyListSerialization.data(fromPropertyList: ["WorkspacePath": project], format: .xml, options: 0)
+60 |             FileManager.default.createFile(atPath: dir + "/DD/\(name)/info.plist", contents: plist)
+   |                                 `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+61 |         }
+62 |         try folder("App-gone", project: root + "/me/app@gone/App.xcodeproj")
+[65/78] Compiling MiniRunKitTests GIFEncoderTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:17:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+15 |         var runner = Data([0xEF, 0xBB, 0xBF])
+16 |         runner.append(Data(#"{"agentId": 12, "agentName": "mini-minirun", "gitHubUrl": "https://github.com/you/app"}"#.utf8))
+17 |         fm.createFile(atPath: full + "/.runner", contents: runner)
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+18 |         try "/Users/me/Library/LaunchAgents/actions.runner.you-app.mini-minirun.plist\n".write(toFile: full + "/.service", atomically: true, encoding: .utf8)
+19 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:25:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+23 |         try "you/other".write(toFile: partial + "/.minirun-repo", atomically: true, encoding: .utf8)
+24 | 
+25 |         fm.createFile(atPath: root + "/stray-file", contents: Data())
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+26 | 
+27 |         let runners = GitHubRunners.installed(root: root)
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/MacBuildTests.swift:23:58: warning: no calls to throwing functions occur within 'try' expression
+ 21 |     }
+ 22 | 
+ 23 |     private func json(_ entries: [JSONValue]) -> Data { (try? JSONValue.array(entries).encoded()) ?? Data() }
+    |                                                          `- warning: no calls to throwing functions occur within 'try' expression
+ 24 | 
+ 25 |     func testDetectPlatform() {
+[66/78] Compiling MiniRunKitTests GitHubMediaTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:17:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+15 |         var runner = Data([0xEF, 0xBB, 0xBF])
+16 |         runner.append(Data(#"{"agentId": 12, "agentName": "mini-minirun", "gitHubUrl": "https://github.com/you/app"}"#.utf8))
+17 |         fm.createFile(atPath: full + "/.runner", contents: runner)
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+18 |         try "/Users/me/Library/LaunchAgents/actions.runner.you-app.mini-minirun.plist\n".write(toFile: full + "/.service", atomically: true, encoding: .utf8)
+19 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:25:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+23 |         try "you/other".write(toFile: partial + "/.minirun-repo", atomically: true, encoding: .utf8)
+24 | 
+25 |         fm.createFile(atPath: root + "/stray-file", contents: Data())
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+26 | 
+27 |         let runners = GitHubRunners.installed(root: root)
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/MacBuildTests.swift:23:58: warning: no calls to throwing functions occur within 'try' expression
+ 21 |     }
+ 22 | 
+ 23 |     private func json(_ entries: [JSONValue]) -> Data { (try? JSONValue.array(entries).encoded()) ?? Data() }
+    |                                                          `- warning: no calls to throwing functions occur within 'try' expression
+ 24 | 
+ 25 |     func testDetectPlatform() {
+[67/78] Compiling MiniRunKitTests GitHubRunnersTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:17:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+15 |         var runner = Data([0xEF, 0xBB, 0xBF])
+16 |         runner.append(Data(#"{"agentId": 12, "agentName": "mini-minirun", "gitHubUrl": "https://github.com/you/app"}"#.utf8))
+17 |         fm.createFile(atPath: full + "/.runner", contents: runner)
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+18 |         try "/Users/me/Library/LaunchAgents/actions.runner.you-app.mini-minirun.plist\n".write(toFile: full + "/.service", atomically: true, encoding: .utf8)
+19 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:25:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+23 |         try "you/other".write(toFile: partial + "/.minirun-repo", atomically: true, encoding: .utf8)
+24 | 
+25 |         fm.createFile(atPath: root + "/stray-file", contents: Data())
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+26 | 
+27 |         let runners = GitHubRunners.installed(root: root)
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/MacBuildTests.swift:23:58: warning: no calls to throwing functions occur within 'try' expression
+ 21 |     }
+ 22 | 
+ 23 |     private func json(_ entries: [JSONValue]) -> Data { (try? JSONValue.array(entries).encoded()) ?? Data() }
+    |                                                          `- warning: no calls to throwing functions occur within 'try' expression
+ 24 | 
+ 25 |     func testDetectPlatform() {
+[68/78] Compiling MiniRunKitTests H264SessionTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:17:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+15 |         var runner = Data([0xEF, 0xBB, 0xBF])
+16 |         runner.append(Data(#"{"agentId": 12, "agentName": "mini-minirun", "gitHubUrl": "https://github.com/you/app"}"#.utf8))
+17 |         fm.createFile(atPath: full + "/.runner", contents: runner)
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+18 |         try "/Users/me/Library/LaunchAgents/actions.runner.you-app.mini-minirun.plist\n".write(toFile: full + "/.service", atomically: true, encoding: .utf8)
+19 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:25:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+23 |         try "you/other".write(toFile: partial + "/.minirun-repo", atomically: true, encoding: .utf8)
+24 | 
+25 |         fm.createFile(atPath: root + "/stray-file", contents: Data())
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+26 | 
+27 |         let runners = GitHubRunners.installed(root: root)
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/MacBuildTests.swift:23:58: warning: no calls to throwing functions occur within 'try' expression
+ 21 |     }
+ 22 | 
+ 23 |     private func json(_ entries: [JSONValue]) -> Data { (try? JSONValue.array(entries).encoded()) ?? Data() }
+    |                                                          `- warning: no calls to throwing functions occur within 'try' expression
+ 24 | 
+ 25 |     func testDetectPlatform() {
+[69/78] Compiling MiniRunKitTests MacBuildTests.swift
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:17:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+15 |         var runner = Data([0xEF, 0xBB, 0xBF])
+16 |         runner.append(Data(#"{"agentId": 12, "agentName": "mini-minirun", "gitHubUrl": "https://github.com/you/app"}"#.utf8))
+17 |         fm.createFile(atPath: full + "/.runner", contents: runner)
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+18 |         try "/Users/me/Library/LaunchAgents/actions.runner.you-app.mini-minirun.plist\n".write(toFile: full + "/.service", atomically: true, encoding: .utf8)
+19 | 
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/GitHubRunnersTests.swift:25:12: warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+23 |         try "you/other".write(toFile: partial + "/.minirun-repo", atomically: true, encoding: .utf8)
+24 | 
+25 |         fm.createFile(atPath: root + "/stray-file", contents: Data())
+   |            `- warning: result of call to 'createFile(atPath:contents:attributes:)' is unused
+26 | 
+27 |         let runners = GitHubRunners.installed(root: root)
+
+/__w/minirun/minirun/Tests/MiniRunKitTests/MacBuildTests.swift:23:58: warning: no calls to throwing functions occur within 'try' expression
+ 21 |     }
+ 22 | 
+ 23 |     private func json(_ entries: [JSONValue]) -> Data { (try? JSONValue.array(entries).encoded()) ?? Data() }
+    |                                                          `- warning: no calls to throwing functions occur within 'try' expression
+ 24 | 
+ 25 |     func testDetectPlatform() {
+[70/79] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageDiscoveredTests.derived/all-discovered-tests.swift
+[71/79] Write sources
+[72/79] Wrapping AST for MiniRunKitTests for debugging
+[74/82] Compiling minirunPackageDiscoveredTests all-discovered-tests.swift
+[75/82] Emitting module minirunPackageDiscoveredTests
+[76/82] Compiling minirunPackageDiscoveredTests MiniRunKitTests.swift
+[77/83] /__w/minirun/minirun/.build/x86_64-unknown-linux-gnu/debug/minirunPackageTests.derived/runner.swift
+[78/83] Write sources
+[79/83] Wrapping AST for minirunPackageDiscoveredTests for debugging
+[81/85] Compiling minirunPackageTests runner.swift
+[82/85] Emitting module minirunPackageTests
+[83/86] Wrapping AST for minirunPackageTests for debugging
+[84/86] Write Objects.LinkFileList
+[85/86] Linking minirunPackageTests.xctest
+Build complete! (11.19s)
+Test Suite 'All tests' started at 2026-11-12 12:42:43.933
+Test Suite 'debug.xctest' started at 2026-11-12 12:42:43.934
+Test Suite 'BuildCacheTests' started at 2026-11-12 12:42:43.934
+Test Case 'BuildCacheTests.testArgumentsLeaveTheCallersChoicesAlone' started at 2026-11-12 12:42:43.934
+Test Case 'BuildCacheTests.testArgumentsLeaveTheCallersChoicesAlone' passed (0.001 seconds)
+Test Case 'BuildCacheTests.testFolders' started at 2026-11-12 12:42:43.934
+Test Case 'BuildCacheTests.testFolders' passed (0.0 seconds)
+Test Case 'BuildCacheTests.testHashIsStable' started at 2026-11-12 12:42:43.935
+Test Case 'BuildCacheTests.testHashIsStable' passed (0.0 seconds)
+Test Case 'BuildCacheTests.testResolvedFile' started at 2026-11-12 12:42:43.935
+Test Case 'BuildCacheTests.testResolvedFile' passed (0.0 seconds)
+Test Case 'BuildCacheTests.testSettingIsOffUnlessSet' started at 2026-11-12 12:42:43.935
+Test Case 'BuildCacheTests.testSettingIsOffUnlessSet' passed (0.0 seconds)
+Test Case 'BuildCacheTests.testSlugOfACheckout' started at 2026-11-12 12:42:43.935
+Test Case 'BuildCacheTests.testSlugOfACheckout' passed (0.0 seconds)
+Test Suite 'BuildCacheTests' passed at 2026-11-12 12:42:43.935
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'CIAnnotationTests' started at 2026-11-12 12:42:43.936
+Test Case 'CIAnnotationTests.testCompilerErrorsGetRepositoryPaths' started at 2026-11-12 12:42:43.936
+Test Case 'CIAnnotationTests.testCompilerErrorsGetRepositoryPaths' passed (0.1 seconds)
+Test Case 'CIAnnotationTests.testFailedTestsAndLimits' started at 2026-11-12 12:42:44.036
+Test Case 'CIAnnotationTests.testFailedTestsAndLimits' passed (0.0 seconds)
+Test Case 'CIAnnotationTests.testFileNamesWithColonsAndCommasAreEscaped' started at 2026-11-12 12:42:44.036
+Test Case 'CIAnnotationTests.testFileNamesWithColonsAndCommasAreEscaped' passed (0.0 seconds)
+Test Case 'CIAnnotationTests.testJobIDInAToolResult' started at 2026-11-12 12:42:44.036
+Test Case 'CIAnnotationTests.testJobIDInAToolResult' passed (0.0 seconds)
+Test Case 'CIAnnotationTests.testPathsThroughASymbolicLinkStillMatch' started at 2026-11-12 12:42:44.036
+Test Case 'CIAnnotationTests.testPathsThroughASymbolicLinkStillMatch' passed (0.001 seconds)
+Test Case 'CIAnnotationTests.testTheCheckoutCanAppearAfterFollowingStarts' started at 2026-11-12 12:42:44.037
+Test Case 'CIAnnotationTests.testTheCheckoutCanAppearAfterFollowingStarts' passed (0.0 seconds)
+Test Case 'CIAnnotationTests.testXCTestFailuresHaveNoColumn' started at 2026-11-12 12:42:44.038
+Test Case 'CIAnnotationTests.testXCTestFailuresHaveNoColumn' passed (0.0 seconds)
+Test Suite 'CIAnnotationTests' passed at 2026-11-12 12:42:44.038
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.102 (0.102) seconds
+Test Suite 'CIFollowerTests' started at 2026-11-12 12:42:44.038
+Test Case 'CIFollowerTests.testAnOldDaemonSaysToUpdate' started at 2026-11-12 12:42:44.038
+Test Case 'CIFollowerTests.testAnOldDaemonSaysToUpdate' passed (0.001 seconds)
+Test Case 'CIFollowerTests.testCancellingCancelsTheJob' started at 2026-11-12 12:42:44.039
+Test Case 'CIFollowerTests.testCancellingCancelsTheJob' passed (0.001 seconds)
+Test Case 'CIFollowerTests.testFollowsTheLogAndExitsWithTheJobsStatus' started at 2026-11-12 12:42:44.039
+Test Case 'CIFollowerTests.testFollowsTheLogAndExitsWithTheJobsStatus' passed (0.002 seconds)
+Test Case 'CIFollowerTests.testStartToolOnlyRunsCIToolsAndRoundTripsOverTheSocket' started at 2026-11-12 12:42:44.042
+Test Case 'CIFollowerTests.testStartToolOnlyRunsCIToolsAndRoundTripsOverTheSocket' passed (0.001 seconds)
+Test Case 'CIFollowerTests.testSucceeds' started at 2026-11-12 12:42:44.043
+Test Case 'CIFollowerTests.testSucceeds' passed (0.0 seconds)
+Test Suite 'CIFollowerTests' passed at 2026-11-12 12:42:44.044
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'CIRunParseTests' started at 2026-11-12 12:42:44.044
+Test Case 'CIRunParseTests.testAPullRequestBuildsItsCommitInTheBranchsCICheckout' started at 2026-11-12 12:42:44.044
+Test Case 'CIRunParseTests.testAPullRequestBuildsItsCommitInTheBranchsCICheckout' passed (0.0 seconds)
+Test Case 'CIRunParseTests.testAPushUsesTheRefName' started at 2026-11-12 12:42:44.044
+Test Case 'CIRunParseTests.testAPushUsesTheRefName' passed (0.0 seconds)
+Test Case 'CIRunParseTests.testAnExplicitRefOrCommitIsKept' started at 2026-11-12 12:42:44.044
+Test Case 'CIRunParseTests.testAnExplicitRefOrCommitIsKept' passed (0.001 seconds)
+Test Case 'CIRunParseTests.testIsCommit' started at 2026-11-12 12:42:44.045
+Test Case 'CIRunParseTests.testIsCommit' passed (0.0 seconds)
+Test Case 'CIRunParseTests.testMistakes' started at 2026-11-12 12:42:44.045
+Test Case 'CIRunParseTests.testMistakes' passed (0.0 seconds)
+Test Case 'CIRunParseTests.testSwiftTestFiltersAndArgs' started at 2026-11-12 12:42:44.046
+Test Case 'CIRunParseTests.testSwiftTestFiltersAndArgs' passed (0.0 seconds)
+Test Suite 'CIRunParseTests' passed at 2026-11-12 12:42:44.046
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ConfigReloadTests' started at 2026-11-12 12:42:44.046
+Test Case 'ConfigReloadTests.testDiffSaysWhatAppliesAndWhatReconnects' started at 2026-11-12 12:42:44.046
+Test Case 'ConfigReloadTests.testDiffSaysWhatAppliesAndWhatReconnects' passed (0.0 seconds)
+Test Case 'ConfigReloadTests.testLiveConfigTellsObserversAboutChangesOnly' started at 2026-11-12 12:42:44.046
+Test Case 'ConfigReloadTests.testLiveConfigTellsObserversAboutChangesOnly' passed (0.0 seconds)
+Test Case 'ConfigReloadTests.testReloadReadsTheFileAndKeepsSettingsIfItIsBroken' started at 2026-11-12 12:42:44.046
+Test Case 'ConfigReloadTests.testReloadReadsTheFileAndKeepsSettingsIfItIsBroken' passed (0.002 seconds)
+Test Suite 'ConfigReloadTests' passed at 2026-11-12 12:42:44.048
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ConfigTests' started at 2026-11-12 12:42:44.048
+Test Case 'ConfigTests.testDecodesPartialConfig' started at 2026-11-12 12:42:44.048
+Test Case 'ConfigTests.testDecodesPartialConfig' passed (0.0 seconds)
+Test Case 'ConfigTests.testResolveRepo' started at 2026-11-12 12:42:44.048
+Test Case 'ConfigTests.testResolveRepo' passed (0.0 seconds)
+Test Suite 'ConfigTests' passed at 2026-11-12 12:42:44.048
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'ConsoleSessionTests' started at 2026-11-12 12:42:44.048
+Test Case 'ConsoleSessionTests.testDoctorReportsTheLoginWindow' started at 2026-11-12 12:42:44.048
+/__w/minirun/minirun/Tests/MiniRunKitTests/ConsoleSessionTests.swift:38: error: ConsoleSessionTests.testDoctorReportsTheLoginWindow : XCTAssertEqual failed: ("Optional(true)") is not equal to ("Optional(false)") - 
+/__w/minirun/minirun/Tests/MiniRunKitTests/ConsoleSessionTests.swift:40: error: ConsoleSessionTests.testDoctorReportsTheLoginWindow : XCTAssertTrue failed - 
+Test Case 'ConsoleSessionTests.testDoctorReportsTheLoginWindow' failed (0.0 seconds)
+Test Case 'ConsoleSessionTests.testLoginWindowIsAProblemWithAFix' started at 2026-11-12 12:42:44.049
+Test Case 'ConsoleSessionTests.testLoginWindowIsAProblemWithAFix' passed (0.0 seconds)
+Test Case 'ConsoleSessionTests.testOnScreenOrUnknownIsFine' started at 2026-11-12 12:42:44.049
+Test Case 'ConsoleSessionTests.testOnScreenOrUnknownIsFine' passed (0.0 seconds)
+Test Case 'ConsoleSessionTests.testOwnerFromStat' started at 2026-11-12 12:42:44.049
+Test Case 'ConsoleSessionTests.testOwnerFromStat' passed (0.0 seconds)
+Test Suite 'ConsoleSessionTests' failed at 2026-11-12 12:42:44.049
+	 Executed 4 tests, with 2 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ControlCommandTests' started at 2026-11-12 12:42:44.049
+Test Case 'ControlCommandTests.testEveryCommand' started at 2026-11-12 12:42:44.049
+Test Case 'ControlCommandTests.testEveryCommand' passed (0.002 seconds)
+Test Case 'ControlCommandTests.testMissingArgumentsAreRefusedBeforeTheyReachTheDaemon' started at 2026-11-12 12:42:44.050
+Test Case 'ControlCommandTests.testMissingArgumentsAreRefusedBeforeTheyReachTheDaemon' passed (0.0 seconds)
+Test Case 'ControlCommandTests.testReconnectRelayPassesTheDeployedBundle' started at 2026-11-12 12:42:44.051
+Test Case 'ControlCommandTests.testReconnectRelayPassesTheDeployedBundle' passed (0.001 seconds)
+Test Case 'ControlCommandTests.testRequestWithoutBundleDecodes' started at 2026-11-12 12:42:44.051
+Test Case 'ControlCommandTests.testRequestWithoutBundleDecodes' passed (0.0 seconds)
+Test Case 'ControlCommandTests.testWireFormat' started at 2026-11-12 12:42:44.052
+Test Case 'ControlCommandTests.testWireFormat' passed (0.0 seconds)
+Test Suite 'ControlCommandTests' passed at 2026-11-12 12:42:44.052
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.003 (0.003) seconds
+Test Suite 'ControlSocketTests' started at 2026-11-12 12:42:44.052
+Test Case 'ControlSocketTests.testConcurrentRequests' started at 2026-11-12 12:42:44.052
+Test Case 'ControlSocketTests.testConcurrentRequests' passed (0.101 seconds)
+Test Case 'ControlSocketTests.testOneServerPerPathAndLeftoverSocketsAreReplaced' started at 2026-11-12 12:42:44.153
+Test Case 'ControlSocketTests.testOneServerPerPathAndLeftoverSocketsAreReplaced' passed (0.001 seconds)
+Test Case 'ControlSocketTests.testSocketPathLimit' started at 2026-11-12 12:42:44.154
+Test Case 'ControlSocketTests.testSocketPathLimit' passed (0.0 seconds)
+Test Case 'ControlSocketTests.testStatusRoundTripsOverTheSocket' started at 2026-11-12 12:42:44.154
+Test Case 'ControlSocketTests.testStatusRoundTripsOverTheSocket' passed (0.001 seconds)
+Test Case 'ControlSocketTests.testSummary' started at 2026-11-12 12:42:44.155
+Test Case 'ControlSocketTests.testSummary' passed (0.0 seconds)
+Test Suite 'ControlSocketTests' passed at 2026-11-12 12:42:44.156
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.104 (0.104) seconds
+Test Suite 'DoctorTests' started at 2026-11-12 12:42:44.156
+Test Case 'DoctorTests.testBrokenMacSaysHowToFixEachThing' started at 2026-11-12 12:42:44.156
+Test Case 'DoctorTests.testBrokenMacSaysHowToFixEachThing' passed (0.0 seconds)
+Test Case 'DoctorTests.testHealthyMac' started at 2026-11-12 12:42:44.156
+Test Case 'DoctorTests.testHealthyMac' passed (0.0 seconds)
+Test Case 'DoctorTests.testKickstartArguments' started at 2026-11-12 12:42:44.157
+Test Case 'DoctorTests.testKickstartArguments' passed (0.0 seconds)
+Test Case 'DoctorTests.testWithoutServeStatusTheServeCheckIsLeftOut' started at 2026-11-12 12:42:44.157
+Test Case 'DoctorTests.testWithoutServeStatusTheServeCheckIsLeftOut' passed (0.0 seconds)
+Test Suite 'DoctorTests' passed at 2026-11-12 12:42:44.157
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'GIFEncoderTests' started at 2026-11-12 12:42:44.157
+Test Case 'GIFEncoderTests.testLZWHandlesTableResets' started at 2026-11-12 12:42:44.157
+Test Case 'GIFEncoderTests.testLZWHandlesTableResets' passed (0.291 seconds)
+Test Case 'GIFEncoderTests.testManyColoursFitInAPalette' started at 2026-11-12 12:42:44.448
+Test Case 'GIFEncoderTests.testManyColoursFitInAPalette' passed (0.019 seconds)
+Test Case 'GIFEncoderTests.testRoundTripsThroughADecoder' started at 2026-11-12 12:42:44.468
+Test Case 'GIFEncoderTests.testRoundTripsThroughADecoder' passed (0.006 seconds)
+Test Case 'GIFEncoderTests.testSmallNoiseIsNotAChange' started at 2026-11-12 12:42:44.474
+Test Case 'GIFEncoderTests.testSmallNoiseIsNotAChange' passed (0.003 seconds)
+Test Case 'GIFEncoderTests.testStillFramesStretchTheOneBefore' started at 2026-11-12 12:42:44.477
+Test Case 'GIFEncoderTests.testStillFramesStretchTheOneBefore' passed (0.103 seconds)
+Test Suite 'GIFEncoderTests' passed at 2026-11-12 12:42:44.580
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.423 (0.423) seconds
+Test Suite 'GitHubMediaTests' started at 2026-11-12 12:42:44.580
+Test Case 'GitHubMediaTests.testAFailedGitHubUploadDoesNotFallBackToTheWorker' started at 2026-11-12 12:42:44.580
+Test Case 'GitHubMediaTests.testAFailedGitHubUploadDoesNotFallBackToTheWorker' passed (0.002 seconds)
+Test Case 'GitHubMediaTests.testBadFolderOrNameIsRefusedBeforeUploading' started at 2026-11-12 12:42:44.582
+Test Case 'GitHubMediaTests.testBadFolderOrNameIsRefusedBeforeUploading' passed (0.1 seconds)
+Test Case 'GitHubMediaTests.testBranchAnswersAreRemembered' started at 2026-11-12 12:42:44.682
+Test Case 'GitHubMediaTests.testBranchAnswersAreRemembered' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testConfigKeys' started at 2026-11-12 12:42:44.683
+Test Case 'GitHubMediaTests.testConfigKeys' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testDefaults' started at 2026-11-12 12:42:44.683
+Test Case 'GitHubMediaTests.testDefaults' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testDefaultsFolderAndNameAndPairsBeforeWithAfter' started at 2026-11-12 12:42:44.683
+Test Case 'GitHubMediaTests.testDefaultsFolderAndNameAndPairsBeforeWithAfter' passed (0.02 seconds)
+Test Case 'GitHubMediaTests.testDeleteRemovesTheFileFromTheBranch' started at 2026-11-12 12:42:44.704
+Test Case 'GitHubMediaTests.testDeleteRemovesTheFileFromTheBranch' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testDestination' started at 2026-11-12 12:42:44.704
+Test Case 'GitHubMediaTests.testDestination' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testGIFLimitDependsOnWhereItGoes' started at 2026-11-12 12:42:44.704
+Test Case 'GitHubMediaTests.testGIFLimitDependsOnWhereItGoes' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testGitHubItemsDontCountTowardTheWorkerCap' started at 2026-11-12 12:42:44.704
+Test Case 'GitHubMediaTests.testGitHubItemsDontCountTowardTheWorkerCap' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testNames' started at 2026-11-12 12:42:44.705
+Test Case 'GitHubMediaTests.testNames' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testOldLedgerEntriesAreOnTheWorker' started at 2026-11-12 12:42:44.705
+Test Case 'GitHubMediaTests.testOldLedgerEntriesAreOnTheWorker' passed (0.0 seconds)
+Test Case 'GitHubMediaTests.testRecordingsCommitOnlyTheGIF' started at 2026-11-12 12:42:44.705
+Test Case 'GitHubMediaTests.testRecordingsCommitOnlyTheGIF' passed (0.001 seconds)
+Test Case 'GitHubMediaTests.testReplacingAFileSendsItsSHAAndRetriesWhenTheBranchMoves' started at 2026-11-12 12:42:44.706
+Test Case 'GitHubMediaTests.testReplacingAFileSendsItsSHAAndRetriesWhenTheBranchMoves' passed (0.001 seconds)
+Test Case 'GitHubMediaTests.testShareCommitsToTheBranchAndReturnsAPinnedEmbed' started at 2026-11-12 12:42:44.707
+Test Case 'GitHubMediaTests.testShareCommitsToTheBranchAndReturnsAPinnedEmbed' passed (0.001 seconds)
+Test Case 'GitHubMediaTests.testUploadErrorsSayWhatToDo' started at 2026-11-12 12:42:44.708
+Test Case 'GitHubMediaTests.testUploadErrorsSayWhatToDo' passed (0.004 seconds)
+Test Case 'GitHubMediaTests.testWorkerShareSaysItWontEmbedAndHowToOptIn' started at 2026-11-12 12:42:44.712
+Test Case 'GitHubMediaTests.testWorkerShareSaysItWontEmbedAndHowToOptIn' passed (0.001 seconds)
+Test Suite 'GitHubMediaTests' passed at 2026-11-12 12:42:44.713
+	 Executed 17 tests, with 0 failures (0 unexpected) in 0.133 (0.133) seconds
+Test Suite 'GitHubRunnersTests' started at 2026-11-12 12:42:44.713
+Test Case 'GitHubRunnersTests.testBadgeAndActions' started at 2026-11-12 12:42:44.713
+Test Case 'GitHubRunnersTests.testBadgeAndActions' passed (0.1 seconds)
+Test Case 'GitHubRunnersTests.testCommands' started at 2026-11-12 12:42:44.813
+Test Case 'GitHubRunnersTests.testCommands' passed (0.0 seconds)
+Test Case 'GitHubRunnersTests.testInstalledReadsWhatTheScriptLeft' started at 2026-11-12 12:42:44.813
+Test Case 'GitHubRunnersTests.testInstalledReadsWhatTheScriptLeft' passed (0.003 seconds)
+Test Case 'GitHubRunnersTests.testLaunchctlState' started at 2026-11-12 12:42:44.816
+Test Case 'GitHubRunnersTests.testLaunchctlState' passed (0.1 seconds)
+Test Case 'GitHubRunnersTests.testRemoteMatchesByName' started at 2026-11-12 12:42:44.916
+Test Case 'GitHubRunnersTests.testRemoteMatchesByName' passed (0.1 seconds)
+Test Case 'GitHubRunnersTests.testRepoInput' started at 2026-11-12 12:42:45.016
+Test Case 'GitHubRunnersTests.testRepoInput' passed (0.101 seconds)
+Test Case 'GitHubRunnersTests.testSuggestedCommand' started at 2026-11-12 12:42:45.118
+Test Case 'GitHubRunnersTests.testSuggestedCommand' passed (0.0 seconds)
+Test Suite 'GitHubRunnersTests' passed at 2026-11-12 12:42:45.118
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.405 (0.405) seconds
+Test Suite 'JSONValueTests' started at 2026-11-12 12:42:45.118
+Test Case 'JSONValueTests.testArguments' started at 2026-11-12 12:42:45.118
+Test Case 'JSONValueTests.testArguments' passed (0.0 seconds)
+Test Case 'JSONValueTests.testRoundTrip' started at 2026-11-12 12:42:45.118
+Test Case 'JSONValueTests.testRoundTrip' passed (0.0 seconds)
+Test Suite 'JSONValueTests' passed at 2026-11-12 12:42:45.118
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'JobCancelTests' started at 2026-11-12 12:42:45.118
+Test Case 'JobCancelTests.testCancelUnknownJob' started at 2026-11-12 12:42:45.118
+Test Case 'JobCancelTests.testCancelUnknownJob' passed (0.0 seconds)
+Test Case 'JobCancelTests.testCancellingAJobStopsItsCommand' started at 2026-11-12 12:42:45.119
+Test Case 'JobCancelTests.testCancellingAJobStopsItsCommand' passed (0.501 seconds)
+Test Suite 'JobCancelTests' passed at 2026-11-12 12:42:45.620
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.501 (0.501) seconds
+Test Suite 'LaunchAgentTests' started at 2026-11-12 12:42:45.620
+Test Case 'LaunchAgentTests.testApplicationsFolder' started at 2026-11-12 12:42:45.620
+Test Case 'LaunchAgentTests.testApplicationsFolder' passed (0.0 seconds)
+Test Case 'LaunchAgentTests.testCommandLineToolCommand' started at 2026-11-12 12:42:45.620
+Test Case 'LaunchAgentTests.testCommandLineToolCommand' passed (0.0 seconds)
+Test Case 'LaunchAgentTests.testPlan' started at 2026-11-12 12:42:45.620
+Test Case 'LaunchAgentTests.testPlan' passed (0.0 seconds)
+Test Case 'LaunchAgentTests.testPlistRunsTheProgramAndReadsBack' started at 2026-11-12 12:42:45.620
+Test Case 'LaunchAgentTests.testPlistRunsTheProgramAndReadsBack' passed (0.0 seconds)
+Test Suite 'LaunchAgentTests' passed at 2026-11-12 12:42:45.621
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MacAppIDTests' started at 2026-11-12 12:42:45.621
+Test Case 'MacAppIDTests.testIdsAreStableAndLookLikeMacDevices' started at 2026-11-12 12:42:45.621
+Test Case 'MacAppIDTests.testIdsAreStableAndLookLikeMacDevices' passed (0.0 seconds)
+Test Suite 'MacAppIDTests' passed at 2026-11-12 12:42:45.621
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'MacAppStoreTests' started at 2026-11-12 12:42:45.621
+Test Case 'MacAppStoreTests.testDecodesEntriesFromOlderVersions' started at 2026-11-12 12:42:45.621
+Test Case 'MacAppStoreTests.testDecodesEntriesFromOlderVersions' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testForgetStoppedKeepsRunningApps' started at 2026-11-12 12:42:45.621
+Test Case 'MacAppStoreTests.testForgetStoppedKeepsRunningApps' passed (0.008 seconds)
+Test Case 'MacAppStoreTests.testIdForLabelAvoidsCollisions' started at 2026-11-12 12:42:45.629
+Test Case 'MacAppStoreTests.testIdForLabelAvoidsCollisions' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testIdlePlan' started at 2026-11-12 12:42:45.629
+Test Case 'MacAppStoreTests.testIdlePlan' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testMarkExitedOnlyClearsTheGivenPid' started at 2026-11-12 12:42:45.630
+Test Case 'MacAppStoreTests.testMarkExitedOnlyClearsTheGivenPid' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testMissingOrCorruptFileStartsEmpty' started at 2026-11-12 12:42:45.630
+Test Case 'MacAppStoreTests.testMissingOrCorruptFileStartsEmpty' passed (0.002 seconds)
+Test Case 'MacAppStoreTests.testPersistsAcrossRestarts' started at 2026-11-12 12:42:45.631
+Test Case 'MacAppStoreTests.testPersistsAcrossRestarts' passed (0.003 seconds)
+Test Case 'MacAppStoreTests.testProcessesSharingTheFileKeepEachOthersChanges' started at 2026-11-12 12:42:45.634
+Test Case 'MacAppStoreTests.testProcessesSharingTheFileKeepEachOthersChanges' passed (0.004 seconds)
+Test Case 'MacAppStoreTests.testReconcileKeepsOnlyOurLivePids' started at 2026-11-12 12:42:45.638
+Test Case 'MacAppStoreTests.testReconcileKeepsOnlyOurLivePids' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testSessionJSON' started at 2026-11-12 12:42:45.638
+Test Case 'MacAppStoreTests.testSessionJSON' passed (0.001 seconds)
+Test Case 'MacAppStoreTests.testStalePlan' started at 2026-11-12 12:42:45.639
+Test Case 'MacAppStoreTests.testStalePlan' passed (0.0 seconds)
+Test Case 'MacAppStoreTests.testTouchAndCaseInsensitiveIds' started at 2026-11-12 12:42:45.639
+Test Case 'MacAppStoreTests.testTouchAndCaseInsensitiveIds' passed (0.0 seconds)
+Test Suite 'MacAppStoreTests' passed at 2026-11-12 12:42:45.639
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.018 (0.018) seconds
+Test Suite 'MacBuildTests' started at 2026-11-12 12:42:45.639
+Test Case 'MacBuildTests.testDestinations' started at 2026-11-12 12:42:45.639
+Test Case 'MacBuildTests.testDestinations' passed (0.0 seconds)
+Test Case 'MacBuildTests.testDetectPlatform' started at 2026-11-12 12:42:45.639
+Test Case 'MacBuildTests.testDetectPlatform' passed (0.0 seconds)
+Test Case 'MacBuildTests.testMacAppProduct' started at 2026-11-12 12:42:45.640
+Test Case 'MacBuildTests.testMacAppProduct' passed (0.0 seconds)
+Test Case 'MacBuildTests.testSigningFailure' started at 2026-11-12 12:42:45.640
+Test Case 'MacBuildTests.testSigningFailure' passed (0.0 seconds)
+Test Suite 'MacBuildTests' passed at 2026-11-12 12:42:45.640
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MacControlTests' started at 2026-11-12 12:42:45.640
+Test Case 'MacControlTests.testDaemonsWithoutMacSupportSaySo' started at 2026-11-12 12:42:45.640
+Test Case 'MacControlTests.testDaemonsWithoutMacSupportSaySo' passed (0.0 seconds)
+Test Case 'MacControlTests.testMacCommands' started at 2026-11-12 12:42:45.640
+Test Case 'MacControlTests.testMacCommands' passed (0.1 seconds)
+Test Suite 'MacControlTests' passed at 2026-11-12 12:42:45.741
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.101 (0.101) seconds
+Test Suite 'MacDoctorTests' started at 2026-11-12 12:42:45.741
+Test Case 'MacDoctorTests.testGrantedAndSkipped' started at 2026-11-12 12:42:45.741
+Test Case 'MacDoctorTests.testGrantedAndSkipped' passed (0.0 seconds)
+Test Case 'MacDoctorTests.testMacChecksAreOptionalWarningsWithFixes' started at 2026-11-12 12:42:45.741
+Test Case 'MacDoctorTests.testMacChecksAreOptionalWarningsWithFixes' passed (0.0 seconds)
+Test Case 'MacDoctorTests.testReportMissingAndSetupRows' started at 2026-11-12 12:42:45.741
+Test Case 'MacDoctorTests.testReportMissingAndSetupRows' passed (0.0 seconds)
+Test Suite 'MacDoctorTests' passed at 2026-11-12 12:42:45.742
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MacGeometryTests' started at 2026-11-12 12:42:45.742
+Test Case 'MacGeometryTests.testContains' started at 2026-11-12 12:42:45.742
+Test Case 'MacGeometryTests.testContains' passed (0.0 seconds)
+Test Case 'MacGeometryTests.testPath' started at 2026-11-12 12:42:45.742
+Test Case 'MacGeometryTests.testPath' passed (0.1 seconds)
+Test Case 'MacGeometryTests.testSizes' started at 2026-11-12 12:42:45.842
+Test Case 'MacGeometryTests.testSizes' passed (0.0 seconds)
+Test Case 'MacGeometryTests.testWindowAndGlobalPoints' started at 2026-11-12 12:42:45.842
+Test Case 'MacGeometryTests.testWindowAndGlobalPoints' passed (0.0 seconds)
+Test Suite 'MacGeometryTests' passed at 2026-11-12 12:42:45.842
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.1 (0.1) seconds
+Test Suite 'MacKeysTests' started at 2026-11-12 12:42:45.842
+Test Case 'MacKeysTests.testCombos' started at 2026-11-12 12:42:45.842
+Test Case 'MacKeysTests.testCombos' passed (0.0 seconds)
+Test Case 'MacKeysTests.testFlags' started at 2026-11-12 12:42:45.842
+Test Case 'MacKeysTests.testFlags' passed (0.0 seconds)
+Test Case 'MacKeysTests.testKeyCodes' started at 2026-11-12 12:42:45.842
+Test Case 'MacKeysTests.testKeyCodes' passed (0.1 seconds)
+Test Case 'MacKeysTests.testModifiers' started at 2026-11-12 12:42:45.943
+Test Case 'MacKeysTests.testModifiers' passed (0.0 seconds)
+Test Case 'MacKeysTests.testStrokes' started at 2026-11-12 12:42:45.943
+Test Case 'MacKeysTests.testStrokes' passed (0.0 seconds)
+Test Case 'MacKeysTests.testTextChunks' started at 2026-11-12 12:42:45.943
+Test Case 'MacKeysTests.testTextChunks' passed (0.0 seconds)
+Test Suite 'MacKeysTests' passed at 2026-11-12 12:42:45.943
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.101 (0.101) seconds
+Test Suite 'MacMenuTests' started at 2026-11-12 12:42:45.943
+Test Case 'MacMenuTests.testActions' started at 2026-11-12 12:42:45.943
+Test Case 'MacMenuTests.testActions' passed (0.0 seconds)
+Test Case 'MacMenuTests.testOnlyAFewStoppedAppsAreListed' started at 2026-11-12 12:42:45.944
+Test Case 'MacMenuTests.testOnlyAFewStoppedAppsAreListed' passed (0.0 seconds)
+Test Case 'MacMenuTests.testRows' started at 2026-11-12 12:42:45.944
+Test Case 'MacMenuTests.testRows' passed (0.0 seconds)
+Test Suite 'MacMenuTests' passed at 2026-11-12 12:42:45.944
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MacStatusTests' started at 2026-11-12 12:42:45.944
+Test Case 'MacStatusTests.testRoundTripsAndDecodesOldDaemons' started at 2026-11-12 12:42:45.944
+Test Case 'MacStatusTests.testRoundTripsAndDecodesOldDaemons' passed (0.0 seconds)
+Test Case 'MacStatusTests.testSessionToStatus' started at 2026-11-12 12:42:45.944
+Test Case 'MacStatusTests.testSessionToStatus' passed (0.1 seconds)
+Test Case 'MacStatusTests.testSummaryListsMacApps' started at 2026-11-12 12:42:46.044
+Test Case 'MacStatusTests.testSummaryListsMacApps' passed (0.0 seconds)
+Test Suite 'MacStatusTests' passed at 2026-11-12 12:42:46.045
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.101 (0.101) seconds
+Test Suite 'MacToolsTests' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testInputPath' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testInputPath' passed (0.0 seconds)
+Test Case 'MacToolsTests.testKeyAndModifiers' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testKeyAndModifiers' passed (0.0 seconds)
+Test Case 'MacToolsTests.testLiveMouse' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testLiveMouse' passed (0.0 seconds)
+Test Case 'MacToolsTests.testMenuPath' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testMenuPath' passed (0.0 seconds)
+Test Case 'MacToolsTests.testPaths' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testPaths' passed (0.0 seconds)
+Test Case 'MacToolsTests.testPermissionMessage' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testPermissionMessage' passed (0.0 seconds)
+Test Case 'MacToolsTests.testPickerAndScreen' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testPickerAndScreen' passed (0.0 seconds)
+Test Case 'MacToolsTests.testPlatform' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testPlatform' passed (0.0 seconds)
+Test Case 'MacToolsTests.testScrollDelta' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testScrollDelta' passed (0.0 seconds)
+Test Case 'MacToolsTests.testText' started at 2026-11-12 12:42:46.045
+Test Case 'MacToolsTests.testText' passed (0.0 seconds)
+Test Suite 'MacToolsTests' passed at 2026-11-12 12:42:46.045
+	 Executed 10 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MediaMenuTests' started at 2026-11-12 12:42:46.045
+Test Case 'MediaMenuTests.testMenuLoadsMediaWhenOpenedAndAfterDeleting' started at 2026-11-12 12:42:46.045
+Test Case 'MediaMenuTests.testMenuLoadsMediaWhenOpenedAndAfterDeleting' passed (0.2 seconds)
+Test Case 'MediaMenuTests.testRowsAndSummary' started at 2026-11-12 12:42:46.246
+Test Case 'MediaMenuTests.testRowsAndSummary' passed (0.0 seconds)
+Test Case 'MediaMenuTests.testSettingsFormSharing' started at 2026-11-12 12:42:46.246
+Test Case 'MediaMenuTests.testSettingsFormSharing' passed (0.0 seconds)
+Test Case 'MediaMenuTests.testStatusShowsRecordingAndMedia' started at 2026-11-12 12:42:46.246
+Test Case 'MediaMenuTests.testStatusShowsRecordingAndMedia' passed (0.1 seconds)
+Test Suite 'MediaMenuTests' passed at 2026-11-12 12:42:46.346
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.301 (0.301) seconds
+Test Suite 'MediaTests' started at 2026-11-12 12:42:46.346
+Test Case 'MediaTests.testBackgroundProcessStopsOnInterrupt' started at 2026-11-12 12:42:46.346
+Test Case 'MediaTests.testBackgroundProcessStopsOnInterrupt' passed (0.303 seconds)
+Test Case 'MediaTests.testCapPlanDeletesOldestFirst' started at 2026-11-12 12:42:46.650
+Test Case 'MediaTests.testCapPlanDeletesOldestFirst' passed (0.0 seconds)
+Test Case 'MediaTests.testCaptionsAreCutToTwoHundredEncodedCharacters' started at 2026-11-12 12:42:46.650
+Test Case 'MediaTests.testCaptionsAreCutToTwoHundredEncodedCharacters' passed (0.0 seconds)
+Test Case 'MediaTests.testConfigDefaultsAndClamping' started at 2026-11-12 12:42:46.650
+Test Case 'MediaTests.testConfigDefaultsAndClamping' passed (0.0 seconds)
+Test Case 'MediaTests.testIDsAreRandomBase64URL' started at 2026-11-12 12:42:46.650
+Test Case 'MediaTests.testIDsAreRandomBase64URL' passed (0.004 seconds)
+Test Case 'MediaTests.testLedgerPersistsAndPrunesExpired' started at 2026-11-12 12:42:46.654
+Test Case 'MediaTests.testLedgerPersistsAndPrunesExpired' passed (0.004 seconds)
+Test Case 'MediaTests.testMarkdown' started at 2026-11-12 12:42:46.658
+Test Case 'MediaTests.testMarkdown' passed (0.0 seconds)
+Test Case 'MediaTests.testOldStatusDecodesWithoutMediaOrRecording' started at 2026-11-12 12:42:46.658
+Test Case 'MediaTests.testOldStatusDecodesWithoutMediaOrRecording' passed (0.1 seconds)
+Test Case 'MediaTests.testShareDeletesOldestUploadsAndRecords' started at 2026-11-12 12:42:46.758
+Test Case 'MediaTests.testShareDeletesOldestUploadsAndRecords' passed (0.001 seconds)
+Test Case 'MediaTests.testShareRespectsTheSwitchAndCleansUpAFailedUpload' started at 2026-11-12 12:42:46.759
+Test Case 'MediaTests.testShareRespectsTheSwitchAndCleansUpAFailedUpload' passed (0.0 seconds)
+Test Case 'MediaTests.testTagsComeFromReservationLabels' started at 2026-11-12 12:42:46.759
+Test Case 'MediaTests.testTagsComeFromReservationLabels' passed (0.0 seconds)
+Test Case 'MediaTests.testUploaderExplainsWorkerErrors' started at 2026-11-12 12:42:46.759
+Test Case 'MediaTests.testUploaderExplainsWorkerErrors' passed (0.1 seconds)
+Test Case 'MediaTests.testUploaderSendsTheContractHeaders' started at 2026-11-12 12:42:46.860
+Test Case 'MediaTests.testUploaderSendsTheContractHeaders' passed (0.0 seconds)
+Test Suite 'MediaTests' passed at 2026-11-12 12:42:46.860
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.513 (0.513) seconds
+Test Suite 'MenuModelTests' started at 2026-11-12 12:42:46.860
+Test Case 'MenuModelTests.testDaemonGoingAwayAndActions' started at 2026-11-12 12:42:46.860
+Test Case 'MenuModelTests.testDaemonGoingAwayAndActions' passed (0.0 seconds)
+Test Case 'MenuModelTests.testPollsSlowlyUntilTheMenuOpens' started at 2026-11-12 12:42:46.860
+Test Case 'MenuModelTests.testPollsSlowlyUntilTheMenuOpens' passed (0.2 seconds)
+Test Suite 'MenuModelTests' passed at 2026-11-12 12:42:47.060
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.201 (0.201) seconds
+Test Suite 'MenuSnapshotTests' started at 2026-11-12 12:42:47.060
+Test Case 'MenuSnapshotTests.testConnected' started at 2026-11-12 12:42:47.060
+Test Case 'MenuSnapshotTests.testConnected' passed (0.0 seconds)
+Test Case 'MenuSnapshotTests.testConnectorURL' started at 2026-11-12 12:42:47.061
+Test Case 'MenuSnapshotTests.testConnectorURL' passed (0.0 seconds)
+Test Case 'MenuSnapshotTests.testJobListIsCappedButKeepsEveryRunningJob' started at 2026-11-12 12:42:47.061
+Test Case 'MenuSnapshotTests.testJobListIsCappedButKeepsEveryRunningJob' passed (0.0 seconds)
+Test Case 'MenuSnapshotTests.testNotRunning' started at 2026-11-12 12:42:47.061
+Test Case 'MenuSnapshotTests.testNotRunning' passed (0.0 seconds)
+Test Case 'MenuSnapshotTests.testOlderDaemonAndErrors' started at 2026-11-12 12:42:47.061
+Test Case 'MenuSnapshotTests.testOlderDaemonAndErrors' passed (0.0 seconds)
+Test Case 'MenuSnapshotTests.testRelayProblemsComeWithAFix' started at 2026-11-12 12:42:47.061
+Test Case 'MenuSnapshotTests.testRelayProblemsComeWithAFix' passed (0.0 seconds)
+Test Suite 'MenuSnapshotTests' passed at 2026-11-12 12:42:47.061
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'NotificationRulesTests' started at 2026-11-12 12:42:47.061
+Test Case 'NotificationRulesTests.testFailedJobsAfterTheFirstPoll' started at 2026-11-12 12:42:47.061
+Test Case 'NotificationRulesTests.testFailedJobsAfterTheFirstPoll' passed (0.0 seconds)
+Test Case 'NotificationRulesTests.testMenuModelPostsNotifications' started at 2026-11-12 12:42:47.061
+Test Case 'NotificationRulesTests.testMenuModelPostsNotifications' passed (0.0 seconds)
+Test Case 'NotificationRulesTests.testOutageOncePerOutage' started at 2026-11-12 12:42:47.062
+Test Case 'NotificationRulesTests.testOutageOncePerOutage' passed (0.001 seconds)
+Test Suite 'NotificationRulesTests' passed at 2026-11-12 12:42:47.062
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RTCSignalingTests' started at 2026-11-12 12:42:47.062
+Test Case 'RTCSignalingTests.testDecodesAnswerCandidateStop' started at 2026-11-12 12:42:47.062
+Test Case 'RTCSignalingTests.testDecodesAnswerCandidateStop' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testDecodesStart' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testDecodesStart' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testEncodesMacMessages' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testEncodesMacMessages' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testHelloSaysWebRTC' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testHelloSaysWebRTC' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testRejectsMalformedRTC' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testRejectsMalformedRTC' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testViewerArgumentsAreMadeSafe' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testViewerArgumentsAreMadeSafe' passed (0.0 seconds)
+Test Case 'RTCSignalingTests.testViewerMessages' started at 2026-11-12 12:42:47.063
+Test Case 'RTCSignalingTests.testViewerMessages' passed (0.0 seconds)
+Test Suite 'RTCSignalingTests' passed at 2026-11-12 12:42:47.063
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'RelayProtocolTests' started at 2026-11-12 12:42:47.063
+Test Case 'RelayProtocolTests.testAnnexB' started at 2026-11-12 12:42:47.063
+Test Case 'RelayProtocolTests.testAnnexB' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testBitrate' started at 2026-11-12 12:42:47.063
+Test Case 'RelayProtocolTests.testBitrate' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testCallLedger' started at 2026-11-12 12:42:47.063
+Test Case 'RelayProtocolTests.testCallLedger' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testDecodeMessages' started at 2026-11-12 12:42:47.063
+Test Case 'RelayProtocolTests.testDecodeMessages' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testFrameEncoding' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testFrameEncoding' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testLatencyStats' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testLatencyStats' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testLowLatencySPS' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testLowLatencySPS' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testPercentile' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testPercentile' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testProbeEchoesTimeAndViewer' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testProbeEchoesTimeAndViewer' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testResultShape' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testResultShape' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testSPSWithoutReordering' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testSPSWithoutReordering' passed (0.0 seconds)
+Test Case 'RelayProtocolTests.testStatsMessage' started at 2026-11-12 12:42:47.064
+Test Case 'RelayProtocolTests.testStatsMessage' passed (0.0 seconds)
+Test Suite 'RelayProtocolTests' passed at 2026-11-12 12:42:47.065
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'SettingsFormTests' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testDeviceChoices' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testDeviceChoices' passed (0.0 seconds)
+Test Case 'SettingsFormTests.testDiagnosticsLeaveOutSecrets' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testDiagnosticsLeaveOutSecrets' passed (0.0 seconds)
+Test Case 'SettingsFormTests.testRoundTripAndValidation' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testRoundTripAndValidation' passed (0.0 seconds)
+Test Case 'SettingsFormTests.testStaleWorkspaces' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testStaleWorkspaces' passed (0.0 seconds)
+Test Case 'SettingsFormTests.testWorkspaceCleanup' started at 2026-11-12 12:42:47.065
+Test Case 'SettingsFormTests.testWorkspaceCleanup' passed (0.0 seconds)
+Test Suite 'SettingsFormTests' passed at 2026-11-12 12:42:47.066
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'SetupTests' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testChecklist' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testChecklist' passed (0.0 seconds)
+Test Case 'SetupTests.testClaudeConnected' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testClaudeConnected' passed (0.0 seconds)
+Test Case 'SetupTests.testNeeded' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testNeeded' passed (0.0 seconds)
+Test Case 'SetupTests.testWelcomeMessage' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testWelcomeMessage' passed (0.0 seconds)
+Test Case 'SetupTests.testWorkerOutdated' started at 2026-11-12 12:42:47.066
+Test Case 'SetupTests.testWorkerOutdated' passed (0.0 seconds)
+Test Suite 'SetupTests' passed at 2026-11-12 12:42:47.066
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'ShellAndJobTests' started at 2026-11-12 12:42:47.066
+Test Case 'ShellAndJobTests.testCancellingAJobStopsItsCommand' started at 2026-11-12 12:42:47.066
+Test Case 'ShellAndJobTests.testCancellingAJobStopsItsCommand' passed (0.3 seconds)
+Test Case 'ShellAndJobTests.testChildProcessNames' started at 2026-11-12 12:42:47.367
+Test Case 'ShellAndJobTests.testChildProcessNames' passed (0.1 seconds)
+Test Case 'ShellAndJobTests.testJobWaitStaysUnderClientTimeout' started at 2026-11-12 12:42:47.467
+Test Case 'ShellAndJobTests.testJobWaitStaysUnderClientTimeout' passed (0.0 seconds)
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' started at 2026-11-12 12:42:47.467
+Test Case 'ShellAndJobTests.testJobWaitsAndTimesOut' passed (2.001 seconds)
+Test Case 'ShellAndJobTests.testJobsOutliveARestart' started at 2026-11-12 12:42:49.467
+Test Case 'ShellAndJobTests.testJobsOutliveARestart' passed (0.109 seconds)
+Test Case 'ShellAndJobTests.testReapOrphansLeavesOtherProcessesAlone' started at 2026-11-12 12:42:49.577
+Test Case 'ShellAndJobTests.testReapOrphansLeavesOtherProcessesAlone' passed (0.054 seconds)
+Test Case 'ShellAndJobTests.testShellCapturesOutput' started at 2026-11-12 12:42:49.631
+Test Case 'ShellAndJobTests.testShellCapturesOutput' passed (0.051 seconds)
+Test Case 'ShellAndJobTests.testShellKeepsAProgramThatKeepsTalking' started at 2026-11-12 12:42:49.682
+Test Case 'ShellAndJobTests.testShellKeepsAProgramThatKeepsTalking' passed (2.055 seconds)
+Test Case 'ShellAndJobTests.testShellStdin' started at 2026-11-12 12:42:51.737
+Test Case 'ShellAndJobTests.testShellStdin' passed (0.051 seconds)
+Test Case 'ShellAndJobTests.testShellStopsAProgramThatGoesQuiet' started at 2026-11-12 12:42:51.788
+Test Case 'ShellAndJobTests.testShellStopsAProgramThatGoesQuiet' passed (7.054 seconds)
+Test Case 'ShellAndJobTests.testShellTimeout' started at 2026-11-12 12:42:58.842
+Test Case 'ShellAndJobTests.testShellTimeout' passed (5.554 seconds)
+Test Suite 'ShellAndJobTests' passed at 2026-11-12 12:43:04.396
+	 Executed 11 tests, with 0 failures (0 unexpected) in 17.33 (17.33) seconds
+Test Suite 'SimulatorPickerTests' started at 2026-11-12 12:43:04.396
+Test Case 'SimulatorPickerTests.testActivityCountsOverlappingWork' started at 2026-11-12 12:43:04.396
+Test Case 'SimulatorPickerTests.testActivityCountsOverlappingWork' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testBootGivesEachSessionItsOwnSimulator' started at 2026-11-12 12:43:04.396
+Test Case 'SimulatorPickerTests.testBootGivesEachSessionItsOwnSimulator' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testBootRespectsTheLimit' started at 2026-11-12 12:43:04.397
+Test Case 'SimulatorPickerTests.testBootRespectsTheLimit' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testBootsRunOnceAndReportFailures' started at 2026-11-12 12:43:04.397
+Test Case 'SimulatorPickerTests.testBootsRunOnceAndReportFailures' passed (0.201 seconds)
+Test Case 'SimulatorPickerTests.testBuildsFindTheirOwnSimulator' started at 2026-11-12 12:43:04.598
+Test Case 'SimulatorPickerTests.testBuildsFindTheirOwnSimulator' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testClaimStorePersistsAndPrunes' started at 2026-11-12 12:43:04.598
+Test Case 'SimulatorPickerTests.testClaimStorePersistsAndPrunes' passed (0.004 seconds)
+Test Case 'SimulatorPickerTests.testClaimStoreSavesUseTimesAndUnreserves' started at 2026-11-12 12:43:04.602
+Test Case 'SimulatorPickerTests.testClaimStoreSavesUseTimesAndUnreserves' passed (0.002 seconds)
+Test Case 'SimulatorPickerTests.testFreshSkipsTheDuo' started at 2026-11-12 12:43:04.604
+Test Case 'SimulatorPickerTests.testFreshSkipsTheDuo' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testIdleSimulatorsShutDownButOneStaysWarm' started at 2026-11-12 12:43:04.604
+Test Case 'SimulatorPickerTests.testIdleSimulatorsShutDownButOneStaysWarm' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testPlainToolsNeverGuessBetweenBootedSimulators' started at 2026-11-12 12:43:04.604
+Test Case 'SimulatorPickerTests.testPlainToolsNeverGuessBetweenBootedSimulators' passed (0.0 seconds)
+Test Case 'SimulatorPickerTests.testTemplateForCopies' started at 2026-11-12 12:43:04.604
+Test Case 'SimulatorPickerTests.testTemplateForCopies' passed (0.0 seconds)
+Test Suite 'SimulatorPickerTests' passed at 2026-11-12 12:43:04.605
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.208 (0.208) seconds
+Test Suite 'SwiftTestReportTests' started at 2026-11-12 12:43:04.605
+Test Case 'SwiftTestReportTests.testCompileErrorsAndStalls' started at 2026-11-12 12:43:04.605
+Test Case 'SwiftTestReportTests.testCompileErrorsAndStalls' passed (0.0 seconds)
+Test Case 'SwiftTestReportTests.testSwiftTestingFailures' started at 2026-11-12 12:43:04.605
+Test Case 'SwiftTestReportTests.testSwiftTestingFailures' passed (0.0 seconds)
+Test Case 'SwiftTestReportTests.testXCTestFailures' started at 2026-11-12 12:43:04.605
+Test Case 'SwiftTestReportTests.testXCTestFailures' passed (0.0 seconds)
+Test Suite 'SwiftTestReportTests' passed at 2026-11-12 12:43:04.605
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.0 (0.0) seconds
+Test Suite 'UpdateCheckTests' started at 2026-11-12 12:43:04.605
+Test Case 'UpdateCheckTests.testAppVersionMatchesMiniRunVersion' started at 2026-11-12 12:43:04.605
+Test Case 'UpdateCheckTests.testAppVersionMatchesMiniRunVersion' passed (0.001 seconds)
+Test Case 'UpdateCheckTests.testAsksGitHub' started at 2026-11-12 12:43:04.606
+Test Case 'UpdateCheckTests.testAsksGitHub' passed (0.0 seconds)
+Test Case 'UpdateCheckTests.testVersionComparison' started at 2026-11-12 12:43:04.606
+Test Case 'UpdateCheckTests.testVersionComparison' passed (0.0 seconds)
+Test Suite 'UpdateCheckTests' passed at 2026-11-12 12:43:04.606
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'UpdaterTests' started at 2026-11-12 12:43:04.606
+Test Case 'UpdaterTests.testAppLogAppends' started at 2026-11-12 12:43:04.606
+Test Case 'UpdaterTests.testAppLogAppends' passed (0.001 seconds)
+Test Case 'UpdaterTests.testChecksumAndBundleChecks' started at 2026-11-12 12:43:04.607
+Test Case 'UpdaterTests.testChecksumAndBundleChecks' passed (0.0 seconds)
+Test Case 'UpdaterTests.testDecide' started at 2026-11-12 12:43:04.607
+Test Case 'UpdaterTests.testDecide' passed (0.0 seconds)
+Test Case 'UpdaterTests.testReadsTheZipAndItsDigest' started at 2026-11-12 12:43:04.607
+Test Case 'UpdaterTests.testReadsTheZipAndItsDigest' passed (0.0 seconds)
+Test Case 'UpdaterTests.testWorkerProblem' started at 2026-11-12 12:43:04.607
+Test Case 'UpdaterTests.testWorkerProblem' passed (0.0 seconds)
+Test Case 'UpdaterTests.testWorkerUpdateRetry' started at 2026-11-12 12:43:04.607
+Test Case 'UpdaterTests.testWorkerUpdateRetry' passed (0.0 seconds)
+Test Suite 'UpdaterTests' passed at 2026-11-12 12:43:04.607
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'WorkerCommandTests' started at 2026-11-12 12:43:04.607
+Test Case 'WorkerCommandTests.testDeployAdoptsSetupShAndSavesSettings' started at 2026-11-12 12:43:04.608
+Test Case 'WorkerCommandTests.testDeployAdoptsSetupShAndSavesSettings' passed (0.008 seconds)
+Test Case 'WorkerCommandTests.testDeployWithoutATokenExplainsHowToGetOne' started at 2026-11-12 12:43:04.616
+Test Case 'WorkerCommandTests.testDeployWithoutATokenExplainsHowToGetOne' passed (0.101 seconds)
+Test Case 'WorkerCommandTests.testStatusComparesTheDeployedBundle' started at 2026-11-12 12:43:04.716
+Test Case 'WorkerCommandTests.testStatusComparesTheDeployedBundle' passed (0.002 seconds)
+Test Suite 'WorkerCommandTests' passed at 2026-11-12 12:43:04.718
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.111 (0.111) seconds
+Test Suite 'WorkerDeployTests' started at 2026-11-12 12:43:04.718
+Test Case 'WorkerDeployTests.testAccountChoice' started at 2026-11-12 12:43:04.718
+Test Case 'WorkerDeployTests.testAccountChoice' passed (0.1 seconds)
+Test Case 'WorkerDeployTests.testFirstDeployCreatesEverything' started at 2026-11-12 12:43:04.818
+Test Case 'WorkerDeployTests.testFirstDeployCreatesEverything' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testGeneratedSecrets' started at 2026-11-12 12:43:04.819
+Test Case 'WorkerDeployTests.testGeneratedSecrets' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testKVNamespaceAdoption' started at 2026-11-12 12:43:04.820
+Test Case 'WorkerDeployTests.testKVNamespaceAdoption' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testLegacyEnvFile' started at 2026-11-12 12:43:04.820
+Test Case 'WorkerDeployTests.testLegacyEnvFile' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testLocatesTheCommittedBundle' started at 2026-11-12 12:43:04.820
+Test Case 'WorkerDeployTests.testLocatesTheCommittedBundle' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testMigrations' started at 2026-11-12 12:43:04.820
+Test Case 'WorkerDeployTests.testMigrations' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testMissingSubdomainNeedsAName' started at 2026-11-12 12:43:04.821
+Test Case 'WorkerDeployTests.testMissingSubdomainNeedsAName' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testMultipart' started at 2026-11-12 12:43:04.821
+Test Case 'WorkerDeployTests.testMultipart' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testPermissionErrorsSayWhatTheTokenNeeds' started at 2026-11-12 12:43:04.821
+Test Case 'WorkerDeployTests.testPermissionErrorsSayWhatTheTokenNeeds' passed (0.0 seconds)
+Test Case 'WorkerDeployTests.testRedeployAddsTheMediaNamespaceNextToTheLiveOne' started at 2026-11-12 12:43:04.822
+Test Case 'WorkerDeployTests.testRedeployAddsTheMediaNamespaceNextToTheLiveOne' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testRedeployKeepsTheLiveWorkersNamespaceMigrationAndSecrets' started at 2026-11-12 12:43:04.822
+Test Case 'WorkerDeployTests.testRedeployKeepsTheLiveWorkersNamespaceMigrationAndSecrets' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testRotatingTheTokenOnlyReplacesTheToken' started at 2026-11-12 12:43:04.823
+Test Case 'WorkerDeployTests.testRotatingTheTokenOnlyReplacesTheToken' passed (0.001 seconds)
+Test Case 'WorkerDeployTests.testSecretPlan' started at 2026-11-12 12:43:04.823
+Test Case 'WorkerDeployTests.testSecretPlan' passed (0.1 seconds)
+Test Suite 'WorkerDeployTests' passed at 2026-11-12 12:43:04.924
+	 Executed 14 tests, with 0 failures (0 unexpected) in 0.205 (0.205) seconds
+Test Suite 'WorkerManagerTests' started at 2026-11-12 12:43:04.924
+Test Case 'WorkerManagerTests.testDeploySavesEverythingAndReportsProgress' started at 2026-11-12 12:43:04.924
+Test Case 'WorkerManagerTests.testDeploySavesEverythingAndReportsProgress' passed (0.003 seconds)
+Test Case 'WorkerManagerTests.testRedeployReconnectsServeToTheNewCode' started at 2026-11-12 12:43:04.927
+Test Case 'WorkerManagerTests.testRedeployReconnectsServeToTheNewCode' passed (0.005 seconds)
+Test Case 'WorkerManagerTests.testRotate' started at 2026-11-12 12:43:04.932
+Test Case 'WorkerManagerTests.testRotate' passed (0.004 seconds)
+Test Case 'WorkerManagerTests.testStatus' started at 2026-11-12 12:43:04.936
+Test Case 'WorkerManagerTests.testStatus' passed (0.102 seconds)
+Test Suite 'WorkerManagerTests' passed at 2026-11-12 12:43:05.038
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.114 (0.114) seconds
+Test Suite 'WorkspaceInventoryTests' started at 2026-11-12 12:43:05.038
+Test Case 'WorkspaceInventoryTests.testDeleteOnlyTakesCheckouts' started at 2026-11-12 12:43:05.038
+Test Case 'WorkspaceInventoryTests.testDeleteOnlyTakesCheckouts' passed (0.002 seconds)
+Test Case 'WorkspaceInventoryTests.testFormatSize' started at 2026-11-12 12:43:05.040
+Test Case 'WorkspaceInventoryTests.testFormatSize' passed (0.1 seconds)
+Test Case 'WorkspaceInventoryTests.testListsCheckoutsNewestFirstWithSizes' started at 2026-11-12 12:43:05.140
+Test Case 'WorkspaceInventoryTests.testListsCheckoutsNewestFirstWithSizes' passed (0.004 seconds)
+Test Case 'WorkspaceInventoryTests.testLockIfFree' started at 2026-11-12 12:43:05.144
+Test Case 'WorkspaceInventoryTests.testLockIfFree' passed (0.1 seconds)
+Test Suite 'WorkspaceInventoryTests' passed at 2026-11-12 12:43:05.245
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.207 (0.207) seconds
+Test Suite 'WorkspaceMirrorTests' started at 2026-11-12 12:43:05.245
+Test Case 'WorkspaceMirrorTests.testGitDirectoryOfACloneAndAWorktree' started at 2026-11-12 12:43:05.245
+Test Case 'WorkspaceMirrorTests.testGitDirectoryOfACloneAndAWorktree' passed (0.0 seconds)
+Test Case 'WorkspaceMirrorTests.testInventoryReadsAWorktreesFetchTime' started at 2026-11-12 12:43:05.245
+Test Case 'WorkspaceMirrorTests.testInventoryReadsAWorktreesFetchTime' passed (0.002 seconds)
+Test Case 'WorkspaceMirrorTests.testMirrorPath' started at 2026-11-12 12:43:05.247
+Test Case 'WorkspaceMirrorTests.testMirrorPath' passed (0.0 seconds)
+Test Suite 'WorkspaceMirrorTests' passed at 2026-11-12 12:43:05.247
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'WorkspaceTests' started at 2026-11-12 12:43:05.247
+Test Case 'WorkspaceTests.testDirectoriesPerRef' started at 2026-11-12 12:43:05.247
+Test Case 'WorkspaceTests.testDirectoriesPerRef' passed (0.0 seconds)
+Test Case 'WorkspaceTests.testKeyedLockSerializesPerKey' started at 2026-11-12 12:43:05.247
+Test Case 'WorkspaceTests.testKeyedLockSerializesPerKey' passed (0.005 seconds)
+Test Case 'WorkspaceTests.testViewerURL' started at 2026-11-12 12:43:05.253
+Test Case 'WorkspaceTests.testViewerURL' passed (0.0 seconds)
+Test Suite 'WorkspaceTests' passed at 2026-11-12 12:43:05.253
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.006 (0.006) seconds
+Test Suite 'XcodeFilesTests' started at 2026-11-12 12:43:05.253
+Test Case 'XcodeFilesTests.testOrphanedDerivedData' started at 2026-11-12 12:43:05.253
+Test Case 'XcodeFilesTests.testOrphanedDerivedData' passed (0.003 seconds)
+Test Case 'XcodeFilesTests.testSharedSchemesOfAProject' started at 2026-11-12 12:43:05.256
+Test Case 'XcodeFilesTests.testSharedSchemesOfAProject' passed (0.001 seconds)
+Test Case 'XcodeFilesTests.testSharedSchemesOfAWorkspaceIncludeItsProjects' started at 2026-11-12 12:43:05.257
+Test Case 'XcodeFilesTests.testSharedSchemesOfAWorkspaceIncludeItsProjects' passed (0.002 seconds)
+Test Case 'XcodeFilesTests.testWorkspaceProjects' started at 2026-11-12 12:43:05.259
+Test Case 'XcodeFilesTests.testWorkspaceProjects' passed (0.0 seconds)
+Test Suite 'XcodeFilesTests' passed at 2026-11-12 12:43:05.259
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.007 (0.007) seconds
+Test Suite 'XcodeParsingTests' started at 2026-11-12 12:43:05.259
+Test Case 'XcodeParsingTests.testAccessibilitySummary' started at 2026-11-12 12:43:05.259
+Test Case 'XcodeParsingTests.testAccessibilitySummary' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testDefaultiPhoneSkipsDuoAndPrefersNewestPro' started at 2026-11-12 12:43:05.260
+Test Case 'XcodeParsingTests.testDefaultiPhoneSkipsDuoAndPrefersNewestPro' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testParseAndPickDevices' started at 2026-11-12 12:43:05.260
+Test Case 'XcodeParsingTests.testParseAndPickDevices' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testParseIssues' started at 2026-11-12 12:43:05.260
+Test Case 'XcodeParsingTests.testParseIssues' passed (0.0 seconds)
+Test Case 'XcodeParsingTests.testSchemesAndProduct' started at 2026-11-12 12:43:05.261
+Test Case 'XcodeParsingTests.testSchemesAndProduct' passed (0.0 seconds)
+Test Suite 'XcodeParsingTests' passed at 2026-11-12 12:43:05.261
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'debug.xctest' failed at 2026-11-12 12:43:05.261
+	 Executed 263 tests, with 2 failures (0 unexpected) in 21.324 (21.324) seconds
+Test Suite 'All tests' failed at 2026-11-12 12:43:05.261
+	 Executed 263 tests, with 2 failures (0 unexpected) in 21.324 (21.324) seconds
+◇ Test run started.
+↳ Testing Library Version: 6.1.3 (1d1f7e489c9c606)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests passed after 0.001 seconds.
