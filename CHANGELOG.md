@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.9.1
+
+Tests that can't start say so at once instead of hanging for 5 minutes, and a failed Worker update
+is tried again. The Worker only changes its version number; update it from the menu when it asks.
+
 - **Tests say at once when they can't start with you switched away.** Xcode's test daemon
   (testmanagerd) only starts for the user on the Mac's screen. One started while you were there
   keeps working after you switch users (so others can use the Mac), but once it quits after a quiet
