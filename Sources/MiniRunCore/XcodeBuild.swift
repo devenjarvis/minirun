@@ -344,6 +344,10 @@ enum XcodeBuild {
 
     static func test(_ options: Options, onlyTesting: [String], skipTesting: [String]) async throws -> TestOutput {
         if options.platform == .ios, options.udid == nil { throw ToolError("Tests on iOS need a simulator.") }
+        // At the login window xcodebuild builds, then hangs until the stall timeout: say why now.
+        if let problem = ConsoleSession.problem(owner: await ConsoleSession.owner(), user: NSUserName()) {
+            throw ToolError(problem + " To fix: " + ConsoleSession.fix(user: NSUserName()))
+        }
         let (container, scheme) = try await resolveScheme(options, forTesting: true)
         try await prepareSharedPackages(container, scheme: scheme, options: options)
         let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
@@ -404,7 +408,8 @@ enum XcodeBuild {
             let quiet = options?.stallTimeout.map { " for \(Int($0 / 60)) min" } ?? ""
             let freed = (options?.platform.isMac ?? false) ? "" : ", and the simulator is no longer busy"
             return "\(what) stopped: xcodebuild printed nothing\(quiet), so it was treated as hung and stopped\(freed). " +
-                "This is usually the Mac, not your code (a stuck simulator, test runner or package resolution). " +
+                "This is usually the Mac, not your code (a stuck simulator, test runner or package resolution, " +
+                "or the Mac sitting at the login window: host_info checks that). " +
                 "Pass a larger stall_seconds if the work really is that quiet. Last output:\n" + result.tail(1500)
         }
         if result.timedOut {
