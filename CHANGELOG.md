@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.10.0
+
+Tests keep working after you switch away from the Mac, and say at once when they can't start,
+instead of hanging for 5 minutes. A failed Worker update is tried again. Update the app; the
+Worker changes only its version.
+
 - **Tests keep working after you switch away from the Mac.** Xcode's test daemon (testmanagerd)
   only starts for the user on the Mac's screen. One started while you were there keeps working
   after you switch users (so others can use the Mac), but launchd ends it when it's idle and memory
