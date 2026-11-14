@@ -1,0 +1,62 @@
+Saved /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.aeY9AKk5Zw/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  40 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, list_mac_apps, list_windows, scroll, press_menu_item, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (sat12-bq161-8bbfd665-a46a-418e-b9c9-1c54ff42e22e-0A66861626B3).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+file:///Users/runner/work/minirun/minirun/worker/test/e2e-relay.mjs:74
+  const timer = setTimeout(() => reject(new Error("no frames within 30s")), 30000);
+                                        ^
+
+Error: no frames within 30s
+    at Timeout._onTimeout (file:///Users/runner/work/minirun/minirun/worker/test/e2e-relay.mjs:74:41)
+    at listOnTimeout (node:internal/timers:685:17)
+    at process.processTimers (node:internal/timers:618:7)
+
+Node.js v24.22.2
+--- minirun serve log
+2026-11-14T12:54:05Z minirun 0.9.0 starting
+2026-11-14T12:54:05Z Simulator support loaded
+2026-11-14T12:54:05Z Preventing idle sleep while running
+2026-11-14T12:54:05Z 39 tools ready; workspaces at /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.aeY9AKk5Zw/workspaces
+2026-11-14T12:54:05Z Shutting down simulators and quitting Mac apps after 30 idle minutes
+2026-11-14T12:54:05Z Answering control requests on /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.aeY9AKk5Zw/control.sock
+2026-11-14T12:54:06Z Connected to relay 127.0.0.1
+2026-11-14T12:54:06Z Relay round trip: 11ms
+2026-11-14T12:54:26Z Relay round trip: 84ms
+2026-11-14T12:54:50Z Relay round trip: 2492ms
+--- wrangler log
+
+ ⛅️ wrangler 4.155.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.MAC_RELAY (MacRelay)                           Durable Object            local
+env.OAUTH_KV (REPLACE_WITH_KV_ID)                  KV Namespace              local
+env.MEDIA_KV (REPLACE_WITH_MEDIA_KV_ID)            KV Namespace              local
+env.OWNER_PASSWORD ("(hidden)")                    Environment Variable      local
+env.AGENT_TOKEN ("(hidden)")                       Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8787
+[wrangler:info] GET /login 200 OK (513ms)
+[wrangler:info] GET /login 200 OK (31ms)
+[wrangler:info] POST /register 201 Created (85ms)
+[wrangler:info] GET /authorize 200 OK (33ms)
+[wrangler:info] POST /authorize 302 Found (53ms)
+[wrangler:info] POST /token 200 OK (57ms)
+[wrangler:info] POST /mcp 200 OK (37ms)
+[wrangler:info] POST /mcp 200 OK (53ms)
+[wrangler:info] GET /agent 101 Switching Protocols (22ms)
+[wrangler:info] POST /mcp 200 OK (340ms)
+[wrangler:info] POST /mcp 200 OK (650ms)
+[wrangler:info] POST /mcp 200 OK (15475ms)
+[wrangler:info] POST /mcp 200 OK (951ms)
+[wrangler:info] POST /login 302 Found (9ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (10ms)
