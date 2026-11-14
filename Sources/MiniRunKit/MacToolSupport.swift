@@ -143,7 +143,7 @@ public enum MacToolSupport {
 
     /// What press_menu_item says after pressing a menu bar icon itself.
     public static func openedStatusItem(_ name: String) -> String {
-        "Pressed the \(name) menu bar icon, which opens its menu or popover. A menu stays open until an item is picked: " +
+        "Pressed the \(name) menu bar icon (that's its name to Accessibility), which opens its menu or popover. A menu stays open until an item is picked: " +
             "describe_ui {include_status_items: true} lists its items, screenshot {menus: true} shows it, press_menu_item {menu_bar: \"status\", path: [\"\(name)\", …]} " +
             "picks one, and press_menu_item {close_menus: true} closes it. A popover is a window: list_windows, describe_ui, tap and screenshot work on it."
     }

@@ -307,7 +307,7 @@ extension ToolRegistry {
     func macMenusScreenshotContent(_ session: MacAppSession, scale: Double? = nil, quality: Int = 70) async throws -> [ToolContent] {
         guard let pid = session.pid else { throw ToolError(MacToolSupport.notRunning(session)) }
         let shot = try await MacAppDriver.shared.menusScreenshotJPEG(pid: pid, scale: scale, quality: quality)
-        let note = "\(shot.width)x\(shot.height) image of \(session.name)'s open menus and popovers (or its menu bar icons), " +
+        let note = "\(shot.width)x\(shot.height) image of \(session.name)'s open menus and popovers, " +
             "\(Int(shot.frame.width))x\(Int(shot.frame.height)) points at (\(Int(shot.frame.x)), \(Int(shot.frame.y))) on the screen. " +
             "Only the app's own windows are drawn. Pick menu items with press_menu_item, not by coordinates."
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]

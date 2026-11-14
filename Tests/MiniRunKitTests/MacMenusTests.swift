@@ -30,6 +30,8 @@ final class MacMenusTests: XCTestCase {
         XCTAssertNil(MacMenus.pickStatusItem(nil, in: items))
         XCTAssertEqual(MacMenus.pickStatusItem(nil, in: [items[1]]), 0)
         XCTAssertEqual(MacMenus.pickStatusItem("*", in: [items[1]]), 0)
+        // A name nothing matches still finds an app's only icon (SwiftUI names it after its image).
+        XCTAssertEqual(MacMenus.pickStatusItem("Hello Extra", in: [MacMenus.StatusItemNames(title: "Favorite")]), 0)
         XCTAssertNil(MacMenus.pickStatusItem(nil, in: []))
         XCTAssertEqual(items[0].display, "Hello")
         XCTAssertEqual(MacMenus.StatusItemNames().display, "(untitled)")

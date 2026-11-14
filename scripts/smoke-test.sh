@@ -153,7 +153,6 @@ print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[
   # The menu bar icon (a MenuBarExtra): open it, read and see its menu, pick from it, close it.
   # What the icon looks like to Accessibility and the window server, for the log either way.
   run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | tee /tmp/minirun-mac-status-before.txt | grep -A8 "Menu bar icons" >&2 || true
-  run screenshot "{\"device\":\"$MAC_ID\",\"menus\":true}" 2>&1 | grep -v "image saved" >&2 || true
   run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":[\"Hello Extra\"]}" | expect "Pressed the"
   sleep 1
   run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | tee /tmp/minirun-mac-status-ui.txt | expect "Add One"

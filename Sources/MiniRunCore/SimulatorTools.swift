@@ -95,7 +95,7 @@ extension ToolRegistry {
                 "Never share screens showing credentials or personal data.",
             properties: device.merging([
                 "window": Self.macProperties["window"]!,
-                "menus": Schema.boolean("Mac apps: instead of a window, capture the app's open menus and popovers (with the menu bar icon they hang from), or its menu bar icons when none is open. Only the app's own windows show."),
+                "menus": Schema.boolean("Mac apps: instead of a window, capture the app's open menus and popovers. Only the app's own windows show (on macOS 26, not its menu bar icon itself)."),
                 "scale": Schema.number("Optional scale relative to native pixels (0.1–1); for a Mac app, image pixels per point. Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
                 "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description: to the repo's pr-media branch if it has one, else to the Worker."),

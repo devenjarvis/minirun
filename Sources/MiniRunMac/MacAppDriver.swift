@@ -471,8 +471,8 @@ public final class MacAppDriver {
         }
     }
 
-    /// A JPEG of the app's open menus and popovers (with its menu bar icon above them), or of just
-    /// its menu bar icons when nothing is open. Only the app's own windows are drawn, on a plain
+    /// A JPEG of the app's open menus and popovers (with its menu bar icon above them, on macOS
+    /// versions where the app owns that window; on macOS 26 the menu bar does). Only the app's own windows are drawn, on a plain
     /// background: other apps' windows and menu bar icons never show. `frame` is the area
     /// captured, in global points; by default 1 image pixel = 1 point.
     public func menusScreenshotJPEG(pid: Int32, scale: Double? = nil, quality: Int = 75) async throws -> (data: Data, width: Int, height: Int, frame: MacRect) {

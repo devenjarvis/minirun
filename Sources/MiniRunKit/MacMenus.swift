@@ -68,14 +68,17 @@ public enum MacMenus {
 
     /// The status item `query` names: one whose title, accessibility label, id or tooltip
     /// matches it exactly (case-insensitively), else starts with it, else contains it. With no
-    /// query (or "*"), the app's only one. Nil if none matches, or it's ambiguous without a query.
+    /// query (or "*"), or a query nothing matches, the app's only one: SwiftUI names a
+    /// MenuBarExtra's icon after its image ("Favorite" for "star"), not the title in the code.
+    /// Nil if none matches and there are several.
     public static func pickStatusItem(_ query: String?, in items: [StatusItemNames]) -> Int? {
         let wanted = normalize(query ?? "")
         if wanted.isEmpty || wanted == "*" { return items.count == 1 ? 0 : nil }
         let names = items.map { $0.all.map(normalize) }
         if let exact = names.firstIndex(where: { $0.contains(wanted) }) { return exact }
         if let prefix = names.firstIndex(where: { $0.contains { $0.hasPrefix(wanted) } }) { return prefix }
-        return names.firstIndex(where: { $0.contains { $0.contains(wanted) } })
+        if let partial = names.firstIndex(where: { $0.contains { $0.contains(wanted) } }) { return partial }
+        return items.count == 1 ? 0 : nil
     }
 
     /// The error for a status item that wasn't found.
@@ -87,7 +90,7 @@ public enum MacMenus {
         if (query ?? "").trimmingCharacters(in: .whitespaces).isEmpty {
             return "\(appName) has \(items.count) menu bar icons: \(list). Name one as the first element of path."
         }
-        return "No menu bar icon \"\(query!)\" in \(appName). Its icons: \(list)."
+        return "No menu bar icon \"\(query!)\" in \(appName). Its icons: \(list). (SwiftUI names a MenuBarExtra's icon after its image, not its title.)"
     }
 
     /// A menu title for matching: lowercased, trimmed, without a trailing "…" or "...".
