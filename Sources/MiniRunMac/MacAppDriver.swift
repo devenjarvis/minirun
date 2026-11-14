@@ -211,9 +211,11 @@ public final class MacAppDriver {
     }
 
     /// Waits until the app shows a window on screen. With `activate`, it's brought to the front
-    /// once it has checked in with the window server. False if it exited or the time ran out.
+    /// once it has checked in with the window server. False if it exited, the time ran out, or
+    /// it's a menu bar app (no Dock icon, an icon in the menu bar and no window after a few seconds).
     public func waitForWindow(pid: Int32, timeout: TimeInterval, activate: Bool = true) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
+        let start = Date()
+        let deadline = start.addingTimeInterval(timeout)
         var activated = false
         while true {
             guard isRunning(pid: pid, executablePath: nil) else { return false }
@@ -231,6 +233,10 @@ public final class MacAppDriver {
                 return true
             }
             if Date() >= deadline { return false }
+            // A menu bar app (no Dock icon) may never show a window: once it has an icon in the
+            // menu bar and a few seconds have passed, stop waiting.
+            if Date() > start.addingTimeInterval(3), NSRunningApplication(processIdentifier: pid)?.activationPolicy == .accessory,
+               !(await statusItems(pid: pid)).isEmpty { return false }
             try? await Task.sleep(nanoseconds: 200_000_000)
         }
     }
@@ -299,10 +305,12 @@ public final class MacAppDriver {
 
     nonisolated static func readWindows(_ pid: Int32) -> [MacWindowInfo] {
         let list = (CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
-        struct Entry { let id: UInt32; let frame: MacRect; let onScreen: Bool; let name: String? }
+        struct Entry { let id: UInt32; let frame: MacRect; let onScreen: Bool; let name: String?; let layer: Int }
         let entries: [Entry] = list.compactMap { info in
+            // Normal windows, and (when Accessibility lists them as windows, below) panels and
+            // popovers above them, like a menu bar app's popover. Menus aren't windows to Accessibility.
             guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
-                  (info[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+                  let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue, layer >= 0, layer < 1000,
                   let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
                   let bounds = info[kCGWindowBounds as String] as? NSDictionary,
                   let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
@@ -310,7 +318,7 @@ public final class MacAppDriver {
             return Entry(
                 id: id, frame: MacRect(x: Double(rect.minX), y: Double(rect.minY), width: Double(rect.width), height: Double(rect.height)),
                 onScreen: (info[kCGWindowIsOnscreen as String] as? NSNumber)?.boolValue ?? false,
-                name: info[kCGWindowName as String] as? String
+                name: info[kCGWindowName as String] as? String, layer: layer
             )
         }
         let accessible = MacAccessibility.windows(pid: pid)
@@ -326,6 +334,9 @@ public final class MacAppDriver {
             let state = axState(for: entry)
             // Off-screen windows Accessibility doesn't know are internal (or on another Space).
             if !entry.onScreen && state == nil { return nil }
+            // Above normal windows, only what Accessibility knows by id as a window: not menu bar
+            // icons, menus, tooltips or the window server's helpers.
+            if entry.layer != 0, state == nil || state?.windowID != entry.id { return nil }
             return (entry, state)
         }
         if let main = found.firstIndex(where: { $0.state?.isMain == true }), main > 0 {
@@ -426,18 +437,80 @@ public final class MacAppDriver {
         configuration.ignoreShadowsSingleWindow = true
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
-        let image: CGImage = try await withCheckedThrowingContinuation { continuation in
+        let image = try await captureImage(filter, configuration, what: "the window")
+        let output = MacGeometry.imageSize(points: size, scale: scale)
+        let resized = MacImage.resized(image, width: output.width, height: output.height) ?? image
+        return (try MacImage.jpeg(resized, quality: quality), resized.width, resized.height)
+    }
+
+    nonisolated static func captureImage(_ filter: SCContentFilter, _ configuration: SCStreamConfiguration, what: String) async throws -> CGImage {
+        try await withCheckedThrowingContinuation { continuation in
             SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) { image, error in
                 if let image {
                     continuation.resume(returning: image)
                 } else {
-                    continuation.resume(throwing: MacDriverError("Couldn't capture the window: \(error?.localizedDescription ?? "no image")."))
+                    continuation.resume(throwing: MacDriverError("Couldn't capture \(what): \(error?.localizedDescription ?? "no image")."))
                 }
             }
         }
-        let output = MacGeometry.imageSize(points: size, scale: scale)
+    }
+
+    /// The app's on-screen windows above normal ones: open menus, popovers and panels, and its
+    /// menu bar icons.
+    nonisolated static func overlayWindows(_ pid: Int32) -> [(id: UInt32, overlay: MacMenus.Overlay)] {
+        let list = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+        return list.compactMap { info in
+            guard (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+                  let layer = (info[kCGWindowLayer as String] as? NSNumber)?.intValue, layer > 0, layer < 1000,
+                  let id = (info[kCGWindowNumber as String] as? NSNumber)?.uint32Value,
+                  let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: bounds as CFDictionary),
+                  rect.width > 1, rect.height > 1 else { return nil }
+            if let alpha = (info[kCGWindowAlpha as String] as? NSNumber)?.doubleValue, alpha <= 0 { return nil }
+            return (id, MacMenus.Overlay(frame: MacRect(x: Double(rect.minX), y: Double(rect.minY), width: Double(rect.width), height: Double(rect.height)), layer: layer))
+        }
+    }
+
+    /// A JPEG of the app's open menus and popovers (with its menu bar icon above them), or of just
+    /// its menu bar icons when nothing is open. Only the app's own windows are drawn, on a plain
+    /// background: other apps' windows and menu bar icons never show. `frame` is the area
+    /// captured, in global points; by default 1 image pixel = 1 point.
+    public func menusScreenshotJPEG(pid: Int32, scale: Double? = nil, quality: Int = 75) async throws -> (data: Data, width: Int, height: Int, frame: MacRect) {
+        try MacPermissions.requireScreenRecording(for: "take screenshots of Mac app menus")
+        let overlays = Self.overlayWindows(pid)
+        guard let wanted = MacMenus.captureRect(overlays.map { $0.overlay }) else {
+            throw MacDriverError("The app has no open menu, popover or menu bar icon on screen to capture. Open one first: press_menu_item with menu_bar \"status\" and just the icon's name opens its menu.")
+        }
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        } catch {
+            if !CGPreflightScreenCaptureAccess() { throw MacPermissions.missing("Screen Recording", for: "see Mac app menus") }
+            throw MacDriverError("ScreenCaptureKit couldn't list windows: \(error.localizedDescription)")
+        }
+        func rect(_ frame: CGRect) -> MacRect { MacRect(x: Double(frame.minX), y: Double(frame.minY), width: Double(frame.width), height: Double(frame.height)) }
+        guard let display = content.displays.first(where: { $0.frame.contains(CGPoint(x: wanted.midX, y: wanted.midY)) })
+            ?? content.displays.first(where: { MacMenus.clip(wanted, to: rect($0.frame)) != nil }) else {
+            throw MacDriverError("The app's menus aren't on any display ScreenCaptureKit can see.")
+        }
+        let screen = rect(display.frame)
+        guard let area = MacMenus.clip(wanted, to: screen) else { throw MacDriverError("The app's menus are off screen.") }
+        let ids = Set(overlays.map { $0.id })
+        let windows = content.windows.filter { ids.contains($0.windowID) }
+        guard !windows.isEmpty else { throw MacDriverError("ScreenCaptureKit can't see the app's menus. They may have just closed.") }
+        let filter = SCContentFilter(display: display, including: windows)
+        let pixels = MacGeometry.capturePixels(points: (area.width, area.height), backingScale: Double(filter.pointPixelScale))
+        let configuration = SCStreamConfiguration()
+        configuration.sourceRect = CGRect(x: area.x - screen.x, y: area.y - screen.y, width: area.width, height: area.height)
+        configuration.width = pixels.width
+        configuration.height = pixels.height
+        configuration.showsCursor = false
+        configuration.capturesAudio = false
+        configuration.backgroundColor = CGColor(gray: 0.82, alpha: 1)
+        let image = try await Self.captureImage(filter, configuration, what: "the menus")
+        let output = MacGeometry.imageSize(points: (area.width, area.height), scale: scale)
         let resized = MacImage.resized(image, width: output.width, height: output.height) ?? image
-        return (try MacImage.jpeg(resized, quality: quality), resized.width, resized.height)
+        return (try MacImage.jpeg(resized, quality: quality), resized.width, resized.height, area)
     }
 
     /// An H.264 encoder fed by a ScreenCaptureKit stream of one window. `scale` is relative to
@@ -471,15 +544,29 @@ public final class MacAppDriver {
 
     /// The window's accessibility tree as AXe-shaped JSON (an array of root nodes; see
     /// `XcodeParsing.summarizeAccessibility`), with frames in window points. With
-    /// `includeMenus`, the menu bar's tree follows the window's (without frames). With `point`,
-    /// just the element there and its descendants.
-    public func describeUI(pid: Int32, window selector: MacWindowSelector = .main, includeMenus: Bool = false, at point: (x: Double, y: Double)? = nil) async throws -> Data {
+    /// `includeMenus`, the menu bar's tree follows the window's (without frames), and with
+    /// `includeStatusItems`, its menu bar icons' (with their menus). With `point`, just the
+    /// element there and its descendants. An app with no window (a menu bar app) gets its menu bar
+    /// icons, plus its menus if asked, and `window` is nil.
+    public func describeUI(pid: Int32, window selector: MacWindowSelector = .main, includeMenus: Bool = false, includeStatusItems: Bool = false,
+                           at point: (x: Double, y: Double)? = nil) async throws -> (json: Data, window: MacWindowInfo?) {
         try MacPermissions.requireAccessibility(for: "read Mac app UI")
-        let window = try await self.window(pid: pid, selector)
+        let windows = await Self.readWindowsDetached(pid)
+        if windows.isEmpty, point == nil, selector == .main, isRunning(pid: pid, executablePath: nil) {
+            let json = try await Task.detached { try MacAccessibility.describeMenus(pid: pid, app: includeMenus, status: true) }.value
+            return (json, nil)
+        }
+        let window = try Self.resolve(selector, in: windows, pid: pid)
         let windowID = window.windowID, frame = window.frame
-        return try await Task.detached {
-            try MacAccessibility.describe(pid: pid, windowID: windowID, frame: frame, includeMenus: includeMenus, at: point)
+        let json = try await Task.detached {
+            try MacAccessibility.describe(pid: pid, windowID: windowID, frame: frame, includeMenus: includeMenus, includeStatusItems: includeStatusItems, at: point)
         }.value
+        return (json, window)
+    }
+
+    /// The names of the app's menu bar icons (empty without Accessibility).
+    public func statusItems(pid: Int32) async -> [MacMenus.StatusItemNames] {
+        await Task.detached { MacAccessibility.statusItemNames(pid: pid) ?? [] }.value
     }
 
     /// Presses the element matching `query` (an exact id; or a label or value, exact then
@@ -528,12 +615,18 @@ public final class MacAppDriver {
         return try await Task.detached { try MacAccessibility.pressElement(pid: pid, frame: frame, at: (x, y)) }.value
     }
 
-    /// Picks a menu bar item by its title path, e.g. ["File", "New Window"]. Titles match
-    /// case-insensitively, exactly or by prefix, ignoring a trailing "…". Returns the path pressed,
-    /// like "File > New Window".
-    public func pressMenuItem(pid: Int32, path: [String]) async throws -> String {
-        let titles = try await Task.detached { try MacAccessibility.pressMenuItem(pid: pid, path: path) }.value
+    /// Picks a menu item by its title path. From the app's menu bar (`.app`), e.g. ["File",
+    /// "New Window"]; from its menu bar icons (`.status`), starting with the icon's name, e.g.
+    /// ["Hello", "Increment"], and just the icon opens it. Titles match case-insensitively,
+    /// exactly or by prefix, ignoring a trailing "…". Returns the path pressed, like "File > New Window".
+    public func pressMenuItem(pid: Int32, path: [String], menuBar: MacMenus.Bar = .app, appName: String = "The app") async throws -> String {
+        let titles = try await Task.detached { try MacAccessibility.pressMenuItem(pid: pid, path: path, source: menuBar, appName: appName) }.value
         return titles.joined(separator: " > ")
+    }
+
+    /// Closes the app's open menus. False when none was open.
+    public func closeMenus(pid: Int32) async throws -> Bool {
+        try await Task.detached { try MacAccessibility.closeMenus(pid: pid) }.value
     }
 
     // MARK: Input

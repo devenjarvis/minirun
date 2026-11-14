@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Menu bar icons in Mac apps.** Claude can now test an app's status items (`NSStatusItem`,
+  SwiftUI's `MenuBarExtra`) as well as its menus. `describe_ui {include_status_items: true}`
+  lists the app's menu bar icons and their menus. `press_menu_item {menu_bar: "status", path:
+  ["Icon", "Item"]}` picks an item from one, and a path of just the icon opens its menu or popover.
+  `press_menu_item {close_menus: true}` closes a menu left open. Only the app's own icons are seen.
+- **Screenshots of open menus and popovers:** `screenshot {menus: true}`. Only the app's own
+  windows are drawn, on a plain background.
+- **Menu items show their state:** `describe_ui` marks checked items and gives keyboard
+  shortcuts (`shortcut=⌘R`).
+- **Menu bar–only apps.** An app with no Dock icon and no window no longer makes `build_and_run`
+  wait 15 seconds for a window. Once its menu bar icon appears, the result names the icon and says
+  how to open it. For such an app, `describe_ui` and `list_windows` show its icons instead of failing.
+  Popovers and floating panels that Accessibility lists as windows are now windows to every tool.
+- When a Mac tool's action works but the screenshot after it can't be taken, the result still
+  says the action worked and explains why there's no screenshot, instead of failing.
+
 ## 0.10.0
 
 Tests keep working after you switch away from the Mac, and say at once when they can't start,

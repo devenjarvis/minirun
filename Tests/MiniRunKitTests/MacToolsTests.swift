@@ -57,6 +57,21 @@ final class MacToolsTests: XCTestCase {
         XCTAssertEqual(try MacToolSupport.menuPath(["Counter", " Reset Counter "], text: nil), ["Counter", "Reset Counter"])
         XCTAssertEqual(try MacToolSupport.menuPath([], text: "File > New Window"), ["File", "New Window"])
         XCTAssertThrowsError(try MacToolSupport.menuPath([], text: nil))
+        XCTAssertEqual(try MacToolSupport.menuPath([], text: nil, allowEmpty: true), [])
+        XCTAssertEqual(try MacToolSupport.menuPath([], text: "Hello > Increment", allowEmpty: true), ["Hello", "Increment"])
+    }
+
+    func testMenuBar() throws {
+        XCTAssertEqual(try MacToolSupport.menuBar(nil), .app)
+        XCTAssertEqual(try MacToolSupport.menuBar("App"), .app)
+        XCTAssertEqual(try MacToolSupport.menuBar("status"), .status)
+        XCTAssertEqual(try MacToolSupport.menuBar("tray"), .status)
+        XCTAssertThrowsError(try MacToolSupport.menuBar("dock"))
+        XCTAssertTrue(MacToolSupport.openedStatusItem("Hello").contains("path: [\"Hello\", …]"))
+        XCTAssertEqual(MacToolSupport.noWindowNote(name: "Tray", icons: []), "Tray has no window open.")
+        let note = MacToolSupport.noWindowNote(name: "Tray", icons: [MacMenus.StatusItemNames(description: "Hello")])
+        XCTAssertTrue(note.contains("a menu bar icon: \"Hello\""))
+        XCTAssertTrue(note.contains("path: [\"Hello\"]"))
     }
 
     func testPaths() {

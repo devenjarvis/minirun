@@ -311,9 +311,17 @@ itself, with the same loop:
    since launch plus unified logging), `terminate_app`. `list_windows` lists the app's windows;
    most tools take `window` (an index or title). Coordinates are window points from the window's
    top-left, title bar included.
-3. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac, with the same
+3. Menu bar icons (status items: `NSStatusItem`, SwiftUI's `MenuBarExtra`) work through
+   Accessibility too. `describe_ui {include_status_items: true}` lists the app's icons and their
+   menus, with checkmarks and shortcuts. `press_menu_item {menu_bar: "status", path: ["Hello",
+   "Settings…"]}` picks an item from the icon named "Hello". `path: ["Hello"]` presses the icon
+   itself, which opens its menu or popover. `screenshot {menus: true}` shows the open menus and
+   popovers, and `press_menu_item {close_menus: true}` closes a menu that was left open. A popover
+   is listed as a window, so `tap`, `describe_ui` and `screenshot` work on it. Only the app's own
+   icons are visible to these tools, never other apps' icons.
+4. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac, with the same
    `stall_seconds`/`timeout_seconds`, `cancel_job` and no-parallel defaults as iOS tests.
-4. The live view link shows the app's window; you can click, drag, scroll, right-click and type
+5. The live view link shows the app's window; you can click, drag, scroll, right-click and type
    into it.
 
 **Isolation between sessions.** Each repo + ref gets its own Mac app id, and minirun only ever
@@ -343,9 +351,12 @@ Limitations:
 - `set_pasteboard` sets the Mac's own pasteboard, shared by every app and session.
 - In the browser viewer, shortcuts the browser keeps for itself (⌘W, ⌘T, ⌘Q…) never reach the app;
   Claude can send them with `press_key` or `press_menu_item`.
-- Menu bar–only apps and command-line tools launch and log, but have no window to show.
+- Menu bar–only apps (`LSUIElement`) launch and are driven through their menu bar icon (see
+  above): `build_and_run` stops waiting for a window once the icon appears. Command-line tools
+  launch and log, but have no window to show.
 - `screenshot {share: true}` and `start_recording` / `stop_recording` capture one window of a Mac
-  app (pick it with `window`). Its menus, popovers and other windows don't show, and a recording
+  app (pick it with `window`). Its menus, popovers and other windows don't show (`screenshot {menus:
+  true}` captures open menus and popovers, but can't be shared), and a recording
   keeps the window's starting size if it's resized (the frames are scaled to fit). A recording
   stops by itself when the window closes or the app quits; `stop_recording` still collects it.
 
@@ -359,7 +370,7 @@ Limitations:
 | Touching | `tap` (x/y or id/label/value), `swipe` (points or direction), `long_press` (also drag), `type_text`, `press_key`, `press_button`, `open_url`, `set_pasteboard` |
 | Apps | `install_app`, `launch_app`, `terminate_app`, `uninstall_app`, `app_logs`, `add_media` |
 | Code | `sync_repo`, `list_schemes`, `build`, `build_and_run`, `run_tests` (all three take `platform`: `ios`, `macos`, `mac-catalyst`), `swift_test` (package tests, no simulator), `run_command` (opt-in) |
-| macOS apps | `list_mac_apps`, `list_windows`, `scroll`, `press_menu_item`, plus the tools above with a Mac app id as `device` (see [macOS apps](#macos-apps)) |
+| macOS apps | `list_mac_apps`, `list_windows`, `scroll`, `press_menu_item` (app menus and menu bar icons), plus the tools above with a Mac app id as `device` (see [macOS apps](#macos-apps)) |
 | Jobs | `get_job`, `job_log`, `list_jobs`, `cancel_job` |
 | Host | `host_info`, `mac_status` (served by the Worker) |
 

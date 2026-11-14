@@ -150,6 +150,28 @@ print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[
   run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked Counter > Reset Counter"
   sleep 1
   mac_logs | expect "HelloMacApp: reset count=0"
+  # The menu bar icon (a MenuBarExtra): open it, read and see its menu, pick from it, close it.
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":[\"Hello Extra\"]}" | expect "menu bar icon"
+  sleep 1
+  run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | tee /tmp/minirun-mac-status-ui.txt | expect "Add One"
+  if grep -q "✓ Screen Recording (for macOS apps)" <<< "$HOST" && grep -q "✓ Display (for macOS apps)" <<< "$HOST"; then
+    run screenshot "{\"device\":\"$MAC_ID\",\"menus\":true}" | tee /tmp/minirun-mac-menu-shot.txt | expect "open menus"
+    shot=$(sed -n 's/.*image saved to \(.*\)]/\1/p' /tmp/minirun-mac-menu-shot.txt)
+    mkdir -p "$ROOT/ci-logs/screens" && cp "$shot" "$ROOT/ci-logs/screens/hello-mac-app-menu.jpg" || true
+  fi
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":[\"Hello Extra\",\"Pinned\"]}" | expect "Picked"
+  sleep 1
+  mac_logs | expect "HelloMacApp: pinned=true"
+  # With its menu closed again.
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":\"Hello Extra > Add One\"}" | expect "Picked"
+  sleep 1
+  mac_logs | expect "HelloMacApp: menu-bar-add count=1"
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\"}" | expect "menu bar icon"
+  sleep 1
+  run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | expect "\"Pinned\" checked"
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"close_menus\":true}" | expect "Closed"
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked"
+  sleep 1
   run tap "{\"device\":\"$MAC_ID\",\"id\":\"nameField\"}" > /dev/null
   sleep 1
   run type_text "{\"device\":\"$MAC_ID\",\"text\":\"Claude\"}" | expect "Typed"

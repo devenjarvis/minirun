@@ -164,6 +164,8 @@ enum MacAccessibility {
     static let nodeAttributes = [
         "AXRole", "AXSubrole", "AXTitle", "AXDescription", "AXValue", "AXIdentifier", "AXHelp",
         "AXPlaceholderValue", "AXPosition", "AXSize", "AXEnabled", "AXFocused", "AXSelected", "AXChildren",
+        // Menu items only; other elements just don't have them.
+        "AXMenuItemMarkChar", "AXMenuItemCmdChar", "AXMenuItemCmdModifiers", "AXMenuItemCmdGlyph",
     ]
 
     /// One element found while walking, for searches.
@@ -239,6 +241,17 @@ enum MacAccessibility {
             if let placeholder = MacAccessibility.string(values["AXPlaceholderValue"]), !placeholder.isEmpty { node["placeholder"] = .string(placeholder) }
             if MacAccessibility.bool(values["AXFocused"]) == true { node["focused"] = .bool(true) }
             if MacAccessibility.bool(values["AXSelected"]) == true { node["selected"] = .bool(true) }
+            if role == "AXMenuItem" {
+                // A checkmark (or a dash for mixed) in front of the item.
+                if let mark = MacAccessibility.string(values["AXMenuItemMarkChar"]), !mark.trimmingCharacters(in: .whitespaces).isEmpty {
+                    node["checked"] = .bool(true)
+                }
+                if let shortcut = MacMenus.shortcut(
+                    character: values["AXMenuItemCmdChar"] as? String,
+                    modifiers: (values["AXMenuItemCmdModifiers"] as? NSNumber)?.intValue,
+                    glyph: (values["AXMenuItemCmdGlyph"] as? NSNumber)?.intValue
+                ) { node["shortcut"] = .string(shortcut) }
+            }
             if let global, let origin {
                 let frame = MacGeometry.toWindow(globalRect: global, window: origin)
                 node["frame"] = .object([
@@ -261,8 +274,8 @@ enum MacAccessibility {
         }
     }
 
-    /// The window's tree (and the menu bar's), as JSON data.
-    static func describe(pid: Int32, windowID: UInt32, frame: MacRect, includeMenus: Bool, at point: (x: Double, y: Double)?) throws -> Data {
+    /// The window's tree (and the menu bar's, and its menu bar icons'), as JSON data.
+    static func describe(pid: Int32, windowID: UInt32, frame: MacRect, includeMenus: Bool, includeStatusItems: Bool, at point: (x: Double, y: Double)?) throws -> Data {
         let window = try windowElement(pid: pid, windowID: windowID, frame: frame)
         var roots: [JSONValue] = []
         if let point {
@@ -287,12 +300,34 @@ enum MacAccessibility {
             }
             if walker.timedOut { throw notResponding(pid) }
         }
-        if includeMenus, let menuBar = element(value(application(pid), "AXMenuBar")) {
-            // Menus live outside the window, so their frames would only confuse: none are given.
+        roots += menuTrees(pid: pid, app: includeMenus, status: includeStatusItems)
+        return try JSONEncoder().encode(JSONValue.array(roots))
+    }
+
+    /// Just the menu bar's tree and/or the menu bar icons', for an app with no window.
+    static func describeMenus(pid: Int32, app: Bool, status: Bool) throws -> Data {
+        try MacPermissions.requireAccessibility(for: "read Mac app menus")
+        var probe: CFTypeRef?
+        if AXUIElementCopyAttributeValue(application(pid), "AXRole" as CFString, &probe) == .cannotComplete { throw notResponding(pid) }
+        return try JSONEncoder().encode(JSONValue.array(menuTrees(pid: pid, app: app, status: status)))
+    }
+
+    /// Menus live outside the window, so their frames would only confuse: none are given.
+    static func menuTrees(pid: Int32, app: Bool, status: Bool) -> [JSONValue] {
+        var roots: [JSONValue] = []
+        if app, let menuBar = element(value(application(pid), "AXMenuBar")) {
             let walker = Walker(pid: pid, origin: nil, maxDepth: 8, maxNodes: 1500)
             if let node = walker.walk(menuBar) { roots.append(node) }
         }
-        return try JSONEncoder().encode(JSONValue.array(roots))
+        if status, let extras = element(value(application(pid), "AXExtrasMenuBar")) {
+            let walker = Walker(pid: pid, origin: nil, maxDepth: 8, maxNodes: 1500)
+            if case .object(var node)? = walker.walk(extras) {
+                // Tell it apart from the app's menu bar.
+                node["AXLabel"] = .string("Menu bar icons")
+                roots.append(.object(node))
+            }
+        }
+        return roots
     }
 
     // MARK: Finding and pressing
@@ -411,53 +446,129 @@ enum MacAccessibility {
 
     // MARK: Menus
 
-    /// A menu title for matching: lowercased, trimmed, without a trailing "…" or "...".
-    static func normalize(_ title: String) -> String {
-        var text = title.trimmingCharacters(in: .whitespaces)
-        if text.hasSuffix("…") { text.removeLast() }
-        if text.hasSuffix("...") { text.removeLast(3) }
-        return text.trimmingCharacters(in: .whitespaces).lowercased()
+    /// The app's menu bar icons and their names.
+    static func statusItems(pid: Int32) -> [(element: AXUIElement, names: MacMenus.StatusItemNames)] {
+        guard let extras = element(value(application(pid), "AXExtrasMenuBar")) else { return [] }
+        return elements(value(extras, "AXChildren")).map { item in
+            let read = values(item, ["AXTitle", "AXDescription", "AXIdentifier", "AXHelp"]).values
+            return (item, MacMenus.StatusItemNames(
+                title: string(read["AXTitle"]), description: string(read["AXDescription"]),
+                identifier: string(read["AXIdentifier"]), help: string(read["AXHelp"])
+            ))
+        }
     }
 
-    /// Presses the menu item at `path` (["File", "New Window"]). Returns the titles it matched.
-    static func pressMenuItem(pid: Int32, path: [String]) throws -> [String] {
+    /// The names of the app's menu bar icons, or nil without the Accessibility permission.
+    static func statusItemNames(pid: Int32) -> [MacMenus.StatusItemNames]? {
+        guard AXIsProcessTrusted() else { return nil }
+        return statusItems(pid: pid).map { $0.names }
+    }
+
+    /// The menu an item opens: its AXMenu child, if it has one.
+    static func submenu(_ item: AXUIElement) -> AXUIElement? {
+        let children = elements(value(item, "AXChildren"))
+        return children.first { string(value($0, "AXRole")) == "AXMenu" }
+    }
+
+    /// Presses the menu item at `path`. From the app's menu bar, path starts at a menu
+    /// (["File", "New Window"]); from its menu bar icons, at the icon (["Hello", "Increment"]),
+    /// and the icon alone (or an empty path, for an app with one icon) presses the icon, which
+    /// opens its menu or popover and leaves it open. Returns the titles it matched.
+    static func pressMenuItem(pid: Int32, path: [String], source: MacMenus.Bar = .app, appName: String = "The app") throws -> [String] {
         try MacPermissions.requireAccessibility(for: "use Mac app menus")
-        guard !path.isEmpty else { throw MacDriverError("Give the menu path, e.g. [\"File\", \"New Window\"].") }
         let app = application(pid)
         var probe: CFTypeRef?
-        let error = AXUIElementCopyAttributeValue(app, "AXMenuBar" as CFString, &probe)
+        let error = AXUIElementCopyAttributeValue(app, (source == .app ? "AXMenuBar" : "AXRole") as CFString, &probe)
         if error == .cannotComplete { throw notResponding(pid) }
-        guard let menuBar = element(probe) else {
-            throw MacDriverError("The app (pid \(pid)) has no menu bar through Accessibility. It may not have finished launching.")
-        }
-        var items = elements(value(menuBar, "AXChildren"))
+        var items: [AXUIElement]
         var matched: [String] = []
-        for (level, name) in path.enumerated() {
+        var remaining = path[...]
+        switch source {
+        case .app:
+            guard !path.isEmpty else { throw MacDriverError("Give the menu path, e.g. [\"File\", \"New Window\"].") }
+            guard let menuBar = element(probe) else {
+                throw MacDriverError("The app (pid \(pid)) has no menu bar through Accessibility. It may not have finished launching.")
+            }
+            items = elements(value(menuBar, "AXChildren"))
+        case .status:
+            let icons = statusItems(pid: pid)
+            let names = icons.map { $0.names }
+            guard let index = MacMenus.pickStatusItem(path.first, in: names) else {
+                throw MacDriverError(MacMenus.statusItemMiss(path.first, appName: appName, items: names))
+            }
+            let icon = icons[index]
+            matched.append(icon.names.display)
+            remaining = path.dropFirst()
+            if remaining.isEmpty {
+                try press(icon.element, named: matched)
+                return matched
+            }
+            var opened = submenu(icon.element)
+            if opened == nil {
+                // Some icons only have their menu while it's open: open it and wait for it.
+                try press(icon.element, named: matched)
+                let deadline = Date().addingTimeInterval(2)
+                while opened == nil, Date() < deadline {
+                    Thread.sleep(forTimeInterval: 0.1)
+                    opened = submenu(icon.element) ?? elements(value(app, "AXChildren")).first { string(value($0, "AXRole")) == "AXMenu" }
+                }
+            }
+            guard let menu = opened else {
+                throw MacDriverError("The \(icon.names.display) icon has no menu that Accessibility can see. If it opens a popover, press just the icon (path [\"\(icon.names.display)\"]), then use list_windows, describe_ui and tap on the popover.")
+            }
+            items = elements(value(menu, "AXChildren"))
+        }
+        for (offset, name) in remaining.enumerated() {
             let titled: [(element: AXUIElement, title: String)] = items.compactMap { item in
                 guard let title = string(value(item, "AXTitle")), !title.isEmpty else { return nil }
                 return (item, title)
             }
-            let wanted = normalize(name)
-            guard let hit = titled.first(where: { normalize($0.title) == wanted }) ?? titled.first(where: { normalize($0.title).hasPrefix(wanted) }) else {
+            let wanted = MacMenus.normalize(name)
+            guard let hit = titled.first(where: { MacMenus.normalize($0.title) == wanted }) ?? titled.first(where: { MacMenus.normalize($0.title).hasPrefix(wanted) }) else {
                 let place = matched.isEmpty ? "the menu bar" : "the \(matched.joined(separator: " > ")) menu"
                 throw MacDriverError("No \"\(name)\" in \(place). Available: \(titled.map(\.title).joined(separator: ", ")).")
             }
             matched.append(hit.title)
-            if level == path.count - 1 {
+            if offset == remaining.count - 1 {
                 if bool(value(hit.element, "AXEnabled")) == false {
                     throw MacDriverError("\(matched.joined(separator: " > ")) is disabled right now.")
                 }
-                let result = AXUIElementPerformAction(hit.element, "AXPress" as CFString)
-                guard result == .success || result == .cannotComplete else {
-                    throw MacDriverError("Couldn't press \(matched.joined(separator: " > ")) (AX error \(result.rawValue)).")
-                }
+                try press(hit.element, named: matched)
                 return matched
             }
-            let children = elements(value(hit.element, "AXChildren"))
-            let menu = children.first { string(value($0, "AXRole")) == "AXMenu" } ?? children.first
-            guard let menu else { throw MacDriverError("\(matched.joined(separator: " > ")) has no submenu.") }
+            guard let menu = submenu(hit.element) ?? elements(value(hit.element, "AXChildren")).first else {
+                throw MacDriverError("\(matched.joined(separator: " > ")) has no submenu.")
+            }
             items = elements(value(menu, "AXChildren"))
         }
         return matched
+    }
+
+    /// AXPress, where a menu opening (which holds the app until it closes) counts as success.
+    private static func press(_ element: AXUIElement, named matched: [String]) throws {
+        let result = AXUIElementPerformAction(element, "AXPress" as CFString)
+        guard result == .success || result == .cannotComplete else {
+            throw MacDriverError("Couldn't press \(matched.joined(separator: " > ")) (AX error \(result.rawValue)).")
+        }
+    }
+
+    /// Sends AXCancel to the app's open menus (from its menu bar or its icons), which closes them.
+    /// False when it found no menu to close.
+    static func closeMenus(pid: Int32) throws -> Bool {
+        try MacPermissions.requireAccessibility(for: "close Mac app menus")
+        let app = application(pid)
+        var candidates: [AXUIElement] = []
+        if let menuBar = element(value(app, "AXMenuBar")) {
+            candidates += elements(value(menuBar, "AXChildren")).compactMap { item in bool(value(item, "AXSelected")) == true ? submenu(item) : nil }
+        }
+        candidates += statusItems(pid: pid).compactMap { submenu($0.element) }
+        candidates += elements(value(app, "AXChildren")).filter { string(value($0, "AXRole")) == "AXMenu" }
+        var any = false
+        for menu in candidates where actions(menu).contains("AXCancel") {
+            // A menu that isn't open ignores it.
+            let result = AXUIElementPerformAction(menu, "AXCancel" as CFString)
+            if result == .success || result == .cannotComplete { any = true }
+        }
+        return any
     }
 }

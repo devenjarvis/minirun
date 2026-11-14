@@ -95,6 +95,7 @@ extension ToolRegistry {
                 "Never share screens showing credentials or personal data.",
             properties: device.merging([
                 "window": Self.macProperties["window"]!,
+                "menus": Schema.boolean("Mac apps: instead of a window, capture the app's open menus and popovers (with the menu bar icon they hang from), or its menu bar icons when none is open. Only the app's own windows show."),
                 "scale": Schema.number("Optional scale relative to native pixels (0.1–1); for a Mac app, image pixels per point. Omit to match points.", minimum: 0.1, maximum: 1),
                 "quality": Schema.integer("JPEG quality 10–95 (default 70).", minimum: 10, maximum: 95),
                 "share": Schema.boolean("Also upload it (at two pixels per point) for a PR description: to the repo's pr-media branch if it has one, else to the Worker."),
@@ -115,7 +116,8 @@ extension ToolRegistry {
             description: "Read the accessibility tree of what's on screen (or in a Mac app's window): element types, labels, ids, values and frames in points. Prefer this over guessing coordinates from a screenshot. Pass x and y to describe just the element at that point.",
             properties: device.merging([
                 "window": Self.macProperties["window"]!,
-                "include_menus": Schema.boolean("Mac apps: also list the menu bar's items (for press_menu_item)."),
+                "include_menus": Schema.boolean("Mac apps: also list the menu bar's items (for press_menu_item), with checkmarks and shortcuts."),
+                "include_status_items": Schema.boolean("Mac apps: also list the app's menu bar icons (status items) and their menus (for press_menu_item with menu_bar \"status\"). An app with no window gets them anyway."),
                 "x": Schema.number("Optional x in points."),
                 "y": Schema.number("Optional y in points."),
                 "format": Schema.string("\"text\" (compact, default) or \"json\" (full AXe JSON).", enum: ["text", "json"]),
