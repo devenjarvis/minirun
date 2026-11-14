@@ -543,6 +543,7 @@ final class SimulatorPickerTests: XCTestCase {
 
     func message(_ choice: SimulatorPicker.Choice) -> String {
         if case .failure(let text) = choice { return text }
+        if case .full(let text) = choice { return text }
         return ""
     }
 
@@ -587,9 +588,50 @@ final class SimulatorPickerTests: XCTestCase {
         XCTAssertTrue(message(named).contains("reserved for you/app@feature-c"))
         XCTAssertEqual(udid(SimulatorPicker.target(query: "C", workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil)), "C")
 
-        // Too many running: stop and ask.
-        let busy = SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, maxBooted: 2)
+        // Too many running, all used just now: full, so the build waits.
+        let busy = SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, maxBooted: 2, now: now)
+        guard case .full = busy else { return XCTFail("expected full, got \(busy)") }
         XCTAssertTrue(message(busy).contains("already running"))
+    }
+
+    func testBuildsTakeAnyFreeSimulator() {
+        let devices = [device("A", "iPhone 17 Pro", booted: true), device("B", "iPhone 17 Pro", booted: true), device("C", "iPhone 17 Pro", booted: true)]
+        let claims = ["A": claim(nil, minutesAgo: 9), "B": claim(nil, minutesAgo: 2), "C": claim("you/app@c")]
+        // Several unreserved: the most recently used one, not an "ambiguous" failure.
+        XCTAssertEqual(udid(SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, now: now)), "B")
+        // A busy one (say, a live view) is left alone.
+        XCTAssertEqual(udid(SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, busy: ["B"], now: now)), "A")
+    }
+
+    func testFullBuildsReclaimIdleReservations() {
+        let devices = [device("A", "iPhone 17 Pro", booted: true), device("B", "iPhone 17 Pro", booted: true), device("C", "iPhone 17 Pro", booted: true), device("D", "iPhone 17 Pro")]
+        // The logs that led here: every simulator reserved, none running anything.
+        let claims = ["A": claim("you/app@step-1", minutesAgo: 20), "B": claim("you/app@ci/step-2", minutesAgo: 2), "C": claim("you/app@main", minutesAgo: 11)]
+
+        // CI's reservation goes first, once it's a minute old.
+        let ci = SimulatorPicker.target(query: nil, workspace: "you/app@ci/step-3", devices: devices, claims: claims, preferredName: nil, maxBooted: 3, now: now)
+        guard case .use(let taken, let note) = ci else { return XCTFail("expected a reclaimed simulator, got \(ci)") }
+        XCTAssertEqual(taken.udid, "B")
+        XCTAssertTrue(note?.contains("reserved for you/app@ci/step-2") ?? false)
+
+        // Then the longest unused session reservation.
+        XCTAssertEqual(udid(SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, maxBooted: 3, busy: ["B"], now: now)), "A")
+
+        // Busy ones and ones used within the grace period are never taken.
+        let recent = ["A": claim("you/app@step-1", minutesAgo: 4), "B": claim("you/app@ci/step-2", minutesAgo: 0.5), "C": claim("you/app@main", minutesAgo: 30)]
+        let full = SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: recent, preferredName: nil, maxBooted: 3, busy: ["C"], now: now)
+        guard case .full(let text) = full else { return XCTFail("expected full, got \(full)") }
+        XCTAssertTrue(text.contains("reserved for you/app@main, busy"))
+
+        // With room to boot, a fresh one beats taking someone's.
+        XCTAssertEqual(udid(SimulatorPicker.target(query: nil, workspace: "you/app@x", devices: devices, claims: claims, preferredName: nil, maxBooted: 4, now: now)), "D")
+    }
+
+    func testCIWorkspaces() {
+        XCTAssertTrue(SimulatorClaim.isCI("you/app@ci/main"))
+        XCTAssertFalse(SimulatorClaim.isCI("you/app@main"))
+        XCTAssertFalse(SimulatorClaim.isCI(nil))
+        XCTAssertEqual(WorkspaceNaming.label(slug: "you/app", ref: CIRun.defaultRef(["GITHUB_HEAD_REF": "step/1"])), "you/app@ci/step/1")
     }
 
     func testBootGivesEachSessionItsOwnSimulator() {
