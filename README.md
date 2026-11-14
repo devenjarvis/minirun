@@ -51,6 +51,14 @@ open ports, and no tunnel to run.
   minutes; builds 15) are stopped as hung, and `cancel_job` stops a job on demand. Jobs are
   written to disk, so after a restart `get_job` says what happened to them, and anything the
   previous run left running (a hung `xcodebuild`) is stopped when minirun starts.
+- **Tests keep working with you switched away.** Every test run (iOS or macOS) goes through Xcode's
+  test daemon, testmanagerd, which macOS only starts for the user on the Mac's screen; at the login
+  window a new one refuses ("Disallowing automation at loginwindow"). One that's already running
+  keeps serving tests after you switch users, but launchd ends it when it's idle and memory is
+  tight. So `minirun serve` keeps a tiny test session open (`keepTestDaemon`), and testmanagerd
+  with it. After a restart, logout or Xcode update, which end it anyway, log in on the Mac (or
+  Screen Sharing) for a minute and minirun starts it again; until then `run_tests` says so at once
+  instead of hanging.
 
 ## Setup
 
@@ -500,6 +508,7 @@ Gatekeeper prompts.
 | `mediaInlineLimitMB` | `5` | Largest GIF to put in a PR through the Worker (10 MB on a `pr-media` branch, or this if higher); bigger ones are shrunk |
 | `workspaceCleanupDays` | `3` | Deletes checkouts nobody has used for this many days; `0` keeps them |
 | `minFreeDiskGB` | `30` | While free disk is under this, deletes the least recently used checkouts (never one a job is using or that was used in the last hour), also before making a new one; `0` turns this off |
+| `keepTestDaemon` | `true` | Keeps one tiny macOS test session open (`xcodebuild test` of a package in `~/Library/Caches/minirun/test-daemon-keeper`) so Xcode's test daemon keeps running and tests still work after you switch away from the Mac's screen. See [How it works](#how-it-works) |
 | `sharedBuildCache` | `false` | Checkouts of one repository share Swift package checkouts (one folder per Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. Experimental: see [docs/faster-ci-plan.md](docs/faster-ci-plan.md) |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a

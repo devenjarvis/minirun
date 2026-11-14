@@ -288,10 +288,11 @@ public final class BackgroundProcess: @unchecked Sendable {
         self.process = process
     }
 
-    public static func start(_ executable: String, _ arguments: [String]) throws -> BackgroundProcess {
+    public static func start(_ executable: String, _ arguments: [String], currentDirectory: URL? = nil) throws -> BackgroundProcess {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        if let currentDirectory { process.currentDirectoryURL = currentDirectory }
         process.standardInput = FileHandle.nullDevice
         let background = BackgroundProcess(process)
         let collector = background.collector

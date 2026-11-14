@@ -40,6 +40,11 @@ public enum Server {
         defer { idleShutdown.cancel() }
         let cleanup = Task { await registry.cleanUpWorkspaces(log: { Server.log($0) }) }
         defer { cleanup.cancel() }
+        // Tests need Xcode's test daemon, which only starts with the user on the screen: keep it
+        // running so tests still work after they switch away.
+        let keeper = TestDaemonKeeperService(config: live, log: { Server.log($0) })
+        let keeping = Task { await keeper.run() }
+        defer { keeping.cancel(); keeper.stop() }
         let client = RelayClient(config: live, registry: registry, log: { Server.log($0) })
 
         let commands = ServeControl(registry: registry, client: client, startedAt: Date(), log: { Server.log($0) })
