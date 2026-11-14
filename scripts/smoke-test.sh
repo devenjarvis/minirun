@@ -151,7 +151,10 @@ print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[
   sleep 1
   mac_logs | expect "HelloMacApp: reset count=0"
   # The menu bar icon (a MenuBarExtra): open it, read and see its menu, pick from it, close it.
-  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":[\"Hello Extra\"]}" | expect "menu bar icon"
+  # What the icon looks like to Accessibility and the window server, for the log either way.
+  run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | tee /tmp/minirun-mac-status-before.txt | grep -A8 "Menu bar icons" >&2 || true
+  run screenshot "{\"device\":\"$MAC_ID\",\"menus\":true}" 2>&1 | grep -v "image saved" >&2 || true
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":[\"Hello Extra\"]}" | expect "Pressed the"
   sleep 1
   run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | tee /tmp/minirun-mac-status-ui.txt | expect "Add One"
   if grep -q "✓ Screen Recording (for macOS apps)" <<< "$HOST" && grep -q "✓ Display (for macOS apps)" <<< "$HOST"; then
@@ -166,7 +169,7 @@ print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[
   run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\",\"path\":\"Hello Extra > Add One\"}" | expect "Picked"
   sleep 1
   mac_logs | expect "HelloMacApp: menu-bar-add count=1"
-  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\"}" | expect "menu bar icon"
+  run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\"}" | expect "Pressed the"
   sleep 1
   run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | expect "\"Pinned\" checked"
   run press_menu_item "{\"device\":\"$MAC_ID\",\"close_menus\":true}" | expect "Closed"

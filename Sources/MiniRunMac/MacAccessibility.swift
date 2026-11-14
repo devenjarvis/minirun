@@ -319,13 +319,11 @@ enum MacAccessibility {
             let walker = Walker(pid: pid, origin: nil, maxDepth: 8, maxNodes: 1500)
             if let node = walker.walk(menuBar) { roots.append(node) }
         }
-        if status, let extras = element(value(application(pid), "AXExtrasMenuBar")) {
+        if status {
             let walker = Walker(pid: pid, origin: nil, maxDepth: 8, maxNodes: 1500)
-            if case .object(var node)? = walker.walk(extras) {
-                // Tell it apart from the app's menu bar.
-                node["AXLabel"] = .string("Menu bar icons")
-                roots.append(.object(node))
-            }
+            let icons = statusItems(pid: pid).compactMap { walker.walk($0.element) }
+            // Labelled to tell it apart from the app's menu bar.
+            roots.append(.object(["type": .string("MenuBar"), "role": .string("AXMenuBar"), "AXLabel": .string("Menu bar icons"), "enabled": .bool(true), "children": .array(icons)]))
         }
         return roots
     }
@@ -448,8 +446,24 @@ enum MacAccessibility {
 
     /// The app's menu bar icons and their names.
     static func statusItems(pid: Int32) -> [(element: AXUIElement, names: MacMenus.StatusItemNames)] {
-        guard let extras = element(value(application(pid), "AXExtrasMenuBar")) else { return [] }
-        return elements(value(extras, "AXChildren")).map { item in
+        let app = application(pid)
+        var items: [AXUIElement] = []
+        if let extras = element(value(app, "AXExtrasMenuBar")) { items = elements(value(extras, "AXChildren")) }
+        if items.isEmpty {
+            // Not listed under AXExtrasMenuBar: find each icon by asking the app what's at the
+            // center of its menu bar icon windows.
+            for overlay in MacAppDriver.overlayWindows(pid).map({ $0.overlay }) where overlay.isStatusItem {
+                var hit: AXUIElement?
+                guard AXUIElementCopyElementAtPosition(app, Float(overlay.frame.midX), Float(overlay.frame.midY), &hit) == .success, var current = hit else { continue }
+                // Up to the menu bar item, if the hit is inside it.
+                for _ in 0..<3 where string(value(current, "AXRole")) != "AXMenuBarItem" {
+                    guard let parent = element(value(current, "AXParent")) else { break }
+                    current = parent
+                }
+                if !items.contains(where: { CFEqual($0, current) }) { items.append(current) }
+            }
+        }
+        return items.map { item in
             let read = values(item, ["AXTitle", "AXDescription", "AXIdentifier", "AXHelp"]).values
             return (item, MacMenus.StatusItemNames(
                 title: string(read["AXTitle"]), description: string(read["AXDescription"]),
