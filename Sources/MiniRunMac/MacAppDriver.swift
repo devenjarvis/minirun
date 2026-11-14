@@ -477,7 +477,12 @@ public final class MacAppDriver {
     /// captured, in global points; by default 1 image pixel = 1 point.
     public func menusScreenshotJPEG(pid: Int32, scale: Double? = nil, quality: Int = 75) async throws -> (data: Data, width: Int, height: Int, frame: MacRect) {
         try MacPermissions.requireScreenRecording(for: "take screenshots of Mac app menus")
-        let overlays = Self.overlayWindows(pid)
+        // Off the main actor, like every other ScreenCaptureKit call here.
+        return try await Self.captureMenus(pid: pid, scale: scale, quality: quality)
+    }
+
+    nonisolated static func captureMenus(pid: Int32, scale: Double?, quality: Int) async throws -> (data: Data, width: Int, height: Int, frame: MacRect) {
+        let overlays = overlayWindows(pid)
         guard let wanted = MacMenus.captureRect(overlays.map { $0.overlay }) else {
             throw MacDriverError("The app has no open menu, popover or menu bar icon on screen to capture. Open one first: press_menu_item with menu_bar \"status\" and just the icon's name opens its menu.")
         }
@@ -507,7 +512,7 @@ public final class MacAppDriver {
         configuration.showsCursor = false
         configuration.capturesAudio = false
         configuration.backgroundColor = CGColor(gray: 0.82, alpha: 1)
-        let image = try await Self.captureImage(filter, configuration, what: "the menus")
+        let image = try await captureImage(filter, configuration, what: "the menus")
         let output = MacGeometry.imageSize(points: (area.width, area.height), scale: scale)
         let resized = MacImage.resized(image, width: output.width, height: output.height) ?? image
         return (try MacImage.jpeg(resized, quality: quality), resized.width, resized.height, area)
