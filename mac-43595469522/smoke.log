@@ -1,0 +1,38 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
+✓ Test daemon (for tests): runner is on the screen
++ minirun call sync_repo {"repo":"you/app","ref":"main"} [load  12.66 22.30 16.69 , 73% free]
++ minirun call sync_repo {"repo":"you/app","ref":"feature"} [load  12.66 22.30 16.69 , 73% free]
++ minirun call sync_repo {"repo":"you/app","ref":"main"} [load  12.66 22.30 16.69 , 73% free]
++ minirun call sync_repo {"repo":"you/app","ref":"feature"} [load  12.66 22.30 16.69 , 73% free]
+Cloned E0D8BA3D-B05B-4523-828A-0387B4F34518 from the template F61D032C-5E43-4366-B021-F181800AF6C4
++ minirun call boot_simulator {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  11.17 21.66 16.53 , 73% free]
++ minirun call screenshot {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  277.87 102.84 48.19 , 55% free]
++ minirun call build_and_run {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  288.92 111.04 51.74 , 54% free]
++ minirun call describe_ui {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  434.50 250.88 127.34 , 39% free]
++ minirun call tap {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","id":"tapButton"} [load  446.23 256.36 130.00 , 39% free]
++ minirun call describe_ui {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  456.94 261.73 132.63 , 38% free]
++ minirun call tap {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","id":"nameField"} [load  469.36 267.55 135.44 , 38% free]
++ minirun call type_text {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","text":"Claude"} [load  481.18 273.35 138.26 , 38% free]
++ minirun call describe_ui {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  508.10 285.96 144.32 , 38% free]
++ minirun call screenshot {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518"} [load  524.31 296.74 149.79 , 38% free]
++ minirun call swipe {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","direction":"up"} [load  543.47 312.11 157.85 , 36% free]
++ minirun call press_button {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","button":"home"} [load  564.61 328.11 166.25 , 38% free]
++ minirun call app_logs {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","bundle_id":"dev.minirun.HelloApp","seconds":120} [load  572.80 333.74 169.18 , 38% free]
++ minirun call terminate_app {"device":"E0D8BA3D-B05B-4523-828A-0387B4F34518","bundle_id":"dev.minirun.HelloApp"} [load  582.49 343.69 174.64 , 39% free]
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} [load  588.70 348.94 177.48 , 39% free]
+FAILED: expected output to contain: Created minirun-smoke (minirun 2) from the template
+--- output was:
+[job_cab8e5a3] boot simulator for smoke/second: failed in 15m 51s
+Waiting for the simulator to finish booting timed out after 900s:
