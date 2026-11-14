@@ -45,6 +45,9 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     /// While free disk is under this many GB, the least recently used checkouts are deleted until
     /// it isn't, sparing any used in the last hour (0 turns this off).
     public var minFreeDiskGB: Int
+    /// Keeps a test session open so Xcode's test daemon keeps running, and tests keep working,
+    /// after the user switches away from the Mac's screen. See `TestDaemonKeeper`.
+    public var keepTestDaemon: Bool
 
     public init(
         relayURL: String? = nil,
@@ -65,7 +68,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         githubMediaBranch: String = MiniRunConfig.defaultMediaBranch,
         sharedBuildCache: Bool = false,
         workspaceCleanupDays: Int = 3,
-        minFreeDiskGB: Int = 30
+        minFreeDiskGB: Int = 30,
+        keepTestDaemon: Bool = true
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -86,6 +90,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.sharedBuildCache = sharedBuildCache
         self.workspaceCleanupDays = workspaceCleanupDays
         self.minFreeDiskGB = minFreeDiskGB
+        self.keepTestDaemon = keepTestDaemon
     }
 
     public init(from decoder: Decoder) throws {
@@ -109,6 +114,7 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         sharedBuildCache = try c.decodeIfPresent(Bool.self, forKey: .sharedBuildCache) ?? false
         workspaceCleanupDays = try c.decodeIfPresent(Int.self, forKey: .workspaceCleanupDays) ?? 3
         minFreeDiskGB = try c.decodeIfPresent(Int.self, forKey: .minFreeDiskGB) ?? 30
+        keepTestDaemon = try c.decodeIfPresent(Bool.self, forKey: .keepTestDaemon) ?? true
     }
 
     public static let defaultMediaBranch = "pr-media"

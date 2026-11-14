@@ -2,14 +2,19 @@
 
 ## Unreleased
 
-- **Tests say at once when they can't start with you switched away.** Xcode's test daemon
-  (testmanagerd) only starts for the user on the Mac's screen. One started while you were there
-  keeps working after you switch users (so others can use the Mac), but once it quits after a quiet
-  spell, a new one refuses at the login window ("Disallowing automation at loginwindow") and
-  xcodebuild built the app, then printed nothing until it was stopped as hung 5 minutes later,
-  blamed on "a stuck simulator". `run_tests` now fails before building in that case and says to
-  switch back, run any tests, and switch away again. `host_info` and `minirun doctor` have a
-  "Test daemon (for tests)" check.
+- **Tests keep working after you switch away from the Mac.** Xcode's test daemon (testmanagerd)
+  only starts for the user on the Mac's screen. One started while you were there keeps working
+  after you switch users (so others can use the Mac), but launchd ends it when it's idle and memory
+  is tight, as it is during big builds. Then a new one refused at the login window ("Disallowing
+  automation at loginwindow"), and every test run built the app, then printed nothing until it was
+  stopped as hung 5 minutes later, blamed on "a stuck simulator". This left a repo's app tests
+  failing for days. `minirun serve` now keeps a tiny macOS test session open, which keeps
+  testmanagerd from being ended, and starts it again whenever it ends. The `keepTestDaemon` setting
+  turns this off.
+- **Tests say at once when they can't start.** After a restart, logout or Xcode update (which end
+  testmanagerd anyway) with nobody on the screen, `run_tests` fails before building and says to
+  log in on the Mac for a minute. `host_info` and `minirun doctor` have a "Test daemon (for tests)"
+  check.
 - **A failed Worker update is tried again.** The menu bar app tried to update the Worker once per
   launch, so a single failure (a network blip while the app restarted into a new version, say)
   left it on the old version until the next restart. It now tries again 15 minutes later, then
