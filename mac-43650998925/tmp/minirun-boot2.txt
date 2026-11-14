@@ -1,0 +1,7 @@
+[job_04e3dc4f] boot simulator for smoke/second: succeeded in 12m 16s
+Booted minirun-smoke (minirun 2) (iOS 26.5).
+Created minirun-smoke (minirun 2) from the template minirun-smoke (minirun template) because every minirun-smoke was in use.
+Reserved for smoke/second.
+Simulator: minirun-smoke (minirun 2), UDID 6EF79E81-2F54-4EC0-BCB8-AC22FC6BD43A. Pass device: "6EF79E81-2F54-4EC0-BCB8-AC22FC6BD43A" on later calls so they reach this simulator.
+[image saved to /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/minirun-1BDA4019.jpg]
+Screenshot 375x812px.
