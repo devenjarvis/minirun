@@ -316,9 +316,10 @@ itself, with the same loop:
    menus, with checkmarks and shortcuts. `press_menu_item {menu_bar: "status", path: ["Hello",
    "Settings…"]}` picks an item from the icon named "Hello". `path: ["Hello"]` presses the icon
    itself, which opens its menu or popover. SwiftUI names a `MenuBarExtra`'s icon after its image
-   ("Favorite" for `star`), not its title; an app's only icon is found whatever name is given. `screenshot {menus: true}` shows the open menus and
-   popovers (on macOS 26, without the icon itself, which belongs to the menu bar), and `press_menu_item {close_menus: true}` closes a menu that was left open. A popover
-   is listed as a window, so `tap`, `describe_ui` and `screenshot` work on it. Only the app's own
+   ("Favorite" for `star`), not its title; an app's only icon is found whatever name is given.
+   `screenshot {menus: true}` shows the open menus and popovers (on macOS 26, without the icon
+   itself, which belongs to the menu bar), and `press_menu_item {close_menus: true}` closes a menu
+   that was left open. A popover is listed as a window, so `tap`, `describe_ui` and `screenshot` work on it. Only the app's own
    icons are visible to these tools, never other apps' icons.
 4. `run_tests {platform: "macos"}` runs the scheme's tests on the Mac, with the same
    `stall_seconds`/`timeout_seconds`, `cancel_job` and no-parallel defaults as iOS tests.
