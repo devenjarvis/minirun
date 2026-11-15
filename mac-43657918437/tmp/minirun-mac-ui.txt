@@ -1,0 +1,12 @@
+Frames are window points from the window's top-left, title bar included.
+Window "HelloMacApp" id=HelloMacApp.ContentView-1-AppWindow-1 (0,0 900x450)
+  Group (0,0 900x450)
+    StaticText "Count: 0" id=countLabel (409,172 82x26)
+    Button "Increment" id=incrementButton (408,214 85x24)
+    TextField id=nameField (340,254 220x24)
+    StaticText "Hello, " id=greetingLabel (431,294 39x16)
+  Button (8,8 16x16)
+  Button (54,8 16x16)
+    Group (55,9 14x14)
+  Button (31,8 16x16)
+  StaticText "HelloMacApp" (82,8 91x16)
