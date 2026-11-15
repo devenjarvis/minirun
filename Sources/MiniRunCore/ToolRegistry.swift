@@ -105,7 +105,8 @@ public final class ToolRegistry: @unchecked Sendable {
         let (all, current) = try await simulators()
         let choice = SimulatorPicker.target(
             query: args.string("device"), workspace: nil, devices: all,
-            claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators
+            claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators,
+            busy: await busySimulators()
         )
         let device = try await realize(choice, boot: boot).ready()
         await claims.touch(device.udid)
@@ -113,23 +114,83 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     /// The simulator for a build of `workspace` ("owner/app@ref"), reserved for it. Uses the one
-    /// already reserved for this workspace, an unreserved booted one, or boots a separate one.
+    /// already reserved for this workspace, an unreserved booted one, or boots a separate one; with
+    /// no room to boot, takes one reserved for other work that nobody is using (see
+    /// `SimulatorPicker.target`). If every simulator is in use it waits up to
+    /// `simulatorWaitSeconds` for one, calling `waiting` once, rather than failing straight away.
     /// The pick and reservation happen under the allocation lock; waiting for a boot doesn't.
-    func workspaceDevice(_ args: ToolArguments, workspace: String) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
-        let allocated = try await allocation.withLock("simulators") { () async throws -> Allocation in
-            let (all, current) = try await simulators()
-            let choice = SimulatorPicker.target(
-                query: args.string("device"), workspace: workspace, devices: all,
-                claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators
-            )
-            var allocated = try await realize(choice, boot: true)
-            if let previous = await claims.reserve(allocated.device.udid, for: workspace) {
-                allocated.note = [allocated.note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
+    func workspaceDevice(_ args: ToolArguments, workspace: String, waiting: (@Sendable (String) -> Void)? = nil) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
+        enum Pick { case got(Allocation), full(String) }
+        let started = Date()
+        var announced = false
+        while true {
+            let pick = try await allocation.withLock("simulators") { () async throws -> Pick in
+                let (all, current) = try await simulators()
+                let choice = SimulatorPicker.target(
+                    query: args.string("device"), workspace: workspace, devices: all,
+                    claims: current, preferredName: config.defaultDevice, maxBooted: config.maxBootedSimulators,
+                    busy: await busySimulators()
+                )
+                if case .full(let message) = choice { return .full(message) }
+                var allocated = try await realize(choice, boot: true)
+                if let previous = await claims.reserve(allocated.device.udid, for: workspace) {
+                    allocated.note = [allocated.note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
+                }
+                return .got(allocated)
             }
-            return allocated
+            switch pick {
+            case .got(var allocated):
+                let waited = Int(Date().timeIntervalSince(started))
+                if announced { allocated.note = ["Waited \(waited)s for a simulator.", allocated.note].compactMap { $0 }.joined(separator: " ") }
+                let device = try await allocated.ready()
+                return (device, allocated.note)
+            case .full(let message):
+                guard Date().timeIntervalSince(started) < Self.simulatorWaitSeconds else {
+                    throw ToolError("Waited \(Int(Self.simulatorWaitSeconds / 60)) min for a simulator. " + message)
+                }
+                if !announced {
+                    announced = true
+                    waiting?("Every simulator is in use (\(config.maxBootedSimulators) may run at once). Waiting up to \(Int(Self.simulatorWaitSeconds / 60)) min for one to come free…\n")
+                }
+                try await Task.sleep(nanoseconds: UInt64(Self.simulatorPollSeconds * 1_000_000_000))
+            }
         }
-        let device = try await allocated.ready()
-        return (device, allocated.note)
+    }
+
+    /// How long a build waits for a simulator when every one is in use, and how often it looks.
+    static let simulatorWaitSeconds: TimeInterval = 10 * 60
+    static let simulatorPollSeconds: TimeInterval = 5
+
+    /// Simulators with a job, live view, recording or boot in progress: never taken from their owner.
+    func busySimulators() async -> Set<String> {
+        (await activity.busy).union(await boots.booting).union(await recordings.recording)
+    }
+
+    /// Runs a CI job's `body`, then ends the reservation of the simulator it used, keeping it
+    /// booted, so the next CI branch or session can take it at once instead of after the idle
+    /// timeout. CI never comes back to a simulator after its job. Other workspaces just run `body`.
+    func releasingCI<T>(_ workspace: String, _ body: () async throws -> T) async throws -> T {
+        guard SimulatorClaim.isCI(workspace) else { return try await body() }
+        do {
+            let value = try await body()
+            await releaseCI(workspace, finished: Date())
+            return value
+        } catch {
+            await releaseCI(workspace, finished: Date())
+            throw error
+        }
+    }
+
+    /// Unreserves `workspace`'s simulators that aren't busy and weren't picked again after
+    /// `finished` (another job of the same branch may have just taken one).
+    func releaseCI(_ workspace: String, finished: Date) async {
+        _ = try? await allocation.withLock("simulators") { () async -> Void in
+            let busy = await busySimulators()
+            for udid in await claims.reserved(for: workspace) where !busy.contains(udid) {
+                guard let claim = await claims.claim(udid), claim.label == workspace, claim.updatedAt <= finished else { continue }
+                await claims.unreserve(udid)
+            }
+        }
     }
 
     /// The available simulators and their reservations. A simulator that's still booting shows as
@@ -162,7 +223,7 @@ public final class ToolRegistry: @unchecked Sendable {
     /// on the result before using the simulator.
     func realize(_ choice: SimulatorPicker.Choice, boot: Bool) async throws -> Allocation {
         switch choice {
-        case .failure(let message):
+        case .failure(let message), .full(let message):
             throw ToolError(message)
         case .use(let device, let note):
             if let running = await boots.task(device.udid) { return Allocation(device: device, note: note, boot: running) }
@@ -242,7 +303,7 @@ public final class ToolRegistry: @unchecked Sendable {
         // Under the allocation lock so a pick can't hand out a simulator while it's shutting down.
         try await allocation.withLock("simulators") { () async throws -> Void in
             // A recording counts as use: it stops by itself, and the simulator is idle only after that.
-            let busy = (await activity.busy).union(await boots.booting).union(await recordings.recording)
+            let busy = await busySimulators()
             let (all, current) = try await simulators()
             let booted = all.filter(\.isBooted)
             let names = Dictionary(booted.map { ($0.udid, $0.name) }, uniquingKeysWith: { a, _ in a })

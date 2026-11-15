@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Builds and tests no longer fail because every simulator is reserved.** A simulator stayed
+  reserved for its repo + branch until nobody had used it for 30 minutes, and picks only looked at
+  reservations, not at whether anything was running. CI gives each branch its own workspace, so a
+  few PRs in half an hour filled every slot with idle simulators and the next run failed with
+  "N simulators are already running, all reserved for other work". Now:
+  - A `minirun ci` build or test ends its simulator's reservation when it finishes, keeping the
+    simulator booted, so the next run takes it at once.
+  - With no room to boot another, a build takes a simulator reserved for other work if nothing is
+    running on it and it hasn't been used for a minute (CI) or 5 minutes (anyone else), longest
+    unused first. Simulators with a job, live view, recording or boot in progress are never taken.
+  - If every simulator really is in use, the build waits up to 10 minutes for one, saying so in
+    its log, instead of failing.
+  - A build with several unreserved simulators booted takes the most recently used one rather
+    than failing as ambiguous.
 - **Menu bar icons in Mac apps.** Claude can now test an app's status items (`NSStatusItem`,
   SwiftUI's `MenuBarExtra`) as well as its menus. `describe_ui {include_status_items: true}`
   lists the app's menu bar icons and their menus. `press_menu_item {menu_bar: "status", path:

@@ -117,8 +117,8 @@ extension ToolRegistry {
             let workspace = try workspaceLabel(args)
             _ = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
             let log = newLogURL("build")
-            return await runAsJob(args, title: "build \(workspace)", log: log) { [self] in
-                let early = try await self.earlySimulator(args, workspace: workspace)
+            return await runAsJob(args, title: "build \(workspace)", log: log) { [self] in try await self.releasingCI(workspace) {
+                let early = try await self.earlySimulator(args, workspace: workspace, log: log)
                 return try await self.whileUsingEarly(early) { try await self.withCheckout(args, log: log) { () async throws -> ToolResult in
                     let prepared = try await self.prepareBuild(args, workspace: workspace, log: log, early: early)
                     if let sim = prepared.sim {
@@ -129,7 +129,7 @@ extension ToolRegistry {
                     let next = "To run it, call build_and_run with platform: \"\(output.platform.rawValue)\" and the same repo + ref (or path)."
                     return .text([self.describe(output, log: log), next].joined(separator: "\n"))
                 } }
-            }
+            } }
         }
 
         register(ToolDefinition(
@@ -154,7 +154,7 @@ extension ToolRegistry {
                 let env = args.raw["environment"]?.objectValue?.compactMapValues(\.stringValue) ?? [:]
                 // Picking (and maybe booting) the simulator happens in the job: a first boot can take
                 // minutes. When the build is known to be for iOS that's before taking the checkout.
-                let early = try await self.earlySimulator(args, workspace: workspace)
+                let early = try await self.earlySimulator(args, workspace: workspace, log: log)
                 // Hold the checkout through install (for a Mac app, through launch) so another build can't replace the .app first.
                 let built = try await self.whileUsingEarly(early) { try await self.withCheckout(args, log: log) { () async throws -> BuildAndRun in
                     let prepared = try await self.prepareBuild(args, workspace: workspace, log: log, early: early)
@@ -225,8 +225,8 @@ extension ToolRegistry {
             let workspace = try workspaceLabel(args)
             _ = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
             let log = newLogURL("test")
-            return await runAsJob(args, title: "tests \(workspace)", log: log) { [self] in
-                let early = try await self.earlySimulator(args, workspace: workspace, forTesting: true)
+            return await runAsJob(args, title: "tests \(workspace)", log: log) { [self] in try await self.releasingCI(workspace) {
+                let early = try await self.earlySimulator(args, workspace: workspace, log: log, forTesting: true)
                 return try await self.whileUsingEarly(early) { try await self.withCheckout(args, log: log) { () async throws -> ToolResult in
                     var prepared = try await self.prepareBuild(args, workspace: workspace, log: log, forTesting: true, early: early)
                     prepared.options.timeout = TimeInterval(args.int("timeout_seconds") ?? 1800)
@@ -252,7 +252,7 @@ extension ToolRegistry {
                     if let note = prepared.note { text += "\n" + note }
                     return ToolResult([.text(text)], isError: !output.passed)
                 } }
-            }
+            } }
         }
 
         register(ToolDefinition(
@@ -480,14 +480,14 @@ extension ToolRegistry {
     /// Before the checkout lock, as builds did before macOS support: picks (and maybe boots) the
     /// workspace's simulator when the build is for iOS, said by `platform` or `device`, or found
     /// for this scheme last time. Otherwise nil, and `prepareBuild` picks one once it knows.
-    func earlySimulator(_ args: ToolArguments, workspace: String, forTesting: Bool = false) async throws -> EarlySimulator? {
+    func earlySimulator(_ args: ToolArguments, workspace: String, log: URL, forTesting: Bool = false) async throws -> EarlySimulator? {
         var guess = try MacToolSupport.platform(argument: args.string("platform"), device: args.string("device"))
         if guess == nil {
             let key = try platformKey(args, forTesting: forTesting)
             guess = await detectedPlatforms.lastKnown(key)
         }
         guard guess == .ios else { return nil }
-        return try await workspaceDevice(args, workspace: workspace)
+        return try await workspaceDevice(args, workspace: workspace, waiting: { XcodeBuild.appendLog(log, $0) })
     }
 
     /// Runs `body` with the early simulator (if any) marked busy.
@@ -527,7 +527,7 @@ extension ToolRegistry {
         }
         guard options.platform == .ios else { return PreparedBuild(options: options) }
         let sim: XcodeParsing.SimDevice, note: String?
-        if let early { (sim, note) = early } else { (sim, note) = try await workspaceDevice(args, workspace: workspace) }
+        if let early { (sim, note) = early } else { (sim, note) = try await workspaceDevice(args, workspace: workspace, waiting: { XcodeBuild.appendLog(log, $0) }) }
         options.udid = sim.udid
         return PreparedBuild(options: options, sim: sim, note: note)
     }

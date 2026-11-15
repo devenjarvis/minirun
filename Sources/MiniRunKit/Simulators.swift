@@ -14,6 +14,12 @@ public struct SimulatorClaim: Codable, Equatable, Sendable {
         self.bundleID = bundleID
         self.updatedAt = updatedAt
     }
+
+    /// True for a `minirun ci` workspace ("owner/app@ci/branch"). CI never comes back to a
+    /// simulator after its job, so its reservation ends with the job and it's the first to give way.
+    public static func isCI(_ label: String?) -> Bool {
+        label?.contains("@ci/") ?? false
+    }
 }
 
 /// Decides which simulator a tool call acts on. Pure logic so it can be unit tested anywhere.
@@ -30,7 +36,16 @@ public enum SimulatorPicker {
         /// Every simulator of the wanted model is busy: create another one like `like`.
         case create(name: String, like: Device, note: String? = nil)
         case failure(String)
+        /// Every running simulator is in use and no more may boot. Worth waiting for: simulator
+        /// work is usually quick, and one comes free when a job ends.
+        case full(String)
     }
+
+    /// How long a reservation must go unused before another workspace may take its simulator when
+    /// no more can boot. Short for CI, which has finished with it; longer for a session, which may
+    /// be between a build and its taps.
+    public static let reclaimAfter: TimeInterval = 5 * 60
+    public static let reclaimCIAfter: TimeInterval = 60
 
     /// Simulators minirun creates are named like "iPhone 17 Pro (minirun 2)".
     public static let cloneMarker = " (minirun "
@@ -53,7 +68,10 @@ public enum SimulatorPicker {
     ///   - query: The `device` argument: a UDID or a simulator name.
     ///   - workspace: For builds, the repo and ref being built ("owner/app@branch"). A build without
     ///     `device` uses the simulator reserved for its workspace, or an unreserved booted one, or
-    ///     boots a new one rather than taking a simulator reserved for other work.
+    ///     boots a new one rather than taking a simulator reserved for other work. Only when no more
+    ///     may boot does it take one reserved for other work, and only one that isn't `busy` and
+    ///     hasn't been used for `reclaimAfter` (`reclaimCIAfter` for CI). If none can be had, `.full`.
+    ///   - busy: Simulators with a job, live view, recording or boot in progress.
     public static func target(
         query: String?,
         workspace: String?,
@@ -61,6 +79,7 @@ public enum SimulatorPicker {
         claims: [String: SimulatorClaim],
         preferredName: String?,
         maxBooted: Int = 4,
+        busy: Set<String> = [],
         now: Date = Date()
     ) -> Choice {
         let available = devices.filter(\.isAvailable)
@@ -89,12 +108,18 @@ public enum SimulatorPicker {
                 .filter { claims[$0.udid]?.label == workspace }
                 .sorted { (claims[$0.udid]?.updatedAt ?? .distantPast) > (claims[$1.udid]?.updatedAt ?? .distantPast) }
             if let device = mine.first { return .use(device) }
-            let free = booted.filter { claims[$0.udid]?.label == nil }
-            if free.count == 1 { return .use(free[0]) }
-            if free.count > 1 { return .failure(ambiguous(free, claims: claims, now: now)) }
+            // A build reserves what it takes, so any unreserved one will do: the most recently used.
+            let free = booted
+                .filter { claims[$0.udid]?.label == nil && !busy.contains($0.udid) }
+                .sorted { (claims[$0.udid]?.updatedAt ?? .distantPast) > (claims[$1.udid]?.updatedAt ?? .distantPast) }
+            if let device = free.first { return .use(device) }
             if booted.count >= maxBooted {
-                return .failure(
-                    "\(booted.count) simulators are already running, all reserved for other work:\n\(describe(booted, claims: claims, now: now))\n" +
+                if let device = reclaimable(booted, workspace: workspace, claims: claims, busy: busy, now: now),
+                   let claim = claims[device.udid], let owner = claim.label {
+                    return .use(device, note: "Every simulator was reserved, so \(workspace) took \(device.name), reserved for \(owner) but unused since \(ago(claim.updatedAt, now: now)).")
+                }
+                return .full(
+                    "\(booted.count) simulators are already running, all in use by other work:\n\(describe(booted, claims: claims, busy: busy, now: now))\n" +
                     busyHint
                 )
             }
@@ -104,7 +129,7 @@ public enum SimulatorPicker {
             switch choice {
             case .use(let device, _): return .use(device, note: note)
             case .create(let name, let like, _): return .create(name: name, like: like, note: note)
-            case .failure: return choice
+            case .failure, .full: return choice
             }
         }
 
@@ -165,6 +190,21 @@ public enum SimulatorPicker {
         return .create(name: cloneName(base, existing: available.map(\.name)), like: model)
     }
 
+    /// A simulator reserved for other work that a workspace may take when no more can boot: not
+    /// busy, and unused for long enough. CI's first (it has finished), then the longest unused.
+    static func reclaimable(_ booted: [Device], workspace: String, claims: [String: SimulatorClaim], busy: Set<String>, now: Date) -> Device? {
+        booted
+            .filter { device in
+                guard !busy.contains(device.udid), let claim = claims[device.udid], let label = claim.label, label != workspace else { return false }
+                return now.timeIntervalSince(claim.updatedAt) >= (SimulatorClaim.isCI(label) ? reclaimCIAfter : reclaimAfter)
+            }
+            .min { a, b in
+                let ciA = SimulatorClaim.isCI(claims[a.udid]?.label), ciB = SimulatorClaim.isCI(claims[b.udid]?.label)
+                if ciA != ciB { return ciA }
+                return claims[a.udid]!.updatedAt < claims[b.udid]!.updatedAt
+            }
+    }
+
     /// What to do when every simulator is taken.
     static let busyHint =
         "If one of these is yours, pass its UDID as device. A job of yours may be holding one: list_jobs shows what's running " +
@@ -172,9 +212,10 @@ public enum SimulatorPicker {
         "has used for a while on its own, so try again in a few minutes."
 
     /// One line per simulator: UDID, name, and who it's reserved for.
-    public static func describe(_ devices: [Device], claims: [String: SimulatorClaim], now: Date = Date()) -> String {
+    public static func describe(_ devices: [Device], claims: [String: SimulatorClaim], busy: Set<String> = [], now: Date = Date()) -> String {
         devices.map { device in
             var parts = [claims[device.udid]?.label.map { "reserved for \($0)" } ?? "not reserved"]
+            if busy.contains(device.udid) { parts.append("busy") }
             if let claim = claims[device.udid] {
                 if let bundle = claim.bundleID { parts.append("last app \(bundle)") }
                 parts.append("used \(ago(claim.updatedAt, now: now))")
@@ -263,6 +304,11 @@ public actor SimulatorClaimStore {
 
     /// The simulator's claim as it stands, without dropping stale ones.
     public func claim(_ udid: String) -> SimulatorClaim? { claims[udid] }
+
+    /// The simulators reserved for `label`.
+    public func reserved(for label: String) -> [String] {
+        claims.filter { $0.value.label == label }.map(\.key)
+    }
 
     /// Reserves a simulator for `label`. Returns the label it was reserved for before, if different.
     @discardableResult
