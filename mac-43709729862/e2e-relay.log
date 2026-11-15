@@ -1,0 +1,72 @@
+Saved /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.CnoFmAdkrL/config.json
+• register client + authorize with password
+• MCP initialize + tools/list
+  40 tools: mac_status, list_simulators, boot_simulator, shutdown_simulator, screenshot, describe_ui, tap, swipe, long_press, type_text, press_key, press_button, open_url, set_pasteboard, configure_simulator, install_app, launch_app, terminate_app, uninstall_app, app_logs, add_media, host_info, sync_repo, list_schemes, build, build_and_run, run_tests, swift_test, cancel_job, run_command, get_job, job_log, list_jobs, list_mac_apps, list_windows, scroll, press_menu_item, start_recording, stop_recording, delete_media
+• mac_status
+  The Mac is online (iad20-gt1026-5c2ca675-7522-412f-9ed2-dac8257f563a-16F1B5CE2BDF).
+• screenshot through the relay
+  Screenshot 375x812px. Screen is 375x812 points — image pixels equal points, so use them directly for tap/swipe.
+• describe_ui through the relay
+  Application "HelloApp" (0,0 375x812) |   Group (0,0 375x812) |     Group (0,0 375x812)
+• viewer login + live frames + input
+  5 frames; screen minirun-smoke 375x812 pt
+• H.264 live view
+  1 frames, 3046 bytes, avc1.640C1F
+• macOS app: build_and_run through the relay
+  mac-ee5639: Launched HelloMacApp (pid 36686).
+<anonymous_script>:1
+The app (pid 36686) isn't responding to accessibility requests. It may be busy, hung or showing a modal dialog; try again, or take a screenshot to see.
+^
+
+SyntaxError: Unexpected token 'T', "The app (p"... is not valid JSON
+    at JSON.parse (<anonymous>)
+    at file:///Users/runner/work/minirun/minirun/worker/test/e2e-relay.mjs:155:21
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+
+Node.js v24.22.2
+--- minirun serve log
+2026-11-15T11:51:30Z minirun 0.10.0 starting
+2026-11-15T11:51:30Z Simulator support loaded
+2026-11-15T11:51:30Z Preventing idle sleep while running
+2026-11-15T11:51:30Z 39 tools ready; workspaces at /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.CnoFmAdkrL/workspaces
+2026-11-15T11:51:30Z Shutting down simulators and quitting Mac apps after 30 idle minutes
+2026-11-15T11:51:30Z Answering control requests on /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/tmp.CnoFmAdkrL/control.sock
+2026-11-15T11:51:30Z Connected to relay 127.0.0.1
+2026-11-15T11:51:30Z Relay round trip: 13ms
+IOServiceMatchingfailed for: AppleM2ScalerParavirtDriver
+2026-11-15T11:51:51Z Relay round trip: 6ms
+2026-11-15T11:52:12Z Relay round trip: 13ms
+--- wrangler log
+
+ ⛅️ wrangler 4.155.0
+────────────────────
+Using secrets defined in .dev.vars
+Your Worker has access to the following bindings:
+Binding                                            Resource                  Mode
+env.MAC_RELAY (MacRelay)                           Durable Object            local
+env.OAUTH_KV (REPLACE_WITH_KV_ID)                  KV Namespace              local
+env.MEDIA_KV (REPLACE_WITH_MEDIA_KV_ID)            KV Namespace              local
+env.OWNER_PASSWORD ("(hidden)")                    Environment Variable      local
+env.AGENT_TOKEN ("(hidden)")                       Environment Variable      local
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8787
+[wrangler:info] GET /login 200 OK (336ms)
+[wrangler:info] GET /login 200 OK (11ms)
+[wrangler:info] POST /register 201 Created (77ms)
+[wrangler:info] GET /authorize 200 OK (21ms)
+[wrangler:info] POST /authorize 302 Found (147ms)
+[wrangler:info] POST /token 200 OK (62ms)
+[wrangler:info] POST /mcp 200 OK (17ms)
+[wrangler:info] POST /mcp 200 OK (41ms)
+[wrangler:info] GET /agent 101 Switching Protocols (8ms)
+[wrangler:info] POST /mcp 200 OK (19ms)
+[wrangler:info] POST /mcp 200 OK (107ms)
+[wrangler:info] POST /mcp 200 OK (3117ms)
+[wrangler:info] POST /mcp 200 OK (1311ms)
+[wrangler:info] POST /login 302 Found (156ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (6ms)
+[wrangler:info] GET /viewer/ws 101 Switching Protocols (38ms)
+[wrangler:info] POST /mcp 200 OK (47645ms)
+[wrangler:info] POST /mcp 200 OK (1915ms)
+[wrangler:info] POST /mcp 200 OK (3432ms)
