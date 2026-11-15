@@ -200,6 +200,8 @@ public enum XcodeParsing {
                 parts.append("(\(Int(x)),\(Int(y)) \(Int(w))x\(Int(h)))")
             }
             if node["enabled"]?.boolValue == false { parts.append("disabled") }
+            if node["checked"]?.boolValue == true { parts.append("checked") }
+            if let shortcut = node["shortcut"]?.stringValue, !shortcut.isEmpty { parts.append("shortcut=\(shortcut)") }
             lines.append(parts.joined(separator: " "))
             for child in node["children"]?.arrayValue ?? [] { visit(child, depth: depth + 1) }
         }

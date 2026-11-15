@@ -120,14 +120,42 @@ public enum MacToolSupport {
         return delta
     }
 
-    /// The menu path for press_menu_item: an array, or one string like "File > New Window".
-    public static func menuPath(_ items: [String], text: String?) throws -> [String] {
+    /// The menu path for press_menu_item: an array, or one string like "File > New Window". With
+    /// `allowEmpty` (a menu bar icon, when the app has just one), it may be empty.
+    public static func menuPath(_ items: [String], text: String?, allowEmpty: Bool = false) throws -> [String] {
         var path = items.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if path.isEmpty, let text {
-            path = text.components(separatedBy: ">").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        // One string ("File > New Window") arrives as a single item, or as text.
+        if path.isEmpty, let text { path = [text] }
+        if path.count == 1, path[0].contains(">") {
+            path = path[0].components(separatedBy: ">").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
-        guard !path.isEmpty else { throw ToolError("Pass path, the menu titles from the menu bar down, e.g. [\"File\", \"New Window\"].") }
+        guard !path.isEmpty || allowEmpty else { throw ToolError("Pass path, the menu titles from the menu bar down, e.g. [\"File\", \"New Window\"].") }
         return path
+    }
+
+    /// press_menu_item's menu_bar: "app" (default) or "status" (the app's menu bar icons).
+    public static func menuBar(_ text: String?) throws -> MacMenus.Bar {
+        guard let text = text?.trimmingCharacters(in: .whitespaces).lowercased(), !text.isEmpty else { return .app }
+        switch text {
+        case "app", "menus", "main": return .app
+        case "status", "status_item", "status_items", "icon", "icons", "extras", "tray": return .status
+        default: throw ToolError("Unknown menu_bar \(text). Use \"app\" (the app's menus) or \"status\" (its menu bar icons).")
+        }
+    }
+
+    /// What press_menu_item says after pressing a menu bar icon itself.
+    public static func openedStatusItem(_ name: String) -> String {
+        "Pressed the \(name) menu bar icon (that's its name to Accessibility), which opens its menu or popover. A menu stays open until an item is picked: " +
+            "describe_ui {include_status_items: true} lists its items, screenshot {menus: true} shows it, press_menu_item {menu_bar: \"status\", path: [\"\(name)\", …]} " +
+            "picks one, and press_menu_item {close_menus: true} closes it. A popover is a window: list_windows, describe_ui, tap and screenshot work on it."
+    }
+
+    /// The note for a Mac app with no window (a menu bar app), naming its menu bar icons.
+    public static func noWindowNote(name: String, icons: [MacMenus.StatusItemNames]) -> String {
+        guard !icons.isEmpty else { return "\(name) has no window open." }
+        let list = icons.map { "\"\($0.display)\"" }.joined(separator: ", ")
+        return "\(name) has no window open, but has \(icons.count == 1 ? "a menu bar icon" : "menu bar icons"): \(list). " +
+            "press_menu_item {menu_bar: \"status\", path: [\"\(icons[0].display)\"]} opens its menu or popover; screenshot {menus: true} shows it."
     }
 
     // MARK: Paths

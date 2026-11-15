@@ -25,6 +25,14 @@ struct HelloMacApp: App {
                     .keyboardShortcut("r", modifiers: .command)
             }
         }
+        // A menu bar icon (status item), for press_menu_item with menu_bar "status".
+        MenuBarExtra("Hello Extra", systemImage: "star") {
+            Button("Add One") { model.addFromMenuBar() }
+            Toggle("Pinned", isOn: $model.pinned)
+            Divider()
+            Button("Reset Counter") { model.reset() }
+        }
+        .menuBarExtraStyle(.menu)
     }
 }
 
@@ -34,10 +42,18 @@ final class CounterModel: ObservableObject {
     @Published var name = "" {
         didSet { print("HelloMacApp: name=\(name)") }
     }
+    @Published var pinned = false {
+        didSet { print("HelloMacApp: pinned=\(pinned)") }
+    }
 
     func increment() {
         count += 1
         print("HelloMacApp: count=\(count)")
+    }
+
+    func addFromMenuBar() {
+        count += 1
+        print("HelloMacApp: menu-bar-add count=\(count)")
     }
 
     func reset() {

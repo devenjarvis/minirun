@@ -68,7 +68,11 @@ extension ToolRegistry {
             let titleNote = permissions.screenRecording ? nil
                 : "minirun has no Screen Recording permission, so macOS hides window titles from it" +
                     (permissions.accessibility ? "; they're read through Accessibility instead, and may be empty for some windows." : ", and they may show as empty.")
-            guard !windows.isEmpty else { return .text(["\(session.name) has no windows right now.", titleNote].compactMap { $0 }.joined(separator: "\n")) }
+            guard !windows.isEmpty else {
+                let icons = await MacAppDriver.shared.statusItems(pid: session.pid!)
+                let note = icons.isEmpty ? "\(session.name) has no windows right now." : MacToolSupport.noWindowNote(name: session.name, icons: icons)
+                return .text([note, titleNote].compactMap { $0 }.joined(separator: "\n"))
+            }
             let lines = windows.map { window in
                 var line = window.summary + " at (\(Int(window.frame.x)), \(Int(window.frame.y))) on the screen"
                 if window.isKey { line += ", key (has keyboard focus)" }
@@ -104,17 +108,33 @@ extension ToolRegistry {
 
         register(ToolDefinition(
             name: "press_menu_item",
-            description: "Mac apps: pick an item from the app's menu bar by its path, e.g. [\"File\", \"New Window\"]. Titles match case-insensitively, " +
-                "exactly or by their start, ignoring a trailing \"…\". On a miss it lists the menus there are. Uses Accessibility, so no mouse is needed.",
+            description: "Mac apps: pick an item from the app's menu bar by its path, e.g. [\"File\", \"New Window\"], or from one of its menu bar icons " +
+                "(status items, MenuBarExtra) with menu_bar \"status\", e.g. [\"Hello\", \"Settings…\"], where the first title names the icon (its title, " +
+                "accessibility label or id). A path of just the icon presses the icon, which opens its menu or popover. Titles match case-insensitively, " +
+                "exactly or by their start, ignoring a trailing \"…\". On a miss it lists what there is. Uses Accessibility, so no mouse is needed. " +
+                "close_menus closes menus left open.",
             properties: app.merging([
-                "path": Schema.stringArray("Menu titles from the menu bar down, e.g. [\"Edit\", \"Find\", \"Find…\"]."),
-                "screenshot": Schema.boolean("Return a screenshot afterwards."),
+                "path": Schema.stringArray("Menu titles from the menu bar (or icon) down, e.g. [\"Edit\", \"Find\", \"Find…\"]. With menu_bar \"status\" and an app with one icon, may be left out to press the icon."),
+                "menu_bar": Schema.string("\"app\" (default): the app's menus at the top left. \"status\": its icons at the top right of the menu bar.", enum: MacMenus.Bar.allCases.map(\.rawValue)),
+                "close_menus": Schema.boolean("Instead of picking an item, close the app's open menus (an icon's menu stays open after the icon is pressed)."),
+                "screenshot": Schema.boolean("Return a screenshot afterwards: of the window, or of the open menus when the icon was pressed."),
             ]) { a, _ in a },
-            required: ["device", "path"]
+            required: ["device"]
         )) { [self] args in
             let session = try await macApp(args)
-            let path = try MacToolSupport.menuPath(args.strings("path"), text: args.string("path"))
-            let picked = try await MacAppDriver.shared.pressMenuItem(pid: session.pid!, path: path)
+            if args.bool("close_menus") == true {
+                let closed = try await MacAppDriver.shared.closeMenus(pid: session.pid!)
+                return try await afterMacAction(closed ? "Closed \(session.name)'s open menus." : "\(session.name) had no open menu to close.", session: session, args: args)
+            }
+            let bar = try MacToolSupport.menuBar(args.string("menu_bar"))
+            let path = try MacToolSupport.menuPath(args.strings("path"), text: args.string("path"), allowEmpty: bar == .status)
+            let picked = try await MacAppDriver.shared.pressMenuItem(pid: session.pid!, path: path, menuBar: bar, appName: session.name)
+            if bar == .status, path.count <= 1 {
+                let note = MacToolSupport.openedStatusItem(picked)
+                guard args.bool("screenshot") == true else { return .text(note) }
+                try await Task.sleep(nanoseconds: 400_000_000) // let it open
+                return ToolResult([.text(note)] + (try await macMenusScreenshotContent(session)))
+            }
             return try await afterMacAction("Picked \(picked).", session: session, args: args)
         }
     }
@@ -247,7 +267,11 @@ extension ToolRegistry {
         var launched = "Launched \(launch.name) (pid \(pid))"
         if let home = launch.home { launched += " with its home folder at \(home)" }
         lines.append(launched + ".")
-        if !shown {
+        var icons: [MacMenus.StatusItemNames] = []
+        if !shown { icons = await MacAppDriver.shared.statusItems(pid: pid) }
+        if !shown, !icons.isEmpty {
+            lines.append(MacToolSupport.noWindowNote(name: launch.name, icons: icons))
+        } else if !shown {
             if await MacAppDriver.shared.permissions().hasDisplay {
                 lines.append("No window appeared within 15 seconds. It may still be starting, be waiting on something, or have no window (a menu bar app). app_logs shows its output.")
             } else {
@@ -279,17 +303,36 @@ extension ToolRegistry {
         return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
     }
 
+    /// A screenshot of the app's open menus and popovers, or of its menu bar icons.
+    func macMenusScreenshotContent(_ session: MacAppSession, scale: Double? = nil, quality: Int = 70) async throws -> [ToolContent] {
+        guard let pid = session.pid else { throw ToolError(MacToolSupport.notRunning(session)) }
+        let shot = try await MacAppDriver.shared.menusScreenshotJPEG(pid: pid, scale: scale, quality: quality)
+        let note = "\(shot.width)x\(shot.height) image of \(session.name)'s open menus and popovers, " +
+            "\(Int(shot.frame.width))x\(Int(shot.frame.height)) points at (\(Int(shot.frame.x)), \(Int(shot.frame.y))) on the screen. " +
+            "Only the app's own windows are drawn. Pick menu items with press_menu_item, not by coordinates."
+        return [.image(data: shot.data, mimeType: "image/jpeg"), .text(note)]
+    }
+
     /// Common tail for Mac input tools: a short note, plus a screenshot of the window if asked.
     func afterMacAction(_ note: String, session: MacAppSession, args: ToolArguments) async throws -> ToolResult {
         guard args.bool("screenshot") == true else { return .text(note) }
         try await Task.sleep(nanoseconds: 400_000_000) // let animations settle
-        return ToolResult([.text(note)] + (try await macScreenshotContent(session, window: macWindow(args))))
+        do {
+            return ToolResult([.text(note)] + (try await macScreenshotContent(session, window: macWindow(args))))
+        } catch {
+            // The action worked; a menu bar app may just have no window to show.
+            return .text(note + "\nNo screenshot: \(error.localizedDescription)")
+        }
     }
 
     // MARK: Mac branches of the shared tools
 
     func macScreenshot(_ args: ToolArguments) async throws -> ToolResult {
         let session = try await macApp(args)
+        if args.bool("menus") == true {
+            if args.bool("share") == true { throw ToolError("share works with a window only. Leave out menus, or share a recording of the window.") }
+            return ToolResult(try await macMenusScreenshotContent(session, scale: args.double("scale"), quality: args.int("quality") ?? 70))
+        }
         var content = try await macScreenshotContent(session, window: macWindow(args), scale: args.double("scale"), quality: args.int("quality") ?? 70)
         if args.bool("share") == true {
             content.append(.text(await shareMacScreenshot(session, window: macWindow(args), options: MediaShareOptions(args))))
@@ -301,8 +344,17 @@ extension ToolRegistry {
         let session = try await macApp(args)
         var point: (x: Double, y: Double)?
         if let x = args.double("x"), let y = args.double("y") { point = (x, y) }
-        let json = try await MacAppDriver.shared.describeUI(pid: session.pid!, window: macWindow(args), includeMenus: args.bool("include_menus") == true, at: point)
+        let described = try await MacAppDriver.shared.describeUI(
+            pid: session.pid!, window: macWindow(args), includeMenus: args.bool("include_menus") == true,
+            includeStatusItems: args.bool("include_status_items") == true, at: point
+        )
+        let json = described.json
         if args.string("format") == "json" { return .text(String(decoding: json, as: UTF8.self)) }
+        guard described.window != nil else {
+            let icons = await MacAppDriver.shared.statusItems(pid: session.pid!)
+            let summary = XcodeParsing.summarizeAccessibility(json)
+            return .text(MacToolSupport.noWindowNote(name: session.name, icons: icons) + (summary.isEmpty ? "" : "\n" + summary))
+        }
         return .text("Frames are window points from the window's top-left, title bar included.\n" + XcodeParsing.summarizeAccessibility(json))
     }
 

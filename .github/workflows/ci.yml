@@ -134,6 +134,8 @@ jobs:
         run: |
           mkdir -p ci-logs/minirun ci-logs/tmp
           cp -R ~/Library/Logs/minirun/. ci-logs/minirun/ 2>/dev/null || true
+          # Crash reports, so a crash in `minirun call` shows where it was.
+          mkdir -p ci-logs/crashes && cp ~/Library/Logs/DiagnosticReports/minirun*.ips ci-logs/crashes/ 2>/dev/null || true
           cp /tmp/minirun-*.txt /tmp/minirun-*.jpg ci-logs/tmp/ 2>/dev/null || true
           scripts/publish-ci-logs.sh "mac-${{ github.run_id }}"
       - name: Clean up simulators and the Mac fixture app
