@@ -105,6 +105,8 @@ jobs:
         # Leaves its first simulator booted so the relay test below doesn't wait for another boot.
         env:
           MINIRUN_SMOKE_KEEP: "1"
+          # A crash in `minirun call` prints its backtrace into the log.
+          SWIFT_BACKTRACE: enable=yes,interactive=no
           MINIRUN_SMOKE_REQUIRE_MAC_GRANTS: ${{ runner.environment == 'github-hosted' && '1' || '' }}
         run: scripts/ci-step.sh smoke ./scripts/smoke-test.sh
       - name: Stage simulator template
