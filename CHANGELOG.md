@@ -8,7 +8,7 @@
   ["Icon", "Item"]}` picks an item from one, and a path of just the icon opens its menu or popover.
   `press_menu_item {close_menus: true}` closes a menu left open. Only the app's own icons are seen.
 - **Screenshots of open menus and popovers:** `screenshot {menus: true}`. Only the app's own
-  windows are drawn, on a plain background.
+  windows are drawn.
 - **Menu items show their state:** `describe_ui` marks checked items and gives keyboard
   shortcuts (`shortcut=⌘R`).
 - **Menu bar–only apps.** An app with no Dock icon and no window no longer makes `build_and_run`
