@@ -1,0 +1,2 @@
+[image saved to /var/folders/h5/t85nd63d71x27_8gl5gw3l_w0000gn/T/minirun-0DB6B2D4.jpg]
+135x109 image of HelloMacApp's open menus and popovers, 135x109 points at (752, 23) on the screen. Only the app's own windows are drawn. Pick menu items with press_menu_item, not by coordinates.
