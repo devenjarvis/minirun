@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.11.0
+
+Builds and tests no longer fail when every simulator is reserved: idle ones are reused, and a
+build waits for one instead of failing. Claude can test Mac apps' menu bar icons and see open
+menus. Update the app; the Worker changes only its version.
+
 - **Builds and tests no longer fail because every simulator is reserved.** A simulator stayed
   reserved for its repo + branch until nobody had used it for 30 minutes, and picks only looked at
   reservations, not at whether anything was running. CI gives each branch its own workspace, so a
