@@ -124,8 +124,10 @@ public enum MacToolSupport {
     /// `allowEmpty` (a menu bar icon, when the app has just one), it may be empty.
     public static func menuPath(_ items: [String], text: String?, allowEmpty: Bool = false) throws -> [String] {
         var path = items.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        if path.isEmpty, let text {
-            path = text.components(separatedBy: ">").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        // One string ("File > New Window") arrives as a single item, or as text.
+        if path.isEmpty, let text { path = [text] }
+        if path.count == 1, path[0].contains(">") {
+            path = path[0].components(separatedBy: ">").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
         guard !path.isEmpty || allowEmpty else { throw ToolError("Pass path, the menu titles from the menu bar down, e.g. [\"File\", \"New Window\"].") }
         return path
