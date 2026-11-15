@@ -170,7 +170,7 @@ print(json.dumps({"x": f["x"] + f["width"] / 2, "y": f["y"] + f["height"] / 2})[
   mac_logs | expect "HelloMacApp: menu-bar-add count=1"
   run press_menu_item "{\"device\":\"$MAC_ID\",\"menu_bar\":\"status\"}" | expect "Pressed the"
   sleep 1
-  run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | expect "\"Pinned\" checked"
+  run describe_ui "{\"device\":\"$MAC_ID\",\"include_status_items\":true}" | expect "\"Pinned\".* checked"
   run press_menu_item "{\"device\":\"$MAC_ID\",\"close_menus\":true}" | expect "Closed"
   run press_menu_item "{\"device\":\"$MAC_ID\",\"path\":[\"Counter\",\"Reset Counter\"]}" | expect "Picked"
   sleep 1
