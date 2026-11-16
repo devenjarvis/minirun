@@ -3,16 +3,18 @@
 ## Unreleased
 
 Simulators cost the Mac less than half as much, so more agents fit on one Mac, and minirun no
-longer crashes when a simulator someone is watching shuts down. Update the app (it rebuilds its
+longer crashes when a simulator shuts down. Update the app (it rebuilds its
 frameworks); the Worker doesn't change.
 
-- **minirun no longer crashes when a watched simulator shuts down.** CoreSimulator tells a
-  display's listeners that its screen is gone by calling them with nil. A private header declared
-  that argument non-optional, so the live view's, a recording's or a screen capture's listener
-  crashed `minirun serve` (a null pointer in FBSimulatorControl), dropping every session's jobs.
-  It happened whenever a simulator shut down while one was attached: from the idle shutdown,
-  `shutdown_simulator`, Xcode or `simctl`. `scripts/build-frameworks.sh` now patches that header
-  before building the frameworks.
+- **minirun no longer crashes when a simulator it screenshotted shuts down.** FBSimulatorControl's
+  `takeScreenshot` attaches a listener to the simulator's display and keeps it for good, and
+  CoreSimulator calls display listeners with nil when the simulator shuts down. A private header
+  declared that argument non-optional, so the call crashed `minirun serve` (a null pointer in
+  FBSimulatorControl) and dropped every session's jobs. Any simulator minirun had screenshotted,
+  including the screenshot `build_and_run` returns, did this when it shut down: by the idle
+  shutdown, `shutdown_simulator`, Xcode or `simctl`. On one Mac it happened 23 times in a week.
+  Screenshots now read the screen without attaching anything, and `scripts/build-frameworks.sh`
+  patches the header, so the live view's listener survives a shutdown too.
 - **Slim simulators.** minirun now boots simulators without about 140 background services an app
   under test doesn't need (Siri and Apple Intelligence, Health and Fitness, Watch pairing, Maps
   sync, Wallet, widgets, search indexing, iCloud sync, Screen Time and more). Measured on an M4
@@ -30,7 +32,9 @@ frameworks); the Worker doesn't change.
   before each boot. Nothing in Xcode's runtime or the simulator's data changes. The services that
   MapKit, CloudKit, StoreKit testing, HealthKit and EventKit need stay on; `slimSimulatorKeep`
   lists them and takes others. `slimSimulators: false` boots stock simulators again. A simulator
-  that's already running is slimmed at its next boot.
+  that's already running is slimmed at its next boot. Known: a slim simulator's `tccd` can miss
+  launchd's 3-second deadline while it shuts down, which leaves a `tccd-*.ips` report in
+  `~/Library/Logs/DiagnosticReports` and nothing else.
 - **A simulator changes hands cleanly.** When a build takes a simulator another repo used, minirun
   removes that repo's app, takes back the permissions apps were granted and clears the keychain
   (about a second; `simctl erase` needs a shutdown and a new first boot). The result says what
