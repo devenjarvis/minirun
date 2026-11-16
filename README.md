@@ -286,6 +286,19 @@ different branches of the same app (for example, two worktrees). minirun keeps t
   default) is shut down and its reservation released. Running builds and tests, and an open live
   view, count as use. The most recently used simulator stays booted as a free spare, so the next
   session doesn't wait for a boot. Simulators you booted yourself, outside minirun, are left alone.
+- **Slim simulators.** minirun boots simulators without about 140 background services an app
+  under test doesn't need: Siri and Apple Intelligence, Health and Fitness, Watch pairing, Maps
+  sync, Wallet, widgets, search indexing, iCloud sync, Screen Time and so on. Each one runs about
+  60 processes instead of about 300 and costs the Mac about 2 GB instead of about 5 GB, so more
+  fit (raise `maxBootedSimulators` to match), and it boots a little faster. It uses launchd's own
+  switch, a `disabled.plist` that `launchd_sim` reads at boot (see `SlimSimulators`), so nothing
+  in Xcode's runtime changes. The services MapKit, CloudKit, StoreKit testing, HealthKit and
+  EventKit need stay on (`slimSimulatorKeep`). `slimSimulators: false` boots them stock again.
+  A simulator minirun boots stays slim if you boot it yourself later, until that's turned off.
+- **A simulator changes hands cleanly.** When a simulator another repo used is handed to a new
+  one, minirun removes the old app, takes back the permissions apps were granted and clears the
+  keychain, in about a second, instead of leaving the last session's data behind. A simulator
+  that stays with the same repo (another branch, say) keeps its app and data.
 - **Boots don't block each other.** A new simulator's first boot can take minutes. Other sessions
   can pick, and use, their own simulators while it runs.
 - **No guessing.** Results name the simulator's UDID, and Claude passes it as `device` on later calls.
@@ -522,6 +535,8 @@ Gatekeeper prompts.
 | `workspaceCleanupDays` | `3` | Deletes checkouts nobody has used for this many days; `0` keeps them |
 | `minFreeDiskGB` | `30` | While free disk is under this, deletes the least recently used checkouts (never one a job is using or that was used in the last hour), also before making a new one; `0` turns this off |
 | `keepTestDaemon` | `true` | Keeps one tiny macOS test session open (`xcodebuild test` of a package in `~/Library/Caches/minirun/test-daemon-keeper`) so Xcode's test daemon keeps running and tests still work after you switch away from the Mac's screen. See [How it works](#how-it-works) |
+| `slimSimulators` | `true` | Boots simulators without the background services apps under test don't need, which roughly halves what each one costs. See [Several sessions at once](#several-sessions-at-once). Applies at each simulator's next boot |
+| `slimSimulatorKeep` | MapKit, CloudKit, StoreKit, HealthKit and EventKit's services | launchd labels a slim simulator keeps running anyway, e.g. add `"com.apple.linkd"` for App Intents or `"com.apple.passd"` for Wallet. `[]` switches all of them off. The full list is `SlimSimulators.services` |
 | `sharedBuildCache` | `false` | Checkouts of one repository share Swift package checkouts (one folder per Package.resolved) and Xcode's compilation cache, under `<workspaceRoot>/.cache`. Experimental: see [docs/faster-ci-plan.md](docs/faster-ci-plan.md) |
 
 After editing, run `minirun reload` (or `kill -HUP` the daemon). Every setting applies at once; a

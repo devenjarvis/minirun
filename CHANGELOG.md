@@ -2,6 +2,45 @@
 
 ## Unreleased
 
+Simulators cost the Mac less than half as much, so more agents fit on one Mac, and minirun no
+longer crashes when a simulator shuts down. Update the app (it rebuilds its
+frameworks); the Worker doesn't change.
+
+- **minirun no longer crashes when a simulator it screenshotted shuts down.** FBSimulatorControl's
+  `takeScreenshot` attaches a listener to the simulator's display and keeps it for good, and
+  CoreSimulator calls display listeners with nil when the simulator shuts down. A private header
+  declared that argument non-optional, so the call crashed `minirun serve` (a null pointer in
+  FBSimulatorControl) and dropped every session's jobs. Any simulator minirun had screenshotted,
+  including the screenshot `build_and_run` returns, did this when it shut down: by the idle
+  shutdown, `shutdown_simulator`, Xcode or `simctl`. On one Mac it happened 23 times in a week.
+  Screenshots now read the screen without attaching anything, and `scripts/build-frameworks.sh`
+  patches the header, so the live view's listener survives a shutdown too.
+- **Slim simulators.** minirun now boots simulators without about 140 background services an app
+  under test doesn't need (Siri and Apple Intelligence, Health and Fitness, Watch pairing, Maps
+  sync, Wallet, widgets, search indexing, iCloud sync, Screen Time and more). Measured on an M4
+  Mac mini with iOS 27.2:
+  - A simulator runs about 60 processes instead of about 300, and four of them added 2.0 GB each
+    to the Mac's memory use, against 5.3 GB each for stock ones. So about twice as many fit:
+    raise `maxBootedSimulators` to match (8 is comfortable on a 24 GB Mac).
+  - A clone is ready to launch an app in 6.2 s instead of 8.3 s, and a new simulator's first boot
+    is faster too.
+  - All of an app's tests passed, and build, install, launch, taps, typing, screenshots, the
+    accessibility tree and Safari with networking all work.
+
+  It uses launchd's own switch: `launchd_sim` reads which services to leave off from a
+  `disabled.plist` named after the simulator, outside its device folder, and minirun writes it
+  before each boot. Nothing in Xcode's runtime or the simulator's data changes. The services that
+  MapKit, CloudKit, StoreKit testing, HealthKit and EventKit need stay on; `slimSimulatorKeep`
+  lists them and takes others. `slimSimulators: false` boots stock simulators again. A simulator
+  that's already running is slimmed at its next boot. Known: a slim simulator's `tccd` can miss
+  launchd's 3-second deadline while it shuts down, which leaves a `tccd-*.ips` report in
+  `~/Library/Logs/DiagnosticReports` and nothing else.
+- **A simulator changes hands cleanly.** When a build takes a simulator another repo used, minirun
+  removes that repo's app, takes back the permissions apps were granted and clears the keychain
+  (about a second; `simctl erase` needs a shutdown and a new first boot). The result says what
+  it cleared. A simulator that stays with the same repo keeps its app and data, so switching
+  branches doesn't log you out.
+
 ## 0.11.0
 
 Builds and tests no longer fail when every simulator is reserved: idle ones are reused, and a

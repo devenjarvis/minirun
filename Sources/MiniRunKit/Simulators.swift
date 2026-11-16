@@ -8,11 +8,15 @@ public struct SimulatorClaim: Codable, Equatable, Sendable {
     /// The app minirun last installed or launched there.
     public var bundleID: String?
     public var updatedAt: Date
+    /// Who it was reserved for before its reservation ended (see `SimulatorClaimStore.unreserve`),
+    /// so the next owner knows whose app and data are still on it.
+    public var lastLabel: String?
 
-    public init(label: String? = nil, bundleID: String? = nil, updatedAt: Date = Date()) {
+    public init(label: String? = nil, bundleID: String? = nil, updatedAt: Date = Date(), lastLabel: String? = nil) {
         self.label = label
         self.bundleID = bundleID
         self.updatedAt = updatedAt
+        self.lastLabel = lastLabel
     }
 
     /// True for a `minirun ci` workspace ("owner/app@ci/branch"). CI never comes back to a
@@ -334,6 +338,13 @@ public actor SimulatorClaimStore {
         save()
     }
 
+    /// Forgets the app minirun put on a simulator, after it was uninstalled.
+    public func forgetApp(_ udid: String) {
+        guard claims[udid]?.bundleID != nil else { return }
+        claims[udid]?.bundleID = nil
+        save()
+    }
+
     /// Marks a simulator as just used. Idle shutdown goes by this time, so it's saved, at most
     /// once a minute per simulator.
     public func touch(_ udid: String, now: Date = Date()) {
@@ -344,7 +355,8 @@ public actor SimulatorClaimStore {
     /// Ends a simulator's reservation but keeps when it was last used, so a free simulator
     /// doesn't look busy.
     public func unreserve(_ udid: String) {
-        guard claims[udid]?.label != nil else { return }
+        guard let label = claims[udid]?.label else { return }
+        claims[udid]?.lastLabel = label
         claims[udid]?.label = nil
         save()
     }
@@ -455,5 +467,33 @@ public enum IdleSimulators {
             if claims[newest.udid]?.label != nil { actions.append(.unreserve(newest.udid)) }
         }
         return actions + shut.map { .shutdown($0.udid) }
+    }
+}
+
+/// What's left of the last session when a simulator passes to another repo. Its app, the
+/// permissions granted to it and the keychain would otherwise carry over into the next one.
+/// Clearing them takes about a second, against a shutdown and boot for `simctl erase`.
+public enum SimulatorHandOver {
+    public struct Cleanup: Equatable, Sendable {
+        /// The app to uninstall, if minirun knows which one was put there.
+        public let bundleID: String?
+        /// Who the simulator was for.
+        public let from: String?
+    }
+
+    /// The repository part of a workspace label: "owner/app@branch" → "owner/app".
+    public static func repo(_ label: String) -> String {
+        label.split(separator: "@", maxSplits: 1).first.map(String.init) ?? label
+    }
+
+    /// What to clear when `workspace` takes a simulator whose claim was `previous`. Nothing when
+    /// it stays with the same repository, so switching branches keeps the app's data, and nothing
+    /// for a simulator minirun knows no session on.
+    public static func cleanup(previous: SimulatorClaim?, to workspace: String) -> Cleanup? {
+        guard let previous else { return nil }
+        let owner = previous.label ?? previous.lastLabel
+        if let owner, repo(owner) == repo(workspace) { return nil }
+        if owner == nil && previous.bundleID == nil { return nil }
+        return Cleanup(bundleID: previous.bundleID, from: owner)
     }
 }

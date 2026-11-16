@@ -48,6 +48,12 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
     /// Keeps a test session open so Xcode's test daemon keeps running, and tests keep working,
     /// after the user switches away from the Mac's screen. See `TestDaemonKeeper`.
     public var keepTestDaemon: Bool
+    /// Boots simulators without the background services apps under test don't need (Siri, Health,
+    /// widgets, iCloud sync and so on), which roughly halves what each one costs. See `SlimSimulators`.
+    public var slimSimulators: Bool
+    /// Services a slim simulator keeps running anyway, by launchd label, for apps that need them.
+    /// Defaults to `SlimSimulators.defaultKeep` (MapKit, CloudKit, StoreKit, HealthKit, EventKit).
+    public var slimSimulatorKeep: [String]
 
     public init(
         relayURL: String? = nil,
@@ -69,7 +75,9 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         sharedBuildCache: Bool = false,
         workspaceCleanupDays: Int = 3,
         minFreeDiskGB: Int = 30,
-        keepTestDaemon: Bool = true
+        keepTestDaemon: Bool = true,
+        slimSimulators: Bool = true,
+        slimSimulatorKeep: [String] = SlimSimulators.defaultKeep
     ) {
         self.relayURL = relayURL
         self.agentToken = agentToken
@@ -91,6 +99,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         self.workspaceCleanupDays = workspaceCleanupDays
         self.minFreeDiskGB = minFreeDiskGB
         self.keepTestDaemon = keepTestDaemon
+        self.slimSimulators = slimSimulators
+        self.slimSimulatorKeep = slimSimulatorKeep
     }
 
     public init(from decoder: Decoder) throws {
@@ -115,6 +125,8 @@ public struct MiniRunConfig: Codable, Sendable, Equatable {
         workspaceCleanupDays = try c.decodeIfPresent(Int.self, forKey: .workspaceCleanupDays) ?? 3
         minFreeDiskGB = try c.decodeIfPresent(Int.self, forKey: .minFreeDiskGB) ?? 30
         keepTestDaemon = try c.decodeIfPresent(Bool.self, forKey: .keepTestDaemon) ?? true
+        slimSimulators = try c.decodeIfPresent(Bool.self, forKey: .slimSimulators) ?? true
+        slimSimulatorKeep = try c.decodeIfPresent([String].self, forKey: .slimSimulatorKeep) ?? SlimSimulators.defaultKeep
     }
 
     public static let defaultMediaBranch = "pr-media"

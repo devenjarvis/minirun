@@ -110,6 +110,16 @@ enum Simctl {
         _ = try await run(["location", udid, "set", "\(latitude),\(longitude)"], timeout: 30)
     }
 
+    /// Takes back every permission granted to any app.
+    static func resetPrivacy(_ udid: String) async throws {
+        _ = try await run(["privacy", udid, "reset", "all"], timeout: 30)
+    }
+
+    /// Deletes every keychain item and added certificate.
+    static func resetKeychain(_ udid: String) async throws {
+        _ = try await run(["keychain", udid, "reset"], timeout: 30)
+    }
+
     static func privacy(_ udid: String, action: String, service: String, bundleID: String) async throws {
         _ = try await run(["privacy", udid, action, service, bundleID], timeout: 30)
     }

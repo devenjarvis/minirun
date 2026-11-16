@@ -21,7 +21,9 @@ final class MainDisplays: @unchecked Sendable {
     private static let recheckInterval: TimeInterval = 1
 
     /// The main screens of a simulator, or nil when it has just one (use FBFramebuffer then).
-    static func load(_ simulator: FBSimulator) -> MainDisplays? {
+    /// With `single`, a simulator with one main screen gets one too: screenshots read it this way,
+    /// because it registers nothing with the simulator (see `SimulatorDriver.screenshotPNG`).
+    static func load(_ simulator: FBSimulator, single: Bool = false) -> MainDisplays? {
         guard let io = simulator.device.io else { return nil }
         let renderables = io.ioPorts().compactMap { port -> SimDisplayIOSurfaceRenderable? in
             // The descriptors are XPC proxies: check selectors rather than protocol conformance.
@@ -31,7 +33,7 @@ final class MainDisplays: @unchecked Sendable {
             guard unsafeBitCast(descriptor, to: SimDisplayDescriptorState.self).displayClass == 0 else { return nil }
             return unsafeBitCast(descriptor, to: SimDisplayIOSurfaceRenderable.self)
         }
-        return renderables.count > 1 ? MainDisplays(renderables) : nil
+        return renderables.count > (single ? 0 : 1) ? MainDisplays(renderables) : nil
     }
 
     private init(_ renderables: [SimDisplayIOSurfaceRenderable]) {
