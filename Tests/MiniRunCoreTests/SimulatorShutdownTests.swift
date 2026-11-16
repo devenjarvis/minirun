@@ -11,6 +11,11 @@ final class SimulatorShutdownTests: XCTestCase {
         guard let udid = ProcessInfo.processInfo.environment["MINIRUN_SHUTDOWN_E2E_UDID"] else {
             throw XCTSkip("Set MINIRUN_SHUTDOWN_E2E_UDID to a booted throwaway simulator; the test shuts it down.")
         }
+        // Screenshots read the screen without attaching anything.
+        let png = try await SimulatorDriver.shared.screenshotPNG(udid: udid)
+        XCTAssertEqual(Array(png.prefix(4)), [0x89, 0x50, 0x4E, 0x47], "a PNG")
+        XCTAssertGreaterThan(png.count, 10_000, "of a real screen")
+
         // Attached as the live view attaches it, and deliberately left attached.
         let capture = try await SimulatorDriver.shared.screenCapture(udid: udid)
         for _ in 0..<50 where capture.currentSurface() == nil { try await Task.sleep(nanoseconds: 100_000_000) }
