@@ -1,0 +1,41 @@
+✓ Xcode: Xcode 26.6
+✓ Simulator frameworks: loaded
+✓ Simulators: 34 iOS simulators
+✗ minirun serve: not running
+    fix: launchctl kickstart -k gui/$(id -u)/dev.minirun.agent
+✗ Relay URL: not set
+    fix: minirun worker deploy
+✗ Agent token: not set
+    fix: minirun worker deploy
+✓ Workspaces: /Users/runner/minirun/workspaces
+✓ run_command: disabled
+- GitHub auth (for private repos): gh isn't logged in
+    optional: gh auth login && gh auth setup-git
+✓ Test daemon (for tests): runner is on the screen
++ minirun call sync_repo {"repo":"you/app","ref":"main"} [load  4.80 9.83 8.51 , 72% free]
++ minirun call sync_repo {"repo":"you/app","ref":"feature"} [load  4.50 9.68 8.47 , 72% free]
++ minirun call sync_repo {"repo":"you/app","ref":"main"} [load  4.50 9.68 8.47 , 72% free]
++ minirun call sync_repo {"repo":"you/app","ref":"feature"} [load  4.50 9.68 8.47 , 72% free]
+Cloned 3F7B23C3-1E56-474B-A76A-3AF011F6FEF8 from the template F61D032C-5E43-4366-B021-F181800AF6C4
++ minirun call boot_simulator {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  4.11 9.43 8.39 , 72% free]
++ minirun call screenshot {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  84.15 28.94 15.59 , 65% free]
++ minirun call build_and_run {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  93.99 32.87 17.14 , 65% free]
++ minirun call describe_ui {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  46.11 36.84 20.97 , 60% free]
++ minirun call tap {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","id":"tapButton"} [load  46.11 36.84 20.97 , 60% free]
++ minirun call describe_ui {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  43.62 36.47 20.93 , 59% free]
++ minirun call tap {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","id":"nameField"} [load  43.62 36.47 20.93 , 60% free]
++ minirun call type_text {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","text":"Claude"} [load  41.17 36.08 20.89 , 58% free]
++ minirun call describe_ui {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  39.15 35.75 20.86 , 58% free]
++ minirun call screenshot {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8"} [load  39.15 35.75 20.86 , 58% free]
++ minirun call swipe {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","direction":"up"} [load  39.15 35.75 20.86 , 58% free]
++ minirun call press_button {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","button":"home"} [load  34.74 34.92 20.73 , 58% free]
++ minirun call app_logs {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","bundle_id":"dev.minirun.HelloApp","seconds":120} [load  34.74 34.92 20.73 , 58% free]
++ minirun call terminate_app {"device":"3F7B23C3-1E56-474B-A76A-3AF011F6FEF8","bundle_id":"dev.minirun.HelloApp"} [load  33.08 34.57 20.70 , 58% free]
++ minirun call boot_simulator {"device":"minirun-smoke","label":"smoke/second"} [load  34.12 34.76 20.84 , 58% free]
++ minirun call boot_simulator {"label":"smoke/second"} [load  108.01 56.04 30.14 , 50% free]
++ minirun call list_simulators {"include_shutdown":false} [load  115.37 62.86 33.51 , 49% free]
++ minirun call build_and_run {"path":"/Users/runner/work/minirun/minirun/Tests/Fixtures/HelloApp","scheme":"HelloApp","wait_seconds":600} [load  115.26 63.71 33.98 , 49% free]
+./scripts/smoke-test.sh: line 9: 26107 Segmentation fault: 11  "$BIN" call "$@"
+FAILED: expected output to contain: UDID 3F7B23C3-1E56-474B-A76A-3AF011F6FEF8
+--- output was:
+
