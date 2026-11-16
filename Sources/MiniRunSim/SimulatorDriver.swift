@@ -136,8 +136,12 @@ public final class SimulatorDriver {
 
     public func screenshotPNG(udid: String) async throws -> Data {
         let target = try await simulator(udid)
-        // takeScreenshot always captures the first main screen, which is black on a folded foldable.
-        guard let displays = MainDisplays.load(target) else { return try await target.takeScreenshot(format: .png) }
+        // Read the lit main screen's surface directly. FBSimulatorControl's takeScreenshot always
+        // captures the first main screen (black on a folded foldable), and it attaches a framebuffer
+        // consumer that it keeps for good: CoreSimulator calls that consumer with nil when the
+        // simulator shuts down, which crashed minirun with frameworks built before
+        // scripts/build-frameworks.sh patched the header (see there). This registers nothing.
+        guard let displays = MainDisplays.load(target, single: true) else { return try await target.takeScreenshot(format: .png) }
         guard let image = displays.image() else { throw DriverError(message: "Could not read the simulator's screen.") }
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(output, UTType.png.identifier as CFString, 1, nil) else {
