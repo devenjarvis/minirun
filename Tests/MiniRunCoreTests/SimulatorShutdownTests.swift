@@ -23,8 +23,10 @@ final class SimulatorShutdownTests: XCTestCase {
         shutdown.waitUntilExit()
         XCTAssertEqual(shutdown.terminationStatus, 0)
 
-        // The nil callback arrives as the display goes away. Reaching the end means it didn't crash.
-        try await Task.sleep(nanoseconds: 5_000_000_000)
+        // The nil callback arrives as the display goes away, and the listener drops its surface.
+        // Getting here at all means it didn't crash.
+        for _ in 0..<100 where capture.currentSurface() != nil { try await Task.sleep(nanoseconds: 100_000_000) }
+        XCTAssertNil(capture.currentSurface(), "CoreSimulator called the listener with nil, and minirun survived it")
         capture.close()
     }
 }
