@@ -120,7 +120,7 @@ public final class ToolRegistry: @unchecked Sendable {
     /// `simulatorWaitSeconds` for one, calling `waiting` once, rather than failing straight away.
     /// The pick and reservation happen under the allocation lock; waiting for a boot doesn't.
     func workspaceDevice(_ args: ToolArguments, workspace: String, waiting: (@Sendable (String) -> Void)? = nil) async throws -> (device: XcodeParsing.SimDevice, note: String?) {
-        enum Pick { case got(Allocation), full(String) }
+        enum Pick { case got(Allocation, SimulatorHandOver.Cleanup?), full(String) }
         let started = Date()
         var announced = false
         while true {
@@ -133,16 +133,21 @@ public final class ToolRegistry: @unchecked Sendable {
                 )
                 if case .full(let message) = choice { return .full(message) }
                 var allocated = try await realize(choice, boot: true)
+                let previousClaim = await claims.claim(allocated.device.udid)
+                let cleanup = SimulatorHandOver.cleanup(previous: previousClaim, to: workspace)
                 if let previous = await claims.reserve(allocated.device.udid, for: workspace) {
                     allocated.note = [allocated.note, "It was reserved for \(previous); it's now reserved for \(workspace)."].compactMap { $0 }.joined(separator: " ")
                 }
-                return .got(allocated)
+                return .got(allocated, cleanup)
             }
             switch pick {
-            case .got(var allocated):
+            case .got(var allocated, let cleanup):
                 let waited = Int(Date().timeIntervalSince(started))
                 if announced { allocated.note = ["Waited \(waited)s for a simulator.", allocated.note].compactMap { $0 }.joined(separator: " ") }
                 let device = try await allocated.ready()
+                if let cleanup, let cleared = await clearSession(device.udid, cleanup) {
+                    allocated.note = [allocated.note, cleared].compactMap { $0 }.joined(separator: " ")
+                }
                 return (device, allocated.note)
             case .full(let message):
                 guard Date().timeIntervalSince(started) < Self.simulatorWaitSeconds else {
@@ -155,6 +160,22 @@ public final class ToolRegistry: @unchecked Sendable {
                 try await Task.sleep(nanoseconds: UInt64(Self.simulatorPollSeconds * 1_000_000_000))
             }
         }
+    }
+
+    /// Clears what another repo's session left on a simulator it's handing over: that app, the
+    /// permissions apps were granted and the keychain. About a second, against a reboot for
+    /// `simctl erase`. Returns a sentence for the result, or nil if nothing could be cleared.
+    func clearSession(_ udid: String, _ cleanup: SimulatorHandOver.Cleanup) async -> String? {
+        var cleared: [String] = []
+        if let bundleID = cleanup.bundleID, (try? await Simctl.uninstall(udid, bundleID: bundleID)) != nil {
+            cleared.append("removed \(bundleID)")
+            await claims.forgetApp(udid)
+        }
+        if (try? await Simctl.resetPrivacy(udid)) != nil { cleared.append("reset permissions") }
+        if (try? await Simctl.resetKeychain(udid)) != nil { cleared.append("cleared the keychain") }
+        guard !cleared.isEmpty else { return nil }
+        let from = cleanup.from.map { " from \($0)" } ?? ""
+        return "Cleared the last session\(from): " + cleared.joined(separator: ", ") + "."
     }
 
     /// How long a build waits for a simulator when every one is in use, and how often it looks.
@@ -247,7 +268,11 @@ public final class ToolRegistry: @unchecked Sendable {
     }
 
     private func startBoot(_ udid: String) async -> Task<Void, Error> {
-        await boots.start(udid) { [self] in
+        let config = self.config
+        return await boots.start(udid) { [self] in
+            // Before the boot: launchd_sim reads which services to leave off as it starts. If the
+            // file can't be written the simulator just boots with everything, as before.
+            _ = try? SlimSimulators.prepare(udid: udid, enabled: config.slimSimulators, keep: config.slimSimulatorKeep)
             try await Simctl.boot(udid)
             await SimulatorDriver.shared.reset(udid: udid)
             await geometry.invalidate(udid: udid)

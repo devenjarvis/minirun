@@ -42,16 +42,8 @@ copies the template's data and skips the first-boot data migration. Otherwise it
 
 ## 3. Clean up when a simulator changes hands
 
-**Today:** when a build adopts a free simulator, the previous session's app and its data stay
-installed.
-
-**Change:** when `workspaceDevice` hands a simulator to a different workspace than the one before,
-uninstall the claim's last `bundleID` (`Simctl.uninstall`). This is much cheaper than
-`simctl erase`, which needs a shutdown and a fresh first boot. Skip it when the new workspace is
-the same repo, so switching branches keeps the app's data.
-
-**Tests:** the "should we uninstall, and what" decision can live in MiniRunKit. The uninstall
-itself needs a Mac.
+Done: `SimulatorHandOver` decides, and `ToolRegistry.clearSession` uninstalls the last app and
+resets permissions and the keychain when a different repo takes a simulator.
 
 ## 4. Pick a free simulator instead of failing when several are booted
 
